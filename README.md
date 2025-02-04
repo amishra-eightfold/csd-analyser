@@ -23,7 +23,7 @@ A Streamlit-based dashboard for analyzing customer support ticket data. This too
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/YOUR_USERNAME/csd-analyser.git
+git clone https://github.com/ldominic-eightfold/csd-analyser.git
 cd csd-analyser
 ```
 
@@ -75,4 +75,4 @@ Your input file should contain the following columns:
 
 ## License
 
-MIT License 
+MIT License
