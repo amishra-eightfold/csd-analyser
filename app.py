@@ -13,6 +13,25 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import re
 
+# Set page config
+st.set_page_config(
+    page_title="Customer Support Ticket Analysis",
+    page_icon="📊",
+    layout="wide"
+)
+
+# Add title and file uploader
+st.title("Customer Support Ticket Analysis Dashboard")
+st.markdown("Upload your data file (CSV or Excel)")
+
+# Define required columns based on Case-28_01_2025.csv
+REQUIRED_COLUMNS = [
+    'Id', 'CaseNumber', 'Account.Account_Name__c', 'Group_Id__c', 
+    'Subject', 'Description', 'Product_Area__c', 'Product_Feature__c',
+    'POD_Name__c', 'CreatedDate', 'ClosedDate', 'Case_Type__c',
+    'Age_days__c', 'IsEscalated', 'CSAT__c', 'Internal_Priority__c'
+]
+
 def truncate_account_name(name, max_length=15):
     """Helper function to truncate account names."""
     if isinstance(name, str) and len(name) > max_length:
@@ -274,66 +293,6 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         img_stream = BytesIO(img_bytes)
         slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
 
-        # RCA and Age Analysis slides
-        if 'RCA__c' in filtered_df.columns:
-            # Average Age by RCA slide
-            slide = prs.slides.add_slide(prs.slide_layouts[5])
-            title = slide.shapes.title
-            title.text = "Root Cause Analysis - Age Correlation"
-            
-            age_by_rca = filtered_df.groupby('RCA__c')['Age_days__c'].agg(['mean', 'count']).reset_index()
-            age_by_rca.columns = ['RCA__c', 'Average Age (Days)', 'Number of Cases']
-            age_by_rca = age_by_rca[age_by_rca['Number of Cases'] >= 5]  # Filter RCAs with at least 5 cases
-            age_by_rca = age_by_rca.sort_values('Average Age (Days)', ascending=True)
-            
-            fig_rca_age = px.bar(
-                age_by_rca,
-                x='Average Age (Days)',
-                y='RCA__c',
-                title='Average Case Age by Root Cause',
-                orientation='h',
-                color='Number of Cases',
-                color_continuous_scale='Viridis',
-                text='Number of Cases'
-            )
-            fig_rca_age.update_layout(
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                yaxis_title='Root Cause',
-                showlegend=True,
-                height=600
-            )
-            fig_rca_age.update_traces(textposition='outside')
-            img_bytes = fig_rca_age.to_image(format="png", width=1000, height=600, scale=2)
-            img_stream = BytesIO(img_bytes)
-            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
-
-            # Age Distribution by RCA slide
-            slide = prs.slides.add_slide(prs.slide_layouts[5])
-            title = slide.shapes.title
-            title.text = "Age Distribution by Root Cause"
-            
-            fig_rca_box = px.box(
-                filtered_df,
-                x='RCA__c',
-                y='Age_days__c',
-                title='Age Distribution by Root Cause',
-                color='RCA__c',
-                color_discrete_sequence=px.colors.qualitative.Set3
-            )
-            fig_rca_box.update_layout(
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                xaxis_title='Root Cause',
-                yaxis_title='Age (Days)',
-                showlegend=False,
-                xaxis_tickangle=-45,
-                height=600
-            )
-            img_bytes = fig_rca_box.to_image(format="png", width=1000, height=600, scale=2)
-            img_stream = BytesIO(img_bytes)
-            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
-        
         # Save presentation
         pptx_output = BytesIO()
         prs.save(pptx_output)
@@ -360,28 +319,14 @@ def display_visualizations(filtered_df):
 
     with col3:
         st.metric("Product Areas", filtered_df['Product_Area__c'].nunique())
-    
+
     with col4:
         avg_csat = filtered_df[filtered_df['CSAT__c'] != 0]['CSAT__c'].mean()
         st.metric("Avg CSAT", f"{avg_csat:.2f}" if not pd.isna(avg_csat) else "N/A")
-    
+
     with col5:
         escalation_rate = filtered_df['IsEscalated'].mean() * 100
         st.metric("Escalation Rate", f"{escalation_rate:.1f}%")
-
-    # Product Feature Analysis
-    st.header("Product Feature Analysis")
-    
-    # Add a button to show/hide the analysis
-    if st.button("Analyze Missing Product Features"):
-        with st.spinner("Analyzing Product Features..."):
-            df_with_predictions = display_feature_predictions(filtered_df)
-            
-            # Update the filtered_df with predictions if user accepts
-            if st.button("Apply Predictions to Analysis"):
-                filtered_df = df_with_predictions.copy()
-                filtered_df['Product_Feature__c'] = filtered_df['Predicted_Feature']
-                st.success("Predictions applied! The analysis below will use the predicted features.")
 
     # Account Analysis
     st.header("Account Analysis")
@@ -390,7 +335,7 @@ def display_visualizations(filtered_df):
     account_cases = filtered_df.groupby('Account.Account_Name__c').size().reset_index(name='count')
     account_cases = account_cases.sort_values('count', ascending=True).tail(10)
     account_cases['Account.Account_Name__c'] = account_cases['Account.Account_Name__c'].apply(truncate_account_name)
-    
+
     fig_account = px.bar(
         account_cases,
         x='count',
@@ -405,7 +350,7 @@ def display_visualizations(filtered_df):
         showlegend=False
     )
     st.plotly_chart(fig_account, use_container_width=True)
-    
+
     # CSAT by Account chart
     csat_data = filtered_df[filtered_df['CSAT__c'] != 0]
     if not csat_data.empty:
@@ -426,10 +371,10 @@ def display_visualizations(filtered_df):
             xaxis_tickangle=-45
         )
         st.plotly_chart(fig_csat, use_container_width=True)
-    
+
     # Monthly Trends Analysis
     st.header("Monthly Trends")
-    
+
     # Prepare monthly data
     filtered_df['Month'] = filtered_df['CreatedDate'].dt.to_period('M')
     monthly_volume = filtered_df.groupby(['Month', 'Account.Account_Name__c']).size().reset_index(name='count')
@@ -451,7 +396,7 @@ def display_visualizations(filtered_df):
         paper_bgcolor='white'
     )
     st.plotly_chart(fig_monthly_volume, use_container_width=True)
-    
+
     # Monthly CSAT Trends
     monthly_csat = filtered_df[filtered_df['CSAT__c'] != 0].groupby(['Month', 'Account.Account_Name__c']).agg({
         'CSAT__c': ['mean', 'count']
@@ -499,10 +444,9 @@ def display_visualizations(filtered_df):
         paper_bgcolor='white'
     )
     st.plotly_chart(fig_monthly_csat, use_container_width=True)
-    
+
     # Priority and Escalation Analysis
     st.header("Priority and Escalation Analysis")
-    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -536,10 +480,9 @@ def display_visualizations(filtered_df):
             paper_bgcolor='white'
         )
         st.plotly_chart(fig_escalation, use_container_width=True)
-    
+
     # Product Analysis
     st.header("Product Analysis")
-    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -625,335 +568,6 @@ def display_visualizations(filtered_df):
     with col3:
         st.info("Export your analysis as Excel or PowerPoint presentation. The PowerPoint includes all charts and statistics.")
 
-def clean_text(text):
-    """Clean and preprocess text data."""
-    if pd.isna(text):
-        return ""
-    # Convert to string
-    text = str(text)
-    # Remove special characters and digits
-    text = re.sub(r'[^a-zA-Z\s]', ' ', text)
-    # Convert to lowercase
-    text = text.lower()
-    # Remove extra whitespace
-    text = ' '.join(text.split())
-    return text
-
-def predict_product_feature(row, known_features_by_area, vectorizer_dict, feature_vectors_dict):
-    """Predict Product Feature based on text similarity and context."""
-    if pd.isna(row['Product_Feature__c']) or row['Product_Feature__c'] in ['Other', 'Unspecified']:
-        product_area = row['Product_Area__c']
-        
-        if product_area not in known_features_by_area:
-            return 'Unspecified'
-            
-        # Combine relevant text fields
-        text_to_analyze = ' '.join([
-            clean_text(row['Subject']),
-            clean_text(row['Description']),
-            clean_text(row['RCA__c']),
-            clean_text(product_area)
-        ])
-        
-        # Get the vectorizer and feature vectors for this product area
-        vectorizer = vectorizer_dict[product_area]
-        feature_vectors = feature_vectors_dict[product_area]
-        known_features = known_features_by_area[product_area]
-        
-        # Transform the text
-        text_vector = vectorizer.transform([text_to_analyze])
-        
-        # Calculate similarity with known features
-        similarities = cosine_similarity(text_vector, feature_vectors)[0]
-        
-        # Get the most similar feature
-        if len(similarities) > 0:
-            max_sim_index = np.argmax(similarities)
-            if similarities[max_sim_index] > 0.1:  # Threshold for minimum similarity
-                return known_features[max_sim_index]
-    
-    return row['Product_Feature__c']
-
-def analyze_product_features(filtered_df):
-    """Analyze and predict missing Product Features."""
-    # Group valid features by Product Area
-    known_features_by_area = {}
-    vectorizer_dict = {}
-    feature_vectors_dict = {}
-    
-    # Create training data for each Product Area
-    for area in filtered_df['Product_Area__c'].unique():
-        area_df = filtered_df[filtered_df['Product_Area__c'] == area]
-        valid_features = area_df[
-            ~area_df['Product_Feature__c'].isin(['Other', 'Unspecified']) & 
-            ~area_df['Product_Feature__c'].isna()
-        ]
-        
-        if len(valid_features) > 0:
-            known_features = valid_features['Product_Feature__c'].unique()
-            known_features_by_area[area] = known_features
-            
-            # Prepare training data
-            training_texts = []
-            for feature in known_features:
-                feature_data = valid_features[valid_features['Product_Feature__c'] == feature]
-                text = ' '.join([
-                    ' '.join(feature_data['Subject'].apply(clean_text)),
-                    ' '.join(feature_data['Description'].apply(clean_text)),
-                    ' '.join(feature_data['RCA__c'].apply(clean_text)),
-                    clean_text(area)
-                ])
-                training_texts.append(text)
-            
-            # Create and fit vectorizer
-            vectorizer = TfidfVectorizer(stop_words='english')
-            feature_vectors = vectorizer.fit_transform(training_texts)
-            
-            vectorizer_dict[area] = vectorizer
-            feature_vectors_dict[area] = feature_vectors
-    
-    # Predict missing features
-    df_with_predictions = filtered_df.copy()
-    df_with_predictions['Predicted_Feature'] = df_with_predictions.apply(
-        lambda row: predict_product_feature(row, known_features_by_area, vectorizer_dict, feature_vectors_dict),
-        axis=1
-    )
-    
-    # Analyze changes
-    changes = df_with_predictions[
-        (df_with_predictions['Product_Feature__c'].isin(['Other', 'Unspecified']) | 
-         df_with_predictions['Product_Feature__c'].isna()) &
-        (df_with_predictions['Predicted_Feature'] != df_with_predictions['Product_Feature__c'])
-    ]
-    
-    return df_with_predictions, changes
-
-def display_feature_predictions(filtered_df):
-    """Display analysis of Product Feature predictions."""
-    st.header("Product Feature Analysis")
-    
-    # Get predictions
-    df_with_predictions, changes = analyze_product_features(filtered_df)
-    
-    # Display summary statistics
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        total_missing = len(filtered_df[
-            filtered_df['Product_Feature__c'].isin(['Other', 'Unspecified']) | 
-            filtered_df['Product_Feature__c'].isna()
-        ])
-        st.metric("Missing/Other Features", total_missing)
-                
-    with col2:
-        predictions_made = len(changes)
-        st.metric("Predictions Made", predictions_made)
-    
-    with col3:
-        prediction_rate = (predictions_made / total_missing * 100) if total_missing > 0 else 0
-        st.metric("Prediction Rate", f"{prediction_rate:.1f}%")
-    
-    # Display predictions by Product Area
-    st.subheader("Predictions by Product Area")
-    predictions_by_area = changes.groupby(['Product_Area__c']).agg({
-        'Product_Feature__c': 'count',
-        'Predicted_Feature': lambda x: ', '.join(x.unique())
-    }).reset_index()
-    predictions_by_area.columns = ['Product Area', 'Number of Predictions', 'Predicted Features']
-    st.dataframe(predictions_by_area, hide_index=True)
-    
-    # Display sample predictions
-    st.subheader("Sample Predictions")
-    sample_predictions = changes[[
-        'Product_Area__c', 'Product_Feature__c', 'Predicted_Feature', 
-        'Subject', 'Description', 'RCA__c'
-    ]].head(10)
-    sample_predictions.columns = [
-        'Product Area', 'Original Feature', 'Predicted Feature',
-        'Subject', 'Description', 'RCA'
-    ]
-    st.dataframe(sample_predictions, hide_index=True)
-    
-    return df_with_predictions
-
-def predict_group_id(df):
-    """Predict Group_Id__c based on Account.Account_Name__c using text similarity."""
-    # Create a copy of the dataframe
-    df_with_predictions = df.copy()
-    
-    # Clean Group IDs - convert nan, 'nan', 'None', empty strings to None
-    df_with_predictions['Group_Id__c'] = df_with_predictions['Group_Id__c'].replace(['nan', 'None', '', 'Unspecified'], None)
-    df_with_predictions['Group_Id__c'] = pd.to_numeric(df_with_predictions['Group_Id__c'], errors='coerce')
-    
-    # Get training data (rows with valid Group IDs)
-    valid_data = df_with_predictions[df_with_predictions['Group_Id__c'].notna()].copy()
-    
-    # Create mapping of Account Name to most common Group ID
-    account_group_mapping = {}
-    for account in valid_data['Account.Account_Name__c'].unique():
-        account_data = valid_data[valid_data['Account.Account_Name__c'] == account]
-        group_counts = account_data['Group_Id__c'].value_counts()
-        if not group_counts.empty:
-            account_group_mapping[account] = int(group_counts.index[0])
-    
-    # Create TF-IDF vectorizer for account names
-    vectorizer = TfidfVectorizer(
-        analyzer='char_wb',
-        ngram_range=(2, 4),
-        lowercase=True,
-        max_features=1000
-    )
-    
-    # Fit vectorizer on account names
-    account_names = list(account_group_mapping.keys())
-    if not account_names:
-        return df_with_predictions, 0, 0, 0, pd.DataFrame()
-        
-    vectorizer.fit([str(name) for name in account_names])
-    
-    # Create vectors for known accounts
-    account_vectors = {
-        account: vectorizer.transform([str(account)]).toarray()
-        for account in account_names
-    }
-    
-    # Function to find most similar account
-    def find_most_similar_account(account_name):
-        if account_name in account_group_mapping:
-            return account_name, 1.0  # Exact match
-        
-        account_vector = vectorizer.transform([str(account_name)]).toarray()
-        max_similarity = -1
-        most_similar_account = None
-        
-        for known_account, known_vector in account_vectors.items():
-            similarity = cosine_similarity(account_vector, known_vector)[0][0]
-            if similarity > max_similarity:
-                max_similarity = similarity
-                most_similar_account = known_account
-        
-        return most_similar_account, max_similarity
-    
-    # Identify missing Group IDs
-    missing_group_mask = df_with_predictions['Group_Id__c'].isna()
-    total_missing = missing_group_mask.sum()
-    
-    if total_missing == 0:
-        return df_with_predictions, 0, 0, 0, pd.DataFrame()
-    
-    # Store prediction details
-    predictions = []
-    
-    # Apply predictions
-    for idx, row in df_with_predictions[missing_group_mask].iterrows():
-        account_name = str(row['Account.Account_Name__c'])
-        similar_account, confidence = find_most_similar_account(account_name)
-        
-        if confidence >= 0.8:  # High confidence threshold
-            predicted_group_id = account_group_mapping[similar_account]
-        else:
-            # For low confidence, try to extract numbers from account name
-            numbers = ''.join(filter(str.isdigit, account_name))
-            predicted_group_id = int(numbers) if numbers else None
-            if predicted_group_id is None:
-                # If no numbers found, use a hash of the account name
-                predicted_group_id = abs(hash(account_name)) % 10000000
-        
-        df_with_predictions.loc[idx, 'Group_Id__c'] = predicted_group_id
-        predictions.append({
-            'Account_Name': account_name,
-            'Similar_Account': similar_account,
-            'Confidence': confidence,
-            'Predicted_Group_ID': predicted_group_id
-        })
-    
-    # Create prediction details DataFrame
-    prediction_details_df = pd.DataFrame(predictions) if predictions else pd.DataFrame()
-    
-    # Get prediction statistics
-    high_confidence_predictions = len(prediction_details_df[prediction_details_df['Confidence'] >= 0.8]) if not prediction_details_df.empty else 0
-    low_confidence_predictions = len(prediction_details_df[prediction_details_df['Confidence'] < 0.8]) if not prediction_details_df.empty else 0
-    
-    return (
-        df_with_predictions,
-        total_missing,
-        high_confidence_predictions,
-        low_confidence_predictions,
-        prediction_details_df
-    )
-
-def display_group_id_predictions(df):
-    """Display analysis of Group ID predictions."""
-    st.subheader("Group ID Prediction Analysis")
-    
-    # Get predictions
-    (
-        df_with_predictions,
-        total_missing,
-        high_confidence_predictions,
-        low_confidence_predictions,
-        prediction_details
-    ) = predict_group_id(df)
-    
-    # Display summary statistics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Missing Group IDs", total_missing)
-    
-    with col2:
-        st.metric("High Confidence Predictions", high_confidence_predictions)
-    
-    with col3:
-        st.metric("Low Confidence Predictions", low_confidence_predictions)
-    
-    with col4:
-        prediction_rate = (high_confidence_predictions / total_missing * 100) if total_missing > 0 else 0
-        st.metric("High Confidence Rate", f"{prediction_rate:.1f}%")
-    
-    # Display prediction details
-    if not prediction_details.empty:
-        st.subheader("Prediction Details")
-        
-        # High confidence predictions
-        high_confidence_mask = prediction_details['Confidence'] >= 0.8
-        if high_confidence_mask.any():
-            st.write("High Confidence Predictions (≥ 80% similarity)")
-            high_confidence_df = prediction_details[high_confidence_mask].copy()
-            high_confidence_df['Confidence'] = high_confidence_df['Confidence'].apply(lambda x: f"{x*100:.1f}%")
-            high_confidence_df.columns = ['Account Name', 'Similar Account', 'Confidence', 'Predicted Group ID']
-            st.dataframe(high_confidence_df, hide_index=True)
-        
-        # Low confidence predictions
-        low_confidence_mask = prediction_details['Confidence'] < 0.8
-        if low_confidence_mask.any():
-            st.write("Low Confidence Predictions (< 80% similarity)")
-            low_confidence_df = prediction_details[low_confidence_mask].copy()
-            low_confidence_df['Confidence'] = low_confidence_df['Confidence'].apply(lambda x: f"{x*100:.1f}%")
-            low_confidence_df.columns = ['Account Name', 'Similar Account', 'Confidence', 'Predicted Group ID']
-            st.dataframe(low_confidence_df, hide_index=True)
-    
-    return df_with_predictions
-
-# Set page config
-st.set_page_config(
-    page_title="Customer Support Ticket Analysis",
-    page_icon="📊",
-    layout="wide"
-)
-
-# Add title and file uploader
-st.title("Customer Support Ticket Analysis Dashboard")
-st.markdown("Upload your data file (CSV or Excel)")
-
-# Define required columns based on Case-28_01_2025.csv
-REQUIRED_COLUMNS = [
-    'Id', 'CaseNumber', 'Account.Account_Name__c', 'Group_Id__c', 
-    'Subject', 'Description', 'Product_Area__c', 'Product_Feature__c',
-    'POD_Name__c', 'CreatedDate', 'ClosedDate', 'Case_Type__c',
-    'Age_days__c', 'IsEscalated', 'CSAT__c', 'Internal_Priority__c'
-]
-
 uploaded_file = st.file_uploader("Choose a file", type=["csv", "xlsx", "xls"])
 
 if uploaded_file is not None:
@@ -985,14 +599,6 @@ if uploaded_file is not None:
             if 'Account.Account_Name__c' in df.columns:
                 df = df[df['Account.Account_Name__c'] != 'Eightfold AI']
                 st.write(f"Filtered out Eightfold AI account. Remaining tickets: {len(df)}")
-
-            # Predict missing Group IDs
-            if 'Group_Id__c' in df.columns and 'Account.Account_Name__c' in df.columns:
-                st.header("Group ID Analysis")
-                if st.button("Analyze Missing Group IDs"):
-                    with st.spinner("Analyzing Group IDs..."):
-                        df = display_group_id_predictions(df)
-                        st.success("Group ID analysis complete! The predictions have been applied to the data.")
 
             # Filter out specific case owners
             excluded_owners = ['Spam', 'Support', 'Infosec queue', 'Deal Desk', 'Sales Ops', 'AI Help', 'ISR Queue', 'PD Queue', 'RFx Intake']
@@ -1188,4 +794,4 @@ else:
     Supported file formats:
     - CSV (.csv)
     - Excel (.xlsx, .xls)
-    """)
+    """) 
