@@ -451,7 +451,13 @@ def display_visualizations(filtered_df):
     
     with col1:
         # Cases by Priority chart
-        priority_dist = filtered_df.groupby('Internal_Priority__c').size().reset_index(name='count')
+        priority_dist = filtered_df[filtered_df['Internal_Priority__c'] != 'Unspecified'].copy()
+        priority_dist = priority_dist.groupby('Internal_Priority__c').size().reset_index(name='count')
+        priority_dist = priority_dist.sort_values(
+            by='Internal_Priority__c',
+            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+        )
+        
         fig_priority = px.pie(
             priority_dist,
             values='count',
@@ -467,7 +473,13 @@ def display_visualizations(filtered_df):
     
     with col2:
         # Escalation Rate by Priority chart
-        escalation_by_priority = filtered_df.groupby('Internal_Priority__c')['IsEscalated'].mean().mul(100).reset_index(name='escalation_rate')
+        escalation_by_priority = filtered_df[filtered_df['Internal_Priority__c'] != 'Unspecified'].copy()
+        escalation_by_priority = escalation_by_priority.groupby('Internal_Priority__c')['IsEscalated'].mean().mul(100).reset_index(name='escalation_rate')
+        escalation_by_priority = escalation_by_priority.sort_values(
+            by='Internal_Priority__c',
+            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+        )
+        
         fig_escalation = px.bar(
             escalation_by_priority,
             x='Internal_Priority__c',
@@ -477,7 +489,10 @@ def display_visualizations(filtered_df):
         )
         fig_escalation.update_layout(
             plot_bgcolor='white',
-            paper_bgcolor='white'
+            paper_bgcolor='white',
+            xaxis_title="Priority",
+            yaxis_title="Escalation Rate (%)",
+            showlegend=False
         )
         st.plotly_chart(fig_escalation, use_container_width=True)
 
@@ -652,6 +667,16 @@ if uploaded_file is not None:
                 df['IsEscalated'] = df['IsEscalated'].astype(str).str.lower()
                 df['IsEscalated'] = df['IsEscalated'].map({'true': True, 'false': False}).fillna(False)
 
+            # Clean priority values
+            if 'Internal_Priority__c' in df.columns:
+                # Convert to string and clean priority values
+                df['Internal_Priority__c'] = df['Internal_Priority__c'].astype(str)
+                # Remove any non-priority values (only keep P1, P2, P3, P4, etc.)
+                priority_pattern = r'^P[0-9]+$'
+                df.loc[~df['Internal_Priority__c'].str.match(priority_pattern), 'Internal_Priority__c'] = 'Unspecified'
+                # Sort priorities correctly
+                df['priority_sort'] = df['Internal_Priority__c'].apply(lambda x: int(x[1:]) if x.startswith('P') and x[1:].isdigit() else 999)
+
             # Sidebar filters
             st.sidebar.header("Filters")
             
@@ -697,7 +722,10 @@ if uploaded_file is not None:
                 selected_owners = []
             
             # Priority filter
-            priority_options = sorted([str(p) for p in df['Internal_Priority__c'].unique() if str(p) != 'Unspecified'])
+            priority_options = sorted(
+                [str(p) for p in df['Internal_Priority__c'].unique() if str(p) != 'Unspecified'],
+                key=lambda x: int(x[1:]) if x.startswith('P') and x[1:].isdigit() else 999
+            )
             selected_priorities = st.sidebar.multiselect(
                 "Select Priorities",
                 options=priority_options,
