@@ -579,6 +579,12 @@ if uploaded_file is not None:
         else:  # Excel file
             df = pd.read_excel(uploaded_file)
         
+        # Check for and rename Eightfold_Group_Id__r.Group_Id__c to Group_Id__c
+        if 'Eightfold_Group_Id__r.Group_Id__c' in df.columns:
+            df['Group_Id__c'] = df['Eightfold_Group_Id__r.Group_Id__c']
+            df.drop('Eightfold_Group_Id__r.Group_Id__c', axis=1, inplace=True)
+            st.write("Renamed 'Eightfold_Group_Id__r.Group_Id__c' to 'Group_Id__c'")
+        
         # Process the data
         try:
             # Convert all string columns to string type first to avoid comparison issues
