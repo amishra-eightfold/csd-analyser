@@ -213,7 +213,13 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         title.text = "Priority Distribution"
         
         # Cases by Priority chart
-        priority_dist = filtered_df.groupby('Internal_Priority__c').size().reset_index(name='count')
+        priority_dist = filtered_df[filtered_df['Internal_Priority__c'] != 'Unspecified'].copy()
+        priority_dist = priority_dist.groupby('Internal_Priority__c').size().reset_index(name='count')
+        priority_dist = priority_dist.sort_values(
+            by='Internal_Priority__c',
+            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+        )
+        
         fig_priority = px.pie(
             priority_dist,
             values='count',
@@ -234,7 +240,13 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         title = slide.shapes.title
         title.text = "Escalation Analysis"
         
-        escalation_by_priority = filtered_df.groupby('Internal_Priority__c')['IsEscalated'].mean().mul(100).reset_index(name='escalation_rate')
+        escalation_by_priority = filtered_df[filtered_df['Internal_Priority__c'] != 'Unspecified'].copy()
+        escalation_by_priority = escalation_by_priority.groupby('Internal_Priority__c')['IsEscalated'].mean().mul(100).reset_index(name='escalation_rate')
+        escalation_by_priority = escalation_by_priority.sort_values(
+            by='Internal_Priority__c',
+            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+        )
+        
         fig_escalation = px.bar(
             escalation_by_priority,
             x='Internal_Priority__c',
@@ -244,7 +256,10 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         )
         fig_escalation.update_layout(
             plot_bgcolor='white',
-            paper_bgcolor='white'
+            paper_bgcolor='white',
+            xaxis_title="Priority",
+            yaxis_title="Escalation Rate (%)",
+            showlegend=False
         )
         img_bytes = fig_escalation.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
