@@ -308,6 +308,70 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         img_stream = BytesIO(img_bytes)
         slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
 
+        # Add RCA Analysis slides after Product Analysis
+        # RCA Distribution slide
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        title = slide.shapes.title
+        title.text = "Root Cause Analysis"
+        
+        rca_dist = filtered_df[filtered_df['RCA__c'] != 'Unspecified'].groupby('RCA__c').size().reset_index(name='count')
+        rca_dist = rca_dist.sort_values('count', ascending=True)
+        
+        fig_rca = px.bar(
+            rca_dist,
+            x='count',
+            y='RCA__c',
+            title='Distribution of Root Causes',
+            orientation='h',
+            color_discrete_sequence=px.colors.qualitative.Set3
+        )
+        fig_rca.update_layout(
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            showlegend=False,
+            yaxis_title="Root Cause",
+            xaxis_title="Number of Cases"
+        )
+        img_bytes = fig_rca.to_image(format="png", width=1000, height=600, scale=2)
+        img_stream = BytesIO(img_bytes)
+        slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+
+        # RCA by Priority slide
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        title = slide.shapes.title
+        title.text = "Root Causes by Priority"
+        
+        rca_priority = filtered_df[
+            (filtered_df['RCA__c'] != 'Unspecified') & 
+            (filtered_df['Internal_Priority__c'] != 'Unspecified')
+        ].groupby(['Internal_Priority__c', 'RCA__c']).size().reset_index(name='count')
+        
+        rca_priority = rca_priority.sort_values(
+            by='Internal_Priority__c',
+            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+        )
+        
+        fig_rca_priority = px.bar(
+            rca_priority,
+            x='Internal_Priority__c',
+            y='count',
+            color='RCA__c',
+            title='Root Causes by Priority',
+            barmode='stack',
+            color_discrete_sequence=px.colors.qualitative.Set3
+        )
+        fig_rca_priority.update_layout(
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            xaxis_title="Priority",
+            yaxis_title="Number of Cases",
+            legend_title="Root Cause",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        img_bytes = fig_rca_priority.to_image(format="png", width=1000, height=600, scale=2)
+        img_stream = BytesIO(img_bytes)
+        slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+
         # Save presentation
         pptx_output = BytesIO()
         prs.save(pptx_output)
@@ -542,6 +606,64 @@ def display_visualizations(filtered_df):
             color_discrete_sequence=px.colors.qualitative.Set3
         )
         st.plotly_chart(fig_feature, use_container_width=True)
+    
+    # Root Cause Analysis
+    st.header("Root Cause Analysis")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Overall RCA Distribution
+        rca_dist = filtered_df[filtered_df['RCA__c'] != 'Unspecified'].groupby('RCA__c').size().reset_index(name='count')
+        rca_dist = rca_dist.sort_values('count', ascending=True)
+        
+        fig_rca = px.bar(
+            rca_dist,
+            x='count',
+            y='RCA__c',
+            title='Distribution of Root Causes',
+            orientation='h',
+            color_discrete_sequence=px.colors.qualitative.Set3
+        )
+        fig_rca.update_layout(
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            showlegend=False,
+            yaxis_title="Root Cause",
+            xaxis_title="Number of Cases"
+        )
+        st.plotly_chart(fig_rca, use_container_width=True)
+    
+    with col2:
+        # RCA by Priority
+        rca_priority = filtered_df[
+            (filtered_df['RCA__c'] != 'Unspecified') & 
+            (filtered_df['Internal_Priority__c'] != 'Unspecified')
+        ].groupby(['Internal_Priority__c', 'RCA__c']).size().reset_index(name='count')
+        
+        # Sort priorities correctly
+        rca_priority = rca_priority.sort_values(
+            by='Internal_Priority__c',
+            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+        )
+        
+        fig_rca_priority = px.bar(
+            rca_priority,
+            x='Internal_Priority__c',
+            y='count',
+            color='RCA__c',
+            title='Root Causes by Priority',
+            barmode='stack',
+            color_discrete_sequence=px.colors.qualitative.Set3
+        )
+        fig_rca_priority.update_layout(
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            xaxis_title="Priority",
+            yaxis_title="Number of Cases",
+            legend_title="Root Cause",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_rca_priority, use_container_width=True)
     
     # Raw Data
     st.header("Raw Data")
