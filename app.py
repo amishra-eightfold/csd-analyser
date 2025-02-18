@@ -12,7 +12,7 @@ from PIL import Image
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import re
-from wordcloud import WordCloud
+from wordcloud import WordCloud, STOPWORDS
 import matplotlib.pyplot as plt
 
 # Set page config
@@ -45,21 +45,66 @@ def generate_wordcloud(text_data, title):
     if not isinstance(text_data, str):
         text_data = ' '.join(str(x) for x in text_data if pd.notna(x))
     
-    wordcloud = WordCloud(
-        width=800,
-        height=400,
-        background_color='white',
-        max_words=100,
-        collocations=False,
-        stopwords=set(['nan', 'none', 'null', 'unspecified'])
-    ).generate(text_data)
+    # Get default STOPWORDS from wordcloud
+    stopwords = set(STOPWORDS)
     
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.imshow(wordcloud, interpolation='bilinear')
-    ax.axis('off')
-    ax.set_title(title)
+    # Add custom stopwords specific to support tickets
+    custom_stopwords = {
+        # Common words
+        'nan', 'none', 'null', 'unspecified', 'undefined', 'unknown',
+        # Support-specific terms
+        'ticket', 'case', 'issue', 'problem', 'request', 'support',
+        'customer', 'user', 'client', 'team', 'please', 'thanks',
+        'hello', 'hi', 'hey', 'dear', 'greetings', 'regards',
+        'morning', 'afternoon', 'evening',
+        # Common verbs and prepositions
+        'is', 'are', 'was', 'were', 'be', 'been', 'being',
+        'have', 'has', 'had', 'do', 'does', 'did',
+        'will', 'would', 'should', 'could', 'may', 'might',
+        'must', 'can', 'cannot', 'cant', 'wont', 'want',
+        'need', 'needed', 'needs', 'required', 'requiring',
+        'facing', 'seeing', 'looking', 'trying', 'tried',
+        'getting', 'got', 'received', 'receiving',
+        # Common articles and conjunctions
+        'the', 'a', 'an', 'and', 'or', 'but', 'nor', 'for',
+        'yet', 'so', 'although', 'because', 'before', 'after',
+        'when', 'while', 'where', 'why', 'how',
+        # Numbers and common symbols
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+        '@', '#', '$', '%', '&', '*', '(', ')', '-', '_',
+        '+', '=', '[', ']', '{', '}', '|', '\\', '/', '<', '>',
+        # Time-related terms
+        'today', 'yesterday', 'tomorrow', 'week', 'month', 'year',
+        'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
+        'saturday', 'sunday', 'jan', 'feb', 'mar', 'apr', 'may',
+        'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'
+    }
     
-    return fig
+    # Update stopwords with custom ones
+    stopwords.update(custom_stopwords)
+    
+    try:
+        # Generate word cloud
+        wordcloud = WordCloud(
+            width=800,
+            height=400,
+            background_color='white',
+            max_words=100,
+            collocations=False,
+            stopwords=stopwords,
+            min_font_size=10,
+            max_font_size=50
+        ).generate(text_data)
+        
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.imshow(wordcloud, interpolation='bilinear')
+        ax.axis('off')
+        ax.set_title(title)
+        
+        return fig
+    except Exception as e:
+        st.error(f"Error generating word cloud: {str(e)}")
+        return None
 
 def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate):
     """Generate PowerPoint presentation with charts and statistics."""
@@ -177,34 +222,63 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
                 annotation_position="bottom right"
             )
             
-            st.plotly_chart(fig_csat, use_container_width=True)
-            
+            # Remove st.plotly_chart call and only save to PowerPoint
+            img_bytes = fig_csat.to_image(format="png", width=1000, height=600, scale=2)
+            img_stream = BytesIO(img_bytes)
+            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+
             # Add a summary of the CSAT trends
             st.markdown("### CSAT Trend Summary")
             
-            # Calculate and display the most recent CSAT scores and their change
-            recent_csat = monthly_account_csat.sort_values('CreatedDate').groupby('Account.Account_Name__c').last()
-            previous_csat = monthly_account_csat.sort_values('CreatedDate').groupby('Account.Account_Name__c').nth(-2)
-            
-            summary_df = pd.DataFrame({
-                'Latest CSAT': recent_csat['mean'],
-                'Previous CSAT': previous_csat['mean'],
-                'Change': recent_csat['mean'] - previous_csat['mean'],
-                'Latest Response Count': recent_csat['count']
-            }).round(2)
-            
-            # Sort by Latest CSAT
-            summary_df = summary_df.sort_values('Latest CSAT', ascending=False)
-            
-            # Style the dataframe
-            styled_df = summary_df.style.format({
-                'Latest CSAT': '{:.2f}',
-                'Previous CSAT': '{:.2f}',
-                'Change': '{:+.2f}',
-                'Latest Response Count': '{:.0f}'
-            }).background_gradient(subset=['Latest CSAT'], cmap='RdYlGn')
-            
-            st.dataframe(styled_df, use_container_width=True)
+            try:
+                # Ensure numeric CSAT values and proper Month format
+                monthly_account_csat['mean'] = pd.to_numeric(monthly_account_csat['mean'], errors='coerce')
+                monthly_account_csat['count'] = pd.to_numeric(monthly_account_csat['count'], errors='coerce')
+                
+                # Convert CreatedDate to datetime for sorting if it's not already
+                monthly_account_csat['sort_date'] = pd.to_datetime(monthly_account_csat['CreatedDate'])
+                
+                # Sort the dataframe by date and get the most recent and previous records
+                sorted_csat = monthly_account_csat.sort_values('sort_date')
+                recent_csat = sorted_csat.groupby('Account.Account_Name__c').last()
+                previous_csat = sorted_csat.groupby('Account.Account_Name__c').nth(-2)
+                
+                # Create summary DataFrame with proper type handling
+                summary_df = pd.DataFrame({
+                    'Latest CSAT': recent_csat['mean'].astype(float),
+                    'Previous CSAT': previous_csat['mean'].astype(float),
+                    'Latest Response Count': recent_csat['count'].astype(int)
+                })
+                
+                # Calculate change after ensuring numeric values
+                summary_df['Change'] = summary_df['Latest CSAT'] - summary_df['Previous CSAT']
+                
+                # Handle any remaining NaN values
+                summary_df = summary_df.fillna({
+                    'Latest CSAT': 0,
+                    'Previous CSAT': 0,
+                    'Change': 0,
+                    'Latest Response Count': 0
+                })
+                
+                # Round values for display
+                summary_df = summary_df.round(2)
+                
+                # Sort by Latest CSAT
+                summary_df = summary_df.sort_values('Latest CSAT', ascending=False)
+                
+                # Style the dataframe
+                styled_df = summary_df.style.format({
+                    'Latest CSAT': '{:.2f}',
+                    'Previous CSAT': '{:.2f}',
+                    'Change': '{:+.2f}',
+                    'Latest Response Count': '{:.0f}'
+                }).background_gradient(subset=['Latest CSAT'], cmap='RdYlGn')
+                
+                st.dataframe(styled_df, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Could not generate CSAT trend summary: {str(e)}")
+                st.write("This usually occurs when there is insufficient CSAT data for trend analysis.")
 
         # Monthly Trends slides
         # Volume Trends slide
@@ -417,7 +491,7 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         img_stream = BytesIO(img_bytes)
         slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
 
-        # RCA by Priority slide
+        # RCA by Priority
         slide = prs.slides.add_slide(prs.slide_layouts[5])
         title = slide.shapes.title
         title.text = "Root Causes by Priority"
@@ -427,6 +501,11 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             (filtered_df['Internal_Priority__c'] != 'Unspecified')
         ].groupby(['Internal_Priority__c', 'RCA__c']).size().reset_index(name='count')
         
+        # Get the top 5 RCAs by total count
+        top_5_rcas = filtered_df[filtered_df['RCA__c'] != 'Unspecified'].groupby('RCA__c').size().nlargest(5).index
+        rca_priority = rca_priority[rca_priority['RCA__c'].isin(top_5_rcas)]
+        
+        # Sort priorities correctly
         rca_priority = rca_priority.sort_values(
             by='Internal_Priority__c',
             key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
@@ -453,53 +532,73 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         img_stream = BytesIO(img_bytes)
         slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
 
-        # Add Text Analysis slides if requested
-        if st.session_state.get('include_wordclouds', False):
-            # Subject Word Cloud slide
+        # Add Word Cloud slides if they exist in session state
+        if 'include_wordclouds' in st.session_state and st.session_state['include_wordclouds']:
+            # Subject Word Cloud
             slide = prs.slides.add_slide(prs.slide_layouts[5])
             title = slide.shapes.title
-            title.text = "Text Analysis - Common Terms"
+            title.text = "Subject Word Cloud"
             
             fig_subject = generate_wordcloud(filtered_df['Subject'], 'Common Terms in Case Subjects')
-            img_stream = BytesIO()
-            fig_subject.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
-            plt.close(fig_subject)
-            img_stream.seek(0)
-            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+            if fig_subject:
+                img_stream = BytesIO()
+                fig_subject.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
+                img_stream.seek(0)
+                slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+                plt.close(fig_subject)
             
-            # Description Word Cloud slide
+            # Description Word Cloud
             slide = prs.slides.add_slide(prs.slide_layouts[5])
             title = slide.shapes.title
-            title.text = "Text Analysis - Case Descriptions"
+            title.text = "Description Word Cloud"
             
             fig_desc = generate_wordcloud(filtered_df['Description'], 'Common Terms in Case Descriptions')
-            img_stream = BytesIO()
-            fig_desc.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
-            plt.close(fig_desc)
-            img_stream.seek(0)
-            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+            if fig_desc:
+                img_stream = BytesIO()
+                fig_desc.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
+                img_stream.seek(0)
+                slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+                plt.close(fig_desc)
             
-            # Product Information Word Clouds slide
+            # POD Name Word Cloud
             slide = prs.slides.add_slide(prs.slide_layouts[5])
             title = slide.shapes.title
-            title.text = "Product Information Analysis"
+            title.text = "POD Name Word Cloud"
             
-            # Create a 2x2 grid of smaller word clouds
-            fields = ['POD_Name__c', 'Product_Area__c', 'Product_Feature__c']
-            titles = ['POD Names', 'Product Areas', 'Product Features']
-            
-            for i, (field, subtitle) in enumerate(zip(fields, titles)):
-                fig = generate_wordcloud(filtered_df[field], subtitle)
+            fig_pod = generate_wordcloud(filtered_df['POD_Name__c'], 'Distribution of POD Names')
+            if fig_pod:
                 img_stream = BytesIO()
-                fig.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
-                plt.close(fig)
+                fig_pod.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
                 img_stream.seek(0)
-                
-                # Calculate position for 2x2 grid
-                left = Inches(1 if i % 2 == 0 else 7)
-                top = Inches(1.5 if i < 2 else 4)
-                slide.shapes.add_picture(img_stream, left, top, width=Inches(5))
-        
+                slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+                plt.close(fig_pod)
+            
+            # Product Area Word Cloud
+            slide = prs.slides.add_slide(prs.slide_layouts[5])
+            title = slide.shapes.title
+            title.text = "Product Area Word Cloud"
+            
+            fig_area_cloud = generate_wordcloud(filtered_df['Product_Area__c'], 'Distribution of Product Areas')
+            if fig_area_cloud:
+                img_stream = BytesIO()
+                fig_area_cloud.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
+                img_stream.seek(0)
+                slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+                plt.close(fig_area_cloud)
+            
+            # Product Feature Word Cloud
+            slide = prs.slides.add_slide(prs.slide_layouts[5])
+            title = slide.shapes.title
+            title.text = "Product Feature Word Cloud"
+            
+            fig_feature_cloud = generate_wordcloud(filtered_df['Product_Feature__c'], 'Distribution of Product Features')
+            if fig_feature_cloud:
+                img_stream = BytesIO()
+                fig_feature_cloud.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
+                img_stream.seek(0)
+                slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+                plt.close(fig_feature_cloud)
+
         # Save presentation
         pptx_output = BytesIO()
         prs.save(pptx_output)
@@ -609,34 +708,61 @@ def display_visualizations(filtered_df):
             annotation_position="bottom right"
         )
         
-        st.plotly_chart(fig_csat, use_container_width=True)
+        # Display the CSAT chart in Streamlit
+        st.plotly_chart(fig_csat, use_container_width=True, key="csat_trend_chart")
         
         # Add a summary of the CSAT trends
         st.markdown("### CSAT Trend Summary")
         
-        # Calculate and display the most recent CSAT scores and their change
-        recent_csat = monthly_account_csat.sort_values('CreatedDate').groupby('Account.Account_Name__c').last()
-        previous_csat = monthly_account_csat.sort_values('CreatedDate').groupby('Account.Account_Name__c').nth(-2)
-        
-        summary_df = pd.DataFrame({
-            'Latest CSAT': recent_csat['mean'],
-            'Previous CSAT': previous_csat['mean'],
-            'Change': recent_csat['mean'] - previous_csat['mean'],
-            'Latest Response Count': recent_csat['count']
-        }).round(2)
-        
-        # Sort by Latest CSAT
-        summary_df = summary_df.sort_values('Latest CSAT', ascending=False)
-        
-        # Style the dataframe
-        styled_df = summary_df.style.format({
-            'Latest CSAT': '{:.2f}',
-            'Previous CSAT': '{:.2f}',
-            'Change': '{:+.2f}',
-            'Latest Response Count': '{:.0f}'
-        }).background_gradient(subset=['Latest CSAT'], cmap='RdYlGn')
-        
-        st.dataframe(styled_df, use_container_width=True)
+        try:
+            # Ensure numeric CSAT values and proper Month format
+            monthly_account_csat['mean'] = pd.to_numeric(monthly_account_csat['mean'], errors='coerce')
+            monthly_account_csat['count'] = pd.to_numeric(monthly_account_csat['count'], errors='coerce')
+            
+            # Convert CreatedDate to datetime for sorting if it's not already
+            monthly_account_csat['sort_date'] = pd.to_datetime(monthly_account_csat['CreatedDate'])
+            
+            # Sort the dataframe by date and get the most recent and previous records
+            sorted_csat = monthly_account_csat.sort_values('sort_date')
+            recent_csat = sorted_csat.groupby('Account.Account_Name__c').last()
+            previous_csat = sorted_csat.groupby('Account.Account_Name__c').nth(-2)
+            
+            # Create summary DataFrame with proper type handling
+            summary_df = pd.DataFrame({
+                'Latest CSAT': recent_csat['mean'].astype(float),
+                'Previous CSAT': previous_csat['mean'].astype(float),
+                'Latest Response Count': recent_csat['count'].astype(int)
+            })
+            
+            # Calculate change after ensuring numeric values
+            summary_df['Change'] = summary_df['Latest CSAT'] - summary_df['Previous CSAT']
+            
+            # Handle any remaining NaN values
+            summary_df = summary_df.fillna({
+                'Latest CSAT': 0,
+                'Previous CSAT': 0,
+                'Change': 0,
+                'Latest Response Count': 0
+            })
+            
+            # Round values for display
+            summary_df = summary_df.round(2)
+            
+            # Sort by Latest CSAT
+            summary_df = summary_df.sort_values('Latest CSAT', ascending=False)
+            
+            # Style the dataframe
+            styled_df = summary_df.style.format({
+                'Latest CSAT': '{:.2f}',
+                'Previous CSAT': '{:.2f}',
+                'Change': '{:+.2f}',
+                'Latest Response Count': '{:.0f}'
+            }).background_gradient(subset=['Latest CSAT'], cmap='RdYlGn')
+            
+            st.dataframe(styled_df, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Could not generate CSAT trend summary: {str(e)}")
+            st.write("This usually occurs when there is insufficient CSAT data for trend analysis.")
 
     # Monthly Trends Analysis
     st.header("Monthly Trends")
@@ -661,7 +787,7 @@ def display_visualizations(filtered_df):
         plot_bgcolor='white',
         paper_bgcolor='white'
     )
-    st.plotly_chart(fig_monthly_volume, use_container_width=True)
+    st.plotly_chart(fig_monthly_volume, use_container_width=True, key="monthly_volume_chart")
 
     # Monthly CSAT Trends
     monthly_csat = filtered_df[filtered_df['CSAT__c'] != 0].groupby(['Month', 'Account.Account_Name__c']).agg({
@@ -709,7 +835,7 @@ def display_visualizations(filtered_df):
         plot_bgcolor='white',
         paper_bgcolor='white'
     )
-    st.plotly_chart(fig_monthly_csat, use_container_width=True)
+    st.plotly_chart(fig_monthly_csat, use_container_width=True, key="monthly_csat_metrics_chart")
 
     # Priority and Escalation Analysis
     st.header("Priority and Escalation Analysis")
@@ -735,7 +861,7 @@ def display_visualizations(filtered_df):
             plot_bgcolor='white',
             paper_bgcolor='white'
         )
-        st.plotly_chart(fig_priority, use_container_width=True)
+        st.plotly_chart(fig_priority, use_container_width=True, key="priority_dist_chart")
     
     with col2:
         # Escalation Rate by Priority chart
@@ -760,7 +886,7 @@ def display_visualizations(filtered_df):
             yaxis_title="Escalation Rate (%)",
             showlegend=False
         )
-        st.plotly_chart(fig_escalation, use_container_width=True)
+        st.plotly_chart(fig_escalation, use_container_width=True, key="escalation_rate_chart")
 
     # Product Analysis
     st.header("Product Analysis")
@@ -780,7 +906,7 @@ def display_visualizations(filtered_df):
             plot_bgcolor='white',
             paper_bgcolor='white'
         )
-        st.plotly_chart(fig_area, use_container_width=True)
+        st.plotly_chart(fig_area, use_container_width=True, key="product_area_chart")
     
     with col2:
         # Feature Distribution by Product Area
@@ -792,7 +918,7 @@ def display_visualizations(filtered_df):
             title='Feature Distribution by Product Area',
             color_discrete_sequence=px.colors.qualitative.Set3
         )
-        st.plotly_chart(fig_feature, use_container_width=True)
+        st.plotly_chart(fig_feature, use_container_width=True, key="feature_dist_chart")
     
     # Root Cause Analysis
     st.header("Root Cause Analysis")
@@ -818,7 +944,7 @@ def display_visualizations(filtered_df):
             yaxis_title="Root Cause",
             xaxis_title="Number of Cases"
         )
-        st.plotly_chart(fig_rca, use_container_width=True)
+        st.plotly_chart(fig_rca, use_container_width=True, key="rca_dist_chart")
     
     with col2:
         # RCA by Priority
@@ -826,6 +952,10 @@ def display_visualizations(filtered_df):
             (filtered_df['RCA__c'] != 'Unspecified') & 
             (filtered_df['Internal_Priority__c'] != 'Unspecified')
         ].groupby(['Internal_Priority__c', 'RCA__c']).size().reset_index(name='count')
+        
+        # Get the top 5 RCAs by total count
+        top_5_rcas = filtered_df[filtered_df['RCA__c'] != 'Unspecified'].groupby('RCA__c').size().nlargest(5).index
+        rca_priority = rca_priority[rca_priority['RCA__c'].isin(top_5_rcas)]
         
         # Sort priorities correctly
         rca_priority = rca_priority.sort_values(
@@ -850,7 +980,7 @@ def display_visualizations(filtered_df):
             legend_title="Root Cause",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        st.plotly_chart(fig_rca_priority, use_container_width=True)
+        st.plotly_chart(fig_rca_priority, use_container_width=True, key="rca_priority_chart")
     
     # Text Analysis with Word Clouds
     st.header("Text Analysis")
@@ -1020,11 +1150,21 @@ if uploaded_file is not None:
             if 'ClosedDate' in df.columns:
                 df['ClosedDate'] = pd.to_datetime(df['ClosedDate'], errors='coerce')
 
-            # Convert numeric fields
+            # Convert numeric fields with better error handling
             if 'CSAT__c' in df.columns:
+                # First convert to string to handle any non-numeric values
+                df['CSAT__c'] = df['CSAT__c'].astype(str)
+                # Replace any non-numeric values with '0'
+                df['CSAT__c'] = df['CSAT__c'].replace(r'[^0-9\.]', '0', regex=True)
+                # Convert to numeric, coercing errors to 0
                 df['CSAT__c'] = pd.to_numeric(df['CSAT__c'], errors='coerce').fillna(0)
 
             if 'Age_days__c' in df.columns:
+                # First convert to string to handle any non-numeric values
+                df['Age_days__c'] = df['Age_days__c'].astype(str)
+                # Replace any non-numeric values with '0'
+                df['Age_days__c'] = df['Age_days__c'].replace(r'[^0-9\.]', '0', regex=True)
+                # Convert to numeric, coercing errors to 0
                 df['Age_days__c'] = pd.to_numeric(df['Age_days__c'], errors='coerce').fillna(0)
 
             # Convert boolean fields
@@ -1148,7 +1288,7 @@ if uploaded_file is not None:
             
             if len(selected_owners) > 0:
                 mask = mask & (df['Case_Owner__c'].astype(str).isin([str(owner) for owner in selected_owners]))
-
+            
             if 'RCA__c' in df.columns and len(selected_rcas) > 0:
                 mask = mask & (df['RCA__c'].astype(str).isin([str(rca) for rca in selected_rcas]))
 
