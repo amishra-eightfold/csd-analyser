@@ -1,0 +1,50 @@
+name: Monitor Upstream Repository
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Check every 5 minutes
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Get latest commit from upstream
+        id: upstream
+        run: |
+          LATEST_COMMIT=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            "https://api.github.com/repos/ldominic-eightfold/csd-analyser/commits/main" | \
+            jq -r '.sha')
+          echo "latest_commit=$LATEST_COMMIT" >> $GITHUB_OUTPUT
+          
+      - name: Get stored commit
+        id: stored
+        run: |
+          STORED_COMMIT=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            "https://api.github.com/repos/amishra-eightfold/csd-analyser/contents/.github/upstream-commit.txt" | \
+            jq -r '.content' | base64 -d || echo "none")
+          echo "stored_commit=$STORED_COMMIT" >> $GITHUB_OUTPUT
+          
+      - name: Trigger sync if new commits
+        if: steps.upstream.outputs.latest_commit != steps.stored.outputs.stored_commit
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/amishra-eightfold/csd-analyser/dispatches" \
+            -d '{"event_type":"upstream_push"}'
+            
+          # Update stored commit
+          echo -n "${{ steps.upstream.outputs.latest_commit }}" | base64 | \
+          curl -X PUT \
+            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/amishra-eightfold/csd-analyser/contents/.github/upstream-commit.txt" \
+            -d "{
+              \"message\": \"Update stored upstream commit\",
+              \"content\": \"$(echo -n "${{ steps.upstream.outputs.latest_commit }}" | base64)\",
+              \"sha\": $(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+                "https://api.github.com/repos/amishra-eightfold/csd-analyser/contents/.github/upstream-commit.txt" | \
+                jq -r '.sha // "null"')
+            }" 

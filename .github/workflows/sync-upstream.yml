@@ -1,11 +1,9 @@
 name: Sync with Upstream
 
 on:
-  schedule:
-    - cron: '0 */6 * * *'  # Runs every 6 hours
-  workflow_dispatch:  # Allows manual trigger if needed
-  push:
-    branches: [ main ]  # Also run when changes are pushed to main
+  repository_dispatch:
+    types: [upstream_push]
+  workflow_dispatch:  # Keeps manual trigger option
 
 permissions:
   contents: write
