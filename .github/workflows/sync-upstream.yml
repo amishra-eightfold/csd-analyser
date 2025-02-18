@@ -1,9 +1,11 @@
 name: Sync with Upstream
 
 on:
+  workflow_dispatch:  # Manual trigger option
+  push:
+    branches: [ main ]  # Local changes
   repository_dispatch:
-    types: [upstream_push]
-  workflow_dispatch:  # Keeps manual trigger option
+    types: [upstream-sync]  # Webhook trigger
 
 permissions:
   contents: write
