@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}
           
       - name: Configure Git
         run: |
@@ -31,7 +31,7 @@ jobs:
           
       - name: Add upstream remote
         run: |
-          git remote add upstream https://github.com/ldominic-eightfold/csd-analyser.git || true
+          git remote add upstream https://${{ secrets.PAT_TOKEN }}@github.com/ldominic-eightfold/csd-analyser.git || true
           
       - name: Fetch upstream
         run: |
