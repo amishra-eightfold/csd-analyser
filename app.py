@@ -129,24 +129,82 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         
         csat_data = filtered_df[filtered_df['CSAT__c'] != 0]
         if not csat_data.empty:
-            csat_by_account = csat_data.groupby('Account.Account_Name__c')['CSAT__c'].mean().reset_index()
-            csat_by_account['Account.Account_Name__c'] = csat_by_account['Account.Account_Name__c'].apply(truncate_account_name)
-            fig_csat = px.bar(
-                csat_by_account,
-                x='Account.Account_Name__c',
-                y='CSAT__c',
-                title='Average CSAT Score by Account',
-                color_discrete_sequence=px.colors.qualitative.Set3
+            # Calculate monthly CSAT averages for each account
+            monthly_account_csat = csat_data.groupby([
+                pd.Grouper(key='CreatedDate', freq='M'),
+                'Account.Account_Name__c'
+            ])['CSAT__c'].agg(['mean', 'count']).reset_index()
+            
+            monthly_account_csat['Month'] = monthly_account_csat['CreatedDate'].dt.strftime('%Y-%m')
+            monthly_account_csat['Account.Account_Name__c'] = monthly_account_csat['Account.Account_Name__c'].apply(truncate_account_name)
+            
+            # Create a line plot for CSAT trends
+            fig_csat = px.line(
+                monthly_account_csat,
+                x='Month',
+                y='mean',
+                color='Account.Account_Name__c',
+                title='Monthly Average CSAT Score by Account',
+                labels={
+                    'mean': 'Average CSAT',
+                    'Month': 'Month',
+                    'Account.Account_Name__c': 'Account'
+                },
+                hover_data=['count']  # Show number of responses in hover
             )
+            
+            # Add markers to show data points
+            fig_csat.update_traces(mode='lines+markers')
+            
+            # Customize layout
             fig_csat.update_layout(
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                showlegend=False,
-                xaxis_tickangle=-45
+                xaxis_tickangle=-45,
+                yaxis_title='Average CSAT Score',
+                xaxis_title='Month',
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                hovermode='x unified'
             )
-            img_bytes = fig_csat.to_image(format="png", width=1000, height=600, scale=2)
-            img_stream = BytesIO(img_bytes)
-            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+            
+            # Add a horizontal line for the overall average CSAT
+            overall_avg_csat = csat_data['CSAT__c'].mean()
+            fig_csat.add_hline(
+                y=overall_avg_csat,
+                line_dash="dash",
+                line_color="gray",
+                annotation_text=f"Overall Avg: {overall_avg_csat:.2f}",
+                annotation_position="bottom right"
+            )
+            
+            st.plotly_chart(fig_csat, use_container_width=True)
+            
+            # Add a summary of the CSAT trends
+            st.markdown("### CSAT Trend Summary")
+            
+            # Calculate and display the most recent CSAT scores and their change
+            recent_csat = monthly_account_csat.sort_values('CreatedDate').groupby('Account.Account_Name__c').last()
+            previous_csat = monthly_account_csat.sort_values('CreatedDate').groupby('Account.Account_Name__c').nth(-2)
+            
+            summary_df = pd.DataFrame({
+                'Latest CSAT': recent_csat['mean'],
+                'Previous CSAT': previous_csat['mean'],
+                'Change': recent_csat['mean'] - previous_csat['mean'],
+                'Latest Response Count': recent_csat['count']
+            }).round(2)
+            
+            # Sort by Latest CSAT
+            summary_df = summary_df.sort_values('Latest CSAT', ascending=False)
+            
+            # Style the dataframe
+            styled_df = summary_df.style.format({
+                'Latest CSAT': '{:.2f}',
+                'Previous CSAT': '{:.2f}',
+                'Change': '{:+.2f}',
+                'Latest Response Count': '{:.0f}'
+            }).background_gradient(subset=['Latest CSAT'], cmap='RdYlGn')
+            
+            st.dataframe(styled_df, use_container_width=True)
 
         # Monthly Trends slides
         # Volume Trends slide
@@ -503,23 +561,82 @@ def display_visualizations(filtered_df):
     # CSAT by Account chart
     csat_data = filtered_df[filtered_df['CSAT__c'] != 0]
     if not csat_data.empty:
-        csat_by_account = csat_data.groupby('Account.Account_Name__c')['CSAT__c'].mean().reset_index()
-        csat_by_account['Account.Account_Name__c'] = csat_by_account['Account.Account_Name__c'].apply(truncate_account_name)
+        # Calculate monthly CSAT averages for each account
+        monthly_account_csat = csat_data.groupby([
+            pd.Grouper(key='CreatedDate', freq='M'),
+            'Account.Account_Name__c'
+        ])['CSAT__c'].agg(['mean', 'count']).reset_index()
         
-        fig_csat = px.bar(
-            csat_by_account,
-            x='Account.Account_Name__c',
-            y='CSAT__c',
-            title='Average CSAT Score by Account',
-            color_discrete_sequence=px.colors.qualitative.Set3
+        monthly_account_csat['Month'] = monthly_account_csat['CreatedDate'].dt.strftime('%Y-%m')
+        monthly_account_csat['Account.Account_Name__c'] = monthly_account_csat['Account.Account_Name__c'].apply(truncate_account_name)
+        
+        # Create a line plot for CSAT trends
+        fig_csat = px.line(
+            monthly_account_csat,
+            x='Month',
+            y='mean',
+            color='Account.Account_Name__c',
+            title='Monthly Average CSAT Score by Account',
+            labels={
+                'mean': 'Average CSAT',
+                'Month': 'Month',
+                'Account.Account_Name__c': 'Account'
+            },
+            hover_data=['count']  # Show number of responses in hover
         )
+        
+        # Add markers to show data points
+        fig_csat.update_traces(mode='lines+markers')
+        
+        # Customize layout
         fig_csat.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
-            showlegend=False,
-            xaxis_tickangle=-45
+            xaxis_tickangle=-45,
+            yaxis_title='Average CSAT Score',
+            xaxis_title='Month',
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hovermode='x unified'
         )
+        
+        # Add a horizontal line for the overall average CSAT
+        overall_avg_csat = csat_data['CSAT__c'].mean()
+        fig_csat.add_hline(
+            y=overall_avg_csat,
+            line_dash="dash",
+            line_color="gray",
+            annotation_text=f"Overall Avg: {overall_avg_csat:.2f}",
+            annotation_position="bottom right"
+        )
+        
         st.plotly_chart(fig_csat, use_container_width=True)
+        
+        # Add a summary of the CSAT trends
+        st.markdown("### CSAT Trend Summary")
+        
+        # Calculate and display the most recent CSAT scores and their change
+        recent_csat = monthly_account_csat.sort_values('CreatedDate').groupby('Account.Account_Name__c').last()
+        previous_csat = monthly_account_csat.sort_values('CreatedDate').groupby('Account.Account_Name__c').nth(-2)
+        
+        summary_df = pd.DataFrame({
+            'Latest CSAT': recent_csat['mean'],
+            'Previous CSAT': previous_csat['mean'],
+            'Change': recent_csat['mean'] - previous_csat['mean'],
+            'Latest Response Count': recent_csat['count']
+        }).round(2)
+        
+        # Sort by Latest CSAT
+        summary_df = summary_df.sort_values('Latest CSAT', ascending=False)
+        
+        # Style the dataframe
+        styled_df = summary_df.style.format({
+            'Latest CSAT': '{:.2f}',
+            'Previous CSAT': '{:.2f}',
+            'Change': '{:+.2f}',
+            'Latest Response Count': '{:.0f}'
+        }).background_gradient(subset=['Latest CSAT'], cmap='RdYlGn')
+        
+        st.dataframe(styled_df, use_container_width=True)
 
     # Monthly Trends Analysis
     st.header("Monthly Trends")
