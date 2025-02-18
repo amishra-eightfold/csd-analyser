@@ -227,58 +227,8 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             img_stream = BytesIO(img_bytes)
             slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
 
-            # Add a summary of the CSAT trends
-            st.markdown("### CSAT Trend Summary")
-            
-            try:
-                # Ensure numeric CSAT values and proper Month format
-                monthly_account_csat['mean'] = pd.to_numeric(monthly_account_csat['mean'], errors='coerce')
-                monthly_account_csat['count'] = pd.to_numeric(monthly_account_csat['count'], errors='coerce')
-                
-                # Convert CreatedDate to datetime for sorting if it's not already
-                monthly_account_csat['sort_date'] = pd.to_datetime(monthly_account_csat['CreatedDate'])
-                
-                # Sort the dataframe by date and get the most recent and previous records
-                sorted_csat = monthly_account_csat.sort_values('sort_date')
-                recent_csat = sorted_csat.groupby('Account.Account_Name__c').last()
-                previous_csat = sorted_csat.groupby('Account.Account_Name__c').nth(-2)
-                
-                # Create summary DataFrame with proper type handling
-                summary_df = pd.DataFrame({
-                    'Latest CSAT': recent_csat['mean'].astype(float),
-                    'Previous CSAT': previous_csat['mean'].astype(float),
-                    'Latest Response Count': recent_csat['count'].astype(int)
-                })
-                
-                # Calculate change after ensuring numeric values
-                summary_df['Change'] = summary_df['Latest CSAT'] - summary_df['Previous CSAT']
-                
-                # Handle any remaining NaN values
-                summary_df = summary_df.fillna({
-                    'Latest CSAT': 0,
-                    'Previous CSAT': 0,
-                    'Change': 0,
-                    'Latest Response Count': 0
-                })
-                
-                # Round values for display
-                summary_df = summary_df.round(2)
-                
-                # Sort by Latest CSAT
-                summary_df = summary_df.sort_values('Latest CSAT', ascending=False)
-                
-                # Style the dataframe
-                styled_df = summary_df.style.format({
-                    'Latest CSAT': '{:.2f}',
-                    'Previous CSAT': '{:.2f}',
-                    'Change': '{:+.2f}',
-                    'Latest Response Count': '{:.0f}'
-                }).background_gradient(subset=['Latest CSAT'], cmap='RdYlGn')
-                
-                st.dataframe(styled_df, use_container_width=True)
-            except Exception as e:
-                st.warning(f"Could not generate CSAT trend summary: {str(e)}")
-                st.write("This usually occurs when there is insufficient CSAT data for trend analysis.")
+            # Display the CSAT chart in Streamlit
+            st.plotly_chart(fig_csat, use_container_width=True, key="csat_trend_chart")
 
         # Monthly Trends slides
         # Volume Trends slide
@@ -372,7 +322,7 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         priority_dist = priority_dist.groupby('Internal_Priority__c').size().reset_index(name='count')
         priority_dist = priority_dist.sort_values(
             by='Internal_Priority__c',
-            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+            key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
         )
         
         fig_priority = px.pie(
@@ -399,7 +349,7 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         escalation_by_priority = escalation_by_priority.groupby('Internal_Priority__c')['IsEscalated'].mean().mul(100).reset_index(name='escalation_rate')
         escalation_by_priority = escalation_by_priority.sort_values(
             by='Internal_Priority__c',
-            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+            key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
         )
         
         fig_escalation = px.bar(
@@ -419,6 +369,177 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         img_bytes = fig_escalation.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
         slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+
+        # Time to Resolve Analysis
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        title = slide.shapes.title
+        title.text = "Time to Resolve Analysis"
+        
+        # Calculate time to resolve for closed cases
+        resolve_df = filtered_df[
+            (filtered_df['ClosedDate'].notna()) & 
+            (filtered_df['Internal_Priority__c'] != 'Unspecified')
+        ].copy()
+        
+        if not resolve_df.empty:
+            # Ensure both datetime columns are timezone-naive
+            if resolve_df['CreatedDate'].dt.tz is not None:
+                resolve_df['CreatedDate'] = resolve_df['CreatedDate'].dt.tz_localize(None)
+            if resolve_df['ClosedDate'].dt.tz is not None:
+                resolve_df['ClosedDate'] = resolve_df['ClosedDate'].dt.tz_localize(None)
+            
+            # Calculate resolution time in days
+            resolve_df['resolution_time'] = (resolve_df['ClosedDate'] - resolve_df['CreatedDate']).dt.total_seconds() / (24 * 60 * 60)
+            
+            # Calculate average resolution time by priority
+            avg_resolve_time = resolve_df.groupby('Internal_Priority__c')['resolution_time'].agg([
+                ('avg_days', 'mean'),
+                ('median_days', 'median'),
+                ('count', 'count')
+            ]).reset_index()
+            
+            # Sort by priority
+            avg_resolve_time = avg_resolve_time.sort_values(
+                by='Internal_Priority__c',
+                key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
+            )
+            
+            # Create the visualization
+            fig_resolve_time = go.Figure()
+            
+            # Add bar for average time
+            fig_resolve_time.add_trace(go.Bar(
+                name='Average Days',
+                x=avg_resolve_time['Internal_Priority__c'],
+                y=avg_resolve_time['avg_days'],
+                text=avg_resolve_time['avg_days'].round(1),
+                textposition='auto',
+            ))
+            
+            # Add scatter for median time
+            fig_resolve_time.add_trace(go.Scatter(
+                name='Median Days',
+                x=avg_resolve_time['Internal_Priority__c'],
+                y=avg_resolve_time['median_days'],
+                mode='lines+markers',
+                line=dict(color='red'),
+                marker=dict(size=8)
+            ))
+            
+            fig_resolve_time.update_layout(
+                title='Average and Median Time to Resolve by Priority',
+                xaxis_title="Priority",
+                yaxis_title="Days to Resolve",
+                barmode='group',
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                annotations=[
+                    dict(
+                        x=x,
+                        y=y,
+                        text=f"n={c}",
+                        showarrow=False,
+                        yanchor='bottom',
+                        yshift=10
+                    ) for x, y, c in zip(
+                        avg_resolve_time['Internal_Priority__c'],
+                        avg_resolve_time['avg_days'],
+                        avg_resolve_time['count']
+                    )
+                ]
+            )
+            
+            img_bytes = fig_resolve_time.to_image(format="png", width=1000, height=600, scale=2)
+            img_stream = BytesIO(img_bytes)
+            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+
+            # First Response Time Analysis
+            if 'First_Response_Time__c' in filtered_df.columns:
+                slide = prs.slides.add_slide(prs.slide_layouts[5])
+                title = slide.shapes.title
+                title.text = "First Response Time Analysis"
+                
+                # Calculate first response time for tickets with response time
+                response_df = filtered_df[
+                    (filtered_df['First_Response_Time__c'].notna()) & 
+                    (filtered_df['Internal_Priority__c'] != 'Unspecified')
+                ].copy()
+                
+                if not response_df.empty:
+                    # Ensure both datetime columns are timezone-naive
+                    if response_df['CreatedDate'].dt.tz is not None:
+                        response_df['CreatedDate'] = response_df['CreatedDate'].dt.tz_localize(None)
+                    if response_df['First_Response_Time__c'].dt.tz is not None:
+                        response_df['First_Response_Time__c'] = response_df['First_Response_Time__c'].dt.tz_localize(None)
+                    
+                    # Calculate response time in hours
+                    response_df['response_time_hours'] = (response_df['First_Response_Time__c'] - response_df['CreatedDate']).dt.total_seconds() / 3600
+                    
+                    # Calculate average response time by priority
+                    avg_response_time = response_df.groupby('Internal_Priority__c')['response_time_hours'].agg([
+                        ('avg_hours', 'mean'),
+                        ('median_hours', 'median'),
+                        ('count', 'count')
+                    ]).reset_index()
+                    
+                    # Sort by priority
+                    avg_response_time = avg_response_time.sort_values(
+                        by='Internal_Priority__c',
+                        key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
+                    )
+                    
+                    # Create the visualization
+                    fig_response_time = go.Figure()
+                    
+                    # Add bar for average time
+                    fig_response_time.add_trace(go.Bar(
+                        name='Average Hours',
+                        x=avg_response_time['Internal_Priority__c'],
+                        y=avg_response_time['avg_hours'],
+                        text=avg_response_time['avg_hours'].round(1),
+                        textposition='auto',
+                    ))
+                    
+                    # Add scatter for median time
+                    fig_response_time.add_trace(go.Scatter(
+                        name='Median Hours',
+                        x=avg_response_time['Internal_Priority__c'],
+                        y=avg_response_time['median_hours'],
+                        mode='lines+markers',
+                        line=dict(color='red'),
+                        marker=dict(size=8)
+                    ))
+                    
+                    fig_response_time.update_layout(
+                        title='Average and Median First Response Time by Priority',
+                        xaxis_title="Priority",
+                        yaxis_title="Hours to First Response",
+                        barmode='group',
+                        plot_bgcolor='white',
+                        paper_bgcolor='white',
+                        showlegend=True,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        annotations=[
+                            dict(
+                                x=x,
+                                y=y,
+                                text=f"n={c}",
+                                showarrow=False,
+                                yanchor='bottom',
+                                yshift=10
+                            ) for x, y, c in zip(
+                                avg_response_time['Internal_Priority__c'],
+                                avg_response_time['avg_hours'],
+                                avg_response_time['count']
+                            )
+                        ]
+                    )
+                    
+                    img_bytes = fig_response_time.to_image(format="png", width=1000, height=600, scale=2)
+                    img_stream = BytesIO(img_bytes)
+                    slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
 
         # Product Analysis slides
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -508,7 +629,7 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         # Sort priorities correctly
         rca_priority = rca_priority.sort_values(
             by='Internal_Priority__c',
-            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+            key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
         )
         
         fig_rca_priority = px.bar(
@@ -710,59 +831,6 @@ def display_visualizations(filtered_df):
         
         # Display the CSAT chart in Streamlit
         st.plotly_chart(fig_csat, use_container_width=True, key="csat_trend_chart")
-        
-        # Add a summary of the CSAT trends
-        st.markdown("### CSAT Trend Summary")
-        
-        try:
-            # Ensure numeric CSAT values and proper Month format
-            monthly_account_csat['mean'] = pd.to_numeric(monthly_account_csat['mean'], errors='coerce')
-            monthly_account_csat['count'] = pd.to_numeric(monthly_account_csat['count'], errors='coerce')
-            
-            # Convert CreatedDate to datetime for sorting if it's not already
-            monthly_account_csat['sort_date'] = pd.to_datetime(monthly_account_csat['CreatedDate'])
-            
-            # Sort the dataframe by date and get the most recent and previous records
-            sorted_csat = monthly_account_csat.sort_values('sort_date')
-            recent_csat = sorted_csat.groupby('Account.Account_Name__c').last()
-            previous_csat = sorted_csat.groupby('Account.Account_Name__c').nth(-2)
-            
-            # Create summary DataFrame with proper type handling
-            summary_df = pd.DataFrame({
-                'Latest CSAT': recent_csat['mean'].astype(float),
-                'Previous CSAT': previous_csat['mean'].astype(float),
-                'Latest Response Count': recent_csat['count'].astype(int)
-            })
-            
-            # Calculate change after ensuring numeric values
-            summary_df['Change'] = summary_df['Latest CSAT'] - summary_df['Previous CSAT']
-            
-            # Handle any remaining NaN values
-            summary_df = summary_df.fillna({
-                'Latest CSAT': 0,
-                'Previous CSAT': 0,
-                'Change': 0,
-                'Latest Response Count': 0
-            })
-            
-            # Round values for display
-            summary_df = summary_df.round(2)
-            
-            # Sort by Latest CSAT
-            summary_df = summary_df.sort_values('Latest CSAT', ascending=False)
-            
-            # Style the dataframe
-            styled_df = summary_df.style.format({
-                'Latest CSAT': '{:.2f}',
-                'Previous CSAT': '{:.2f}',
-                'Change': '{:+.2f}',
-                'Latest Response Count': '{:.0f}'
-            }).background_gradient(subset=['Latest CSAT'], cmap='RdYlGn')
-            
-            st.dataframe(styled_df, use_container_width=True)
-        except Exception as e:
-            st.warning(f"Could not generate CSAT trend summary: {str(e)}")
-            st.write("This usually occurs when there is insufficient CSAT data for trend analysis.")
 
     # Monthly Trends Analysis
     st.header("Monthly Trends")
@@ -847,7 +915,7 @@ def display_visualizations(filtered_df):
         priority_dist = priority_dist.groupby('Internal_Priority__c').size().reset_index(name='count')
         priority_dist = priority_dist.sort_values(
             by='Internal_Priority__c',
-            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+            key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
         )
         
         fig_priority = px.pie(
@@ -869,7 +937,7 @@ def display_visualizations(filtered_df):
         escalation_by_priority = escalation_by_priority.groupby('Internal_Priority__c')['IsEscalated'].mean().mul(100).reset_index(name='escalation_rate')
         escalation_by_priority = escalation_by_priority.sort_values(
             by='Internal_Priority__c',
-            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+            key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
         )
         
         fig_escalation = px.bar(
@@ -887,6 +955,195 @@ def display_visualizations(filtered_df):
             showlegend=False
         )
         st.plotly_chart(fig_escalation, use_container_width=True, key="escalation_rate_chart")
+
+    # Time to Resolve Analysis
+    st.header("Time to Resolve Analysis")
+    
+    # Calculate time to resolve for closed cases
+    resolve_df = filtered_df[
+        (filtered_df['ClosedDate'].notna()) & 
+        (filtered_df['Internal_Priority__c'] != 'Unspecified')
+    ].copy()
+    
+    if not resolve_df.empty:
+        # Ensure both datetime columns are timezone-naive
+        if resolve_df['CreatedDate'].dt.tz is not None:
+            resolve_df['CreatedDate'] = resolve_df['CreatedDate'].dt.tz_localize(None)
+        if resolve_df['ClosedDate'].dt.tz is not None:
+            resolve_df['ClosedDate'] = resolve_df['ClosedDate'].dt.tz_localize(None)
+        
+        # Calculate resolution time in days
+        resolve_df['resolution_time'] = (resolve_df['ClosedDate'] - resolve_df['CreatedDate']).dt.total_seconds() / (24 * 60 * 60)
+        
+        # Calculate average resolution time by priority
+        avg_resolve_time = resolve_df.groupby('Internal_Priority__c')['resolution_time'].agg([
+            ('avg_days', 'mean'),
+            ('median_days', 'median'),
+            ('count', 'count')
+        ]).reset_index()
+        
+        # Sort by priority
+        avg_resolve_time = avg_resolve_time.sort_values(
+            by='Internal_Priority__c',
+            key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
+        )
+        
+        # Create the visualization
+        fig_resolve_time = go.Figure()
+        
+        # Add bar for average time
+        fig_resolve_time.add_trace(go.Bar(
+            name='Average Days',
+            x=avg_resolve_time['Internal_Priority__c'],
+            y=avg_resolve_time['avg_days'],
+            text=avg_resolve_time['avg_days'].round(1),
+            textposition='auto',
+        ))
+        
+        # Add scatter for median time
+        fig_resolve_time.add_trace(go.Scatter(
+            name='Median Days',
+            x=avg_resolve_time['Internal_Priority__c'],
+            y=avg_resolve_time['median_days'],
+            mode='lines+markers',
+            line=dict(color='red'),
+            marker=dict(size=8)
+        ))
+        
+        fig_resolve_time.update_layout(
+            title='Average and Median Time to Resolve by Priority',
+            xaxis_title="Priority",
+            yaxis_title="Days to Resolve",
+            barmode='group',
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            annotations=[
+                dict(
+                    x=x,
+                    y=y,
+                    text=f"n={c}",
+                    showarrow=False,
+                    yanchor='bottom',
+                    yshift=10
+                ) for x, y, c in zip(
+                    avg_resolve_time['Internal_Priority__c'],
+                    avg_resolve_time['avg_days'],
+                    avg_resolve_time['count']
+                )
+            ]
+        )
+        
+        st.plotly_chart(fig_resolve_time, use_container_width=True, key="resolve_time_chart")
+        
+        # Display summary statistics
+        st.markdown("### Resolution Time Summary")
+        summary_df = pd.DataFrame({
+            'Priority': avg_resolve_time['Internal_Priority__c'],
+            'Average Days': avg_resolve_time['avg_days'].round(1),
+            'Median Days': avg_resolve_time['median_days'].round(1),
+            'Number of Cases': avg_resolve_time['count']
+        })
+        
+        st.dataframe(summary_df, use_container_width=True)
+    else:
+        st.warning("No closed cases found in the selected data range.")
+
+    # First Response Time Analysis
+    if 'First_Response_Time__c' in filtered_df.columns:
+        st.header("First Response Time Analysis")
+        
+        # Calculate first response time for tickets with response time
+        response_df = filtered_df[
+            (filtered_df['First_Response_Time__c'].notna()) & 
+            (filtered_df['Internal_Priority__c'] != 'Unspecified')
+        ].copy()
+        
+        if not response_df.empty:
+            # Ensure both datetime columns are timezone-naive
+            if response_df['CreatedDate'].dt.tz is not None:
+                response_df['CreatedDate'] = response_df['CreatedDate'].dt.tz_localize(None)
+            if response_df['First_Response_Time__c'].dt.tz is not None:
+                response_df['First_Response_Time__c'] = response_df['First_Response_Time__c'].dt.tz_localize(None)
+            
+            # Calculate response time in hours
+            response_df['response_time_hours'] = (response_df['First_Response_Time__c'] - response_df['CreatedDate']).dt.total_seconds() / 3600
+            
+            # Calculate average response time by priority
+            avg_response_time = response_df.groupby('Internal_Priority__c')['response_time_hours'].agg([
+                ('avg_hours', 'mean'),
+                ('median_hours', 'median'),
+                ('count', 'count')
+            ]).reset_index()
+            
+            # Sort by priority
+            avg_response_time = avg_response_time.sort_values(
+                by='Internal_Priority__c',
+                key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
+            )
+            
+            # Create the visualization
+            fig_response_time = go.Figure()
+            
+            # Add bar for average time
+            fig_response_time.add_trace(go.Bar(
+                name='Average Hours',
+                x=avg_response_time['Internal_Priority__c'],
+                y=avg_response_time['avg_hours'],
+                text=avg_response_time['avg_hours'].round(1),
+                textposition='auto',
+            ))
+            
+            # Add scatter for median time
+            fig_response_time.add_trace(go.Scatter(
+                name='Median Hours',
+                x=avg_response_time['Internal_Priority__c'],
+                y=avg_response_time['median_hours'],
+                mode='lines+markers',
+                line=dict(color='red'),
+                marker=dict(size=8)
+            ))
+            
+            fig_response_time.update_layout(
+                title='Average and Median First Response Time by Priority',
+                xaxis_title="Priority",
+                yaxis_title="Hours to First Response",
+                barmode='group',
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                annotations=[
+                    dict(
+                        x=x,
+                        y=y,
+                        text=f"n={c}",
+                        showarrow=False,
+                        yanchor='bottom',
+                        yshift=10
+                    ) for x, y, c in zip(
+                        avg_response_time['Internal_Priority__c'],
+                        avg_response_time['avg_hours'],
+                        avg_response_time['count']
+                    )
+                ]
+            )
+            
+            st.plotly_chart(fig_response_time, use_container_width=True, key="response_time_chart")
+            
+            # Display summary statistics
+            st.markdown("### First Response Time Summary")
+            summary_df = pd.DataFrame({
+                'Priority': avg_response_time['Internal_Priority__c'],
+                'Average Hours': avg_response_time['avg_hours'].round(1),
+                'Median Hours': avg_response_time['median_hours'].round(1),
+                'Number of Cases': avg_response_time['count']
+            })
+            
+            st.dataframe(summary_df, use_container_width=True)
+        else:
+            st.warning("No cases with first response time data found in the selected data range.")
 
     # Product Analysis
     st.header("Product Analysis")
@@ -960,7 +1217,7 @@ def display_visualizations(filtered_df):
         # Sort priorities correctly
         rca_priority = rca_priority.sort_values(
             by='Internal_Priority__c',
-            key=lambda x: x.map(lambda y: int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999)
+            key=lambda x: pd.Series([int(y[1:]) if y.startswith('P') and y[1:].isdigit() else 999 for y in x])
         )
         
         fig_rca_priority = px.bar(
@@ -1128,27 +1385,74 @@ if uploaded_file is not None:
                 if col in df.columns:
                     df[col] = df[col].fillna('Unspecified')
 
-            # Convert date fields
+            # Convert date fields with better error handling
             if 'CreatedDate' in df.columns:
-                # First convert to datetime
-                df['CreatedDate'] = pd.to_datetime(df['CreatedDate'], errors='coerce')
-                # Remove rows with invalid dates
-                df = df.dropna(subset=['CreatedDate'])
-                
-                # Get min and max dates for the date picker
-                min_date = df['CreatedDate'].min().date()
-                max_date = df['CreatedDate'].max().date()
-                
-                # Date range filter
-                date_range = st.sidebar.date_input(
-                    "Select Date Range",
-                    [min_date, max_date],
-                    min_value=min_date,
-                    max_value=max_date
-                )
+                try:
+                    # First try standard conversion
+                    df['CreatedDate'] = pd.to_datetime(df['CreatedDate'], errors='coerce')
+                    
+                    # Check if we have any successful conversions
+                    if df['CreatedDate'].isna().all():
+                        # Try common date formats
+                        date_formats = ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%m/%d/%Y %H:%M:%S', '%m/%d/%Y']
+                        for date_format in date_formats:
+                            try:
+                                df['CreatedDate'] = pd.to_datetime(df['CreatedDate'], format=date_format, errors='coerce')
+                                if not df['CreatedDate'].isna().all():
+                                    break
+                            except:
+                                continue
+                    
+                    # Remove rows with invalid dates
+                    invalid_dates = df['CreatedDate'].isna().sum()
+                    if invalid_dates > 0:
+                        st.warning(f"Removed {invalid_dates} rows with invalid CreatedDate values")
+                        df = df.dropna(subset=['CreatedDate'])
+                    
+                    # Get min and max dates for the date picker
+                    if not df.empty:
+                        min_date = df['CreatedDate'].min().date()
+                        max_date = df['CreatedDate'].max().date()
+                        
+                        # Date range filter
+                        date_range = st.sidebar.date_input(
+                            "Select Date Range",
+                            [min_date, max_date],
+                            min_value=min_date,
+                            max_value=max_date
+                        )
+                    else:
+                        st.error("No valid dates found in CreatedDate column")
+                        df = pd.DataFrame()  # Empty DataFrame instead of return
+                except Exception as e:
+                    st.error(f"Error converting CreatedDate: {str(e)}")
+                    df = pd.DataFrame()  # Empty DataFrame instead of return
 
-            if 'ClosedDate' in df.columns:
-                df['ClosedDate'] = pd.to_datetime(df['ClosedDate'], errors='coerce')
+            if not df.empty and 'ClosedDate' in df.columns:
+                try:
+                    # First try standard conversion
+                    df['ClosedDate'] = pd.to_datetime(df['ClosedDate'], errors='coerce')
+                    
+                    # Check if we have any successful conversions
+                    if df['ClosedDate'].notna().any():
+                        if df['ClosedDate'].dt.tz is not None:
+                            df['ClosedDate'] = df['ClosedDate'].dt.tz_localize(None)
+                except Exception as e:
+                    st.warning(f"Error converting ClosedDate: {str(e)}")
+                    df['ClosedDate'] = pd.NaT
+
+            if not df.empty and 'First_Response_Time__c' in df.columns:
+                try:
+                    # First try standard conversion
+                    df['First_Response_Time__c'] = pd.to_datetime(df['First_Response_Time__c'], errors='coerce')
+                    
+                    # Check if we have any successful conversions
+                    if df['First_Response_Time__c'].notna().any():
+                        if df['First_Response_Time__c'].dt.tz is not None:
+                            df['First_Response_Time__c'] = df['First_Response_Time__c'].dt.tz_localize(None)
+                except Exception as e:
+                    st.warning(f"Error converting First_Response_Time__c: {str(e)}")
+                    df['First_Response_Time__c'] = pd.NaT
 
             # Convert numeric fields with better error handling
             if 'CSAT__c' in df.columns:
@@ -1274,12 +1578,6 @@ if uploaded_file is not None:
                     (df['Internal_Priority__c'].astype(str).isin([str(p) for p in selected_priorities])) &
                     (df['CreatedDate'] >= start_date) &
                     (df['CreatedDate'] <= end_date)
-                )
-            else:
-                # If no CreatedDate column, use other filters only
-                mask = (
-                    (df['Product_Area__c'].astype(str).isin([str(area) for area in selected_areas])) &
-                    (df['Internal_Priority__c'].astype(str).isin([str(p) for p in selected_priorities]))
                 )
             
             # Apply additional filters
