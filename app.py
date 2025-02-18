@@ -12,6 +12,8 @@ from PIL import Image
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import re
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
 
 # Set page config
 st.set_page_config(
@@ -37,6 +39,27 @@ def truncate_account_name(name, max_length=15):
     if isinstance(name, str) and len(name) > max_length:
         return name[:max_length] + '...'
     return name
+
+def generate_wordcloud(text_data, title):
+    """Generate a word cloud from the given text data."""
+    if not isinstance(text_data, str):
+        text_data = ' '.join(str(x) for x in text_data if pd.notna(x))
+    
+    wordcloud = WordCloud(
+        width=800,
+        height=400,
+        background_color='white',
+        max_words=100,
+        collocations=False,
+        stopwords=set(['nan', 'none', 'null', 'unspecified'])
+    ).generate(text_data)
+    
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis('off')
+    ax.set_title(title)
+    
+    return fig
 
 def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate):
     """Generate PowerPoint presentation with charts and statistics."""
@@ -372,6 +395,53 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         img_stream = BytesIO(img_bytes)
         slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
 
+        # Add Text Analysis slides if requested
+        if st.session_state.get('include_wordclouds', False):
+            # Subject Word Cloud slide
+            slide = prs.slides.add_slide(prs.slide_layouts[5])
+            title = slide.shapes.title
+            title.text = "Text Analysis - Common Terms"
+            
+            fig_subject = generate_wordcloud(filtered_df['Subject'], 'Common Terms in Case Subjects')
+            img_stream = BytesIO()
+            fig_subject.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
+            plt.close(fig_subject)
+            img_stream.seek(0)
+            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+            
+            # Description Word Cloud slide
+            slide = prs.slides.add_slide(prs.slide_layouts[5])
+            title = slide.shapes.title
+            title.text = "Text Analysis - Case Descriptions"
+            
+            fig_desc = generate_wordcloud(filtered_df['Description'], 'Common Terms in Case Descriptions')
+            img_stream = BytesIO()
+            fig_desc.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
+            plt.close(fig_desc)
+            img_stream.seek(0)
+            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
+            
+            # Product Information Word Clouds slide
+            slide = prs.slides.add_slide(prs.slide_layouts[5])
+            title = slide.shapes.title
+            title.text = "Product Information Analysis"
+            
+            # Create a 2x2 grid of smaller word clouds
+            fields = ['POD_Name__c', 'Product_Area__c', 'Product_Feature__c']
+            titles = ['POD Names', 'Product Areas', 'Product Features']
+            
+            for i, (field, subtitle) in enumerate(zip(fields, titles)):
+                fig = generate_wordcloud(filtered_df[field], subtitle)
+                img_stream = BytesIO()
+                fig.savefig(img_stream, format='png', bbox_inches='tight', dpi=300)
+                plt.close(fig)
+                img_stream.seek(0)
+                
+                # Calculate position for 2x2 grid
+                left = Inches(1 if i % 2 == 0 else 7)
+                top = Inches(1.5 if i < 2 else 4)
+                slide.shapes.add_picture(img_stream, left, top, width=Inches(5))
+        
         # Save presentation
         pptx_output = BytesIO()
         prs.save(pptx_output)
@@ -664,6 +734,48 @@ def display_visualizations(filtered_df):
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         st.plotly_chart(fig_rca_priority, use_container_width=True)
+    
+    # Text Analysis with Word Clouds
+    st.header("Text Analysis")
+    st.markdown("Word clouds showing the most common terms in different fields")
+    
+    # Create tabs for different word clouds
+    tabs = st.tabs(["Subject", "Description", "POD Name", "Product Area", "Product Feature"])
+    
+    with tabs[0]:
+        st.subheader("Subject Word Cloud")
+        fig_subject = generate_wordcloud(filtered_df['Subject'], 'Common Terms in Case Subjects')
+        st.pyplot(fig_subject)
+        plt.close(fig_subject)
+    
+    with tabs[1]:
+        st.subheader("Description Word Cloud")
+        fig_desc = generate_wordcloud(filtered_df['Description'], 'Common Terms in Case Descriptions')
+        st.pyplot(fig_desc)
+        plt.close(fig_desc)
+    
+    with tabs[2]:
+        st.subheader("POD Name Word Cloud")
+        fig_pod = generate_wordcloud(filtered_df['POD_Name__c'], 'Distribution of POD Names')
+        st.pyplot(fig_pod)
+        plt.close(fig_pod)
+    
+    with tabs[3]:
+        st.subheader("Product Area Word Cloud")
+        fig_area = generate_wordcloud(filtered_df['Product_Area__c'], 'Distribution of Product Areas')
+        st.pyplot(fig_area)
+        plt.close(fig_area)
+    
+    with tabs[4]:
+        st.subheader("Product Feature Word Cloud")
+        fig_feature = generate_wordcloud(filtered_df['Product_Feature__c'], 'Distribution of Product Features')
+        st.pyplot(fig_feature)
+        plt.close(fig_feature)
+    
+    # Add word clouds to PowerPoint
+    if st.button("Include Word Clouds in PowerPoint"):
+        st.session_state['include_wordclouds'] = True
+        st.info("Word clouds will be included in the next PowerPoint export")
     
     # Raw Data
     st.header("Raw Data")
