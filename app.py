@@ -228,7 +228,7 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(11))
 
             # Display the CSAT chart in Streamlit
-            st.plotly_chart(fig_csat, use_container_width=True, key="csat_trend_chart")
+            st.plotly_chart(fig_csat, use_container_width=True, key="csat_trend_chart_ppt_export")
 
         # Monthly Trends slides
         # Volume Trends slide
@@ -830,7 +830,7 @@ def display_visualizations(filtered_df):
         )
         
         # Display the CSAT chart in Streamlit
-        st.plotly_chart(fig_csat, use_container_width=True, key="csat_trend_chart")
+        st.plotly_chart(fig_csat, use_container_width=True, key="csat_trend_chart_main_display")
 
     # Monthly Trends Analysis
     st.header("Monthly Trends")
