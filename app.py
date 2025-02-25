@@ -34,6 +34,29 @@ REQUIRED_COLUMNS = [
     'Age_days__c', 'IsEscalated', 'CSAT__c', 'Internal_Priority__c'
 ]
 
+def get_chart_theme():
+    """Get the base theme for charts that works in both light and dark modes."""
+    return {
+        'plot_bgcolor': 'rgba(0,0,0,0)',
+        'paper_bgcolor': 'rgba(0,0,0,0)',
+        'font': {
+            'color': '#FFFFFF'
+        },
+        'xaxis': {
+            'gridcolor': 'rgba(128,128,128,0.2)',
+            'zerolinecolor': 'rgba(128,128,128,0.2)',
+            'title': {'font': {'color': '#FFFFFF'}},
+            'tickfont': {'color': '#FFFFFF'}
+        },
+        'yaxis': {
+            'gridcolor': 'rgba(128,128,128,0.2)',
+            'zerolinecolor': 'rgba(128,128,128,0.2)',
+            'title': {'font': {'color': '#FFFFFF'}},
+            'tickfont': {'color': '#FFFFFF'}
+        },
+        'legend': {'font': {'color': '#FFFFFF'}}
+    }
+
 def truncate_account_name(name, max_length=15):
     """Helper function to truncate account names."""
     if isinstance(name, str) and len(name) > max_length:
@@ -163,9 +186,23 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             color_discrete_sequence=px.colors.qualitative.Set3
         )
         fig_account.update_layout(
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            showlegend=False
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font={'color': '#FFFFFF'},
+            xaxis={
+                'gridcolor': 'rgba(128,128,128,0.2)',
+                'zerolinecolor': 'rgba(128,128,128,0.2)',
+                'title': {'font': {'color': '#FFFFFF'}},
+                'tickfont': {'color': '#FFFFFF'}
+            },
+            yaxis={
+                'gridcolor': 'rgba(128,128,128,0.2)',
+                'zerolinecolor': 'rgba(128,128,128,0.2)',
+                'title': {'font': {'color': '#FFFFFF'}},
+                'tickfont': {'color': '#FFFFFF'}
+            },
+            showlegend=False,
+            title={'font': {'color': '#FFFFFF'}}
         )
         img_bytes = fig_account.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
@@ -207,30 +244,37 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             
             # Customize layout
             fig_csat.update_layout(
-                height=800,  # Increased height to accommodate legend
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                xaxis_tickangle=-45,
-                yaxis_title='Average CSAT Score',
-                xaxis_title='Month',
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font={'color': '#FFFFFF'},
+                xaxis={
+                    'gridcolor': 'rgba(128,128,128,0.2)',
+                    'zerolinecolor': 'rgba(128,128,128,0.2)',
+                    'title': {'font': {'color': '#FFFFFF'}},
+                    'tickfont': {'color': '#FFFFFF'},
+                    'tickangle': -45
+                },
+                yaxis={
+                    'gridcolor': 'rgba(128,128,128,0.2)',
+                    'zerolinecolor': 'rgba(128,128,128,0.2)',
+                    'title': {'font': {'color': '#FFFFFF'}},
+                    'tickfont': {'color': '#FFFFFF'}
+                },
+                height=800,
                 showlegend=True,
                 legend=dict(
-                    orientation="h",  # horizontal orientation
+                    orientation="h",
                     yanchor="bottom",
-                    y=-0.7,  # Move legend further down
+                    y=-0.7,
                     xanchor="center",
                     x=0.5,
                     title=None,
-                    font=dict(size=10),  # Smaller font size for legend
-                    itemsizing='constant'  # Constant symbol size
+                    font=dict(size=10, color='#FFFFFF'),
+                    itemsizing='constant'
                 ),
-                margin=dict(
-                    t=100,  # top margin
-                    b=300,  # increased bottom margin for legend
-                    l=100,  # left margin
-                    r=100   # right margin
-                ),
-                hovermode='x unified'
+                margin=dict(t=100, b=300, l=100, r=100),
+                hovermode='x unified',
+                title={'font': {'color': '#FFFFFF'}}
             )
             
             # Add a horizontal line for the overall average CSAT
@@ -270,19 +314,34 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             labels={'count': 'Number of Tickets', 'Month': 'Month', 'Account.Account_Name__c': 'Account'}
         )
         fig_monthly_volume.update_layout(
-            height=600,  # Fixed height
-            xaxis_tickangle=-45,
-            plot_bgcolor='white',
-            paper_bgcolor='white',
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font={'color': '#FFFFFF'},
+            xaxis={
+                'gridcolor': 'rgba(128,128,128,0.2)',
+                'zerolinecolor': 'rgba(128,128,128,0.2)',
+                'title': {'font': {'color': '#FFFFFF'}},
+                'tickfont': {'color': '#FFFFFF'},
+                'tickangle': -45
+            },
+            yaxis={
+                'gridcolor': 'rgba(128,128,128,0.2)',
+                'zerolinecolor': 'rgba(128,128,128,0.2)',
+                'title': {'font': {'color': '#FFFFFF'}},
+                'tickfont': {'color': '#FFFFFF'}
+            },
+            height=600,
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
-                y=-0.5,  # Place legend below the chart
+                y=-0.5,
                 xanchor="center",
                 x=0.5,
-                title=None
+                title=None,
+                font={'color': '#FFFFFF'}
             ),
-            margin=dict(t=100, b=150)  # Add more margin at bottom for legend
+            margin=dict(t=100, b=150),
+            title={'font': {'color': '#FFFFFF'}}
         )
         img_bytes = fig_monthly_volume.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
@@ -329,23 +388,43 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             )
         
         fig_monthly_csat.update_layout(
-            height=600,  # Fixed height
-            title='Monthly CSAT Metrics by Account',
-            xaxis=dict(title='Month', tickangle=-45),
-            yaxis=dict(title='Average CSAT', side='left'),
-            yaxis2=dict(title='CSAT Count', side='right', overlaying='y'),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font={'color': '#FFFFFF'},
+            xaxis={
+                'gridcolor': 'rgba(128,128,128,0.2)',
+                'zerolinecolor': 'rgba(128,128,128,0.2)',
+                'title': {'font': {'color': '#FFFFFF'}},
+                'tickfont': {'color': '#FFFFFF'},
+                'tickangle': -45
+            },
+            yaxis={
+                'gridcolor': 'rgba(128,128,128,0.2)',
+                'zerolinecolor': 'rgba(128,128,128,0.2)',
+                'title': {'font': {'color': '#FFFFFF'}},
+                'tickfont': {'color': '#FFFFFF'}
+            },
+            yaxis2={
+                'gridcolor': 'rgba(128,128,128,0.2)',
+                'zerolinecolor': 'rgba(128,128,128,0.2)',
+                'title': {'font': {'color': '#FFFFFF'}},
+                'tickfont': {'color': '#FFFFFF'}
+            },
+            height=600,
+            title={
+                'text': 'Monthly CSAT Metrics by Account',
+                'font': {'color': '#FFFFFF'}
+            },
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
-                y=-0.5,  # Place legend below the chart
+                y=-0.5,
                 xanchor="center",
                 x=0.5,
-                title=None
+                title=None,
+                font={'color': '#FFFFFF'}
             ),
-            hovermode='x unified',
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            margin=dict(t=100, b=150)  # Add more margin at bottom for legend
+            margin=dict(t=100, b=150)
         )
         img_bytes = fig_monthly_csat.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
@@ -372,16 +451,20 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             color_discrete_sequence=px.colors.qualitative.Set3
         )
         fig_priority.update_layout(
-            height=500,  # Slightly smaller for pie charts
-            plot_bgcolor='white',
-            paper_bgcolor='white',
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font={'color': '#FFFFFF'},
+            height=500,
             margin=dict(t=100, b=50),
             title=dict(
+                text='Case Distribution by Priority',
                 y=0.95,
                 x=0.5,
                 xanchor='center',
-                yanchor='top'
-            )
+                yanchor='top',
+                font={'color': '#FFFFFF'}
+            ),
+            legend={'font': {'color': '#FFFFFF'}}
         )
         img_bytes = fig_priority.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
@@ -407,15 +490,30 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             color_discrete_sequence=px.colors.qualitative.Set3
         )
         fig_escalation.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font={'color': '#FFFFFF'},
+            xaxis={
+                'gridcolor': 'rgba(128,128,128,0.2)',
+                'zerolinecolor': 'rgba(128,128,128,0.2)',
+                'title': {'font': {'color': '#FFFFFF'}},
+                'tickfont': {'color': '#FFFFFF'}
+            },
+            yaxis={
+                'gridcolor': 'rgba(128,128,128,0.2)',
+                'zerolinecolor': 'rgba(128,128,128,0.2)',
+                'title': {'font': {'color': '#FFFFFF'}},
+                'tickfont': {'color': '#FFFFFF'}
+            },
             height=500,
-            plot_bgcolor='white',
-            paper_bgcolor='white',
             margin=dict(t=100, b=50),
             title=dict(
+                text='Escalation Rate by Priority (%)',
                 y=0.95,
                 x=0.5,
                 xanchor='center',
-                yanchor='top'
+                yanchor='top',
+                font={'color': '#FFFFFF'}
             )
         )
         img_bytes = fig_escalation.to_image(format="png", width=1000, height=600, scale=2)
@@ -771,6 +869,9 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
 
 def display_visualizations(filtered_df):
     """Display all visualizations for the filtered data."""
+    # Get the base chart theme
+    chart_theme = get_chart_theme()
+    
     # Display basic statistics
     st.header("Overview Statistics")
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -814,9 +915,9 @@ def display_visualizations(filtered_df):
         color_discrete_sequence=px.colors.qualitative.Set3
     )
     fig_account.update_layout(
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        showlegend=False
+        **chart_theme,
+        showlegend=False,
+        title={'font': {'color': '#FFFFFF'}}
     )
     st.plotly_chart(fig_account, use_container_width=True)
 
@@ -852,9 +953,8 @@ def display_visualizations(filtered_df):
         
         # Customize layout
         fig_csat.update_layout(
-            height=800,  # Increased height to accommodate legend
-            plot_bgcolor='white',
-            paper_bgcolor='white',
+            **chart_theme,
+            height=800,
             xaxis_tickangle=-45,
             yaxis_title='Average CSAT Score',
             xaxis_title='Month',
