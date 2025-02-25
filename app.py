@@ -106,6 +106,10 @@ def generate_wordcloud(text_data, title):
         st.error(f"Error generating word cloud: {str(e)}")
         return None
 
+def get_top_accounts(df, n=10):
+    """Get the top N accounts by case volume."""
+    return df['Account.Account_Name__c'].value_counts().nlargest(n).index.tolist()
+
 def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate):
     """Generate PowerPoint presentation with charts and statistics."""
     try:
@@ -203,12 +207,29 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             
             # Customize layout
             fig_csat.update_layout(
+                height=800,  # Increased height to accommodate legend
                 plot_bgcolor='white',
                 paper_bgcolor='white',
                 xaxis_tickangle=-45,
                 yaxis_title='Average CSAT Score',
                 xaxis_title='Month',
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                showlegend=True,
+                legend=dict(
+                    orientation="h",  # horizontal orientation
+                    yanchor="bottom",
+                    y=-0.7,  # Move legend further down
+                    xanchor="center",
+                    x=0.5,
+                    title=None,
+                    font=dict(size=10),  # Smaller font size for legend
+                    itemsizing='constant'  # Constant symbol size
+                ),
+                margin=dict(
+                    t=100,  # top margin
+                    b=300,  # increased bottom margin for legend
+                    l=100,  # left margin
+                    r=100   # right margin
+                ),
                 hovermode='x unified'
             )
             
@@ -249,10 +270,19 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             labels={'count': 'Number of Tickets', 'Month': 'Month', 'Account.Account_Name__c': 'Account'}
         )
         fig_monthly_volume.update_layout(
+            height=600,  # Fixed height
             xaxis_tickangle=-45,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             plot_bgcolor='white',
-            paper_bgcolor='white'
+            paper_bgcolor='white',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.5,  # Place legend below the chart
+                xanchor="center",
+                x=0.5,
+                title=None
+            ),
+            margin=dict(t=100, b=150)  # Add more margin at bottom for legend
         )
         img_bytes = fig_monthly_volume.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
@@ -299,14 +329,23 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             )
         
         fig_monthly_csat.update_layout(
+            height=600,  # Fixed height
             title='Monthly CSAT Metrics by Account',
             xaxis=dict(title='Month', tickangle=-45),
             yaxis=dict(title='Average CSAT', side='left'),
             yaxis2=dict(title='CSAT Count', side='right', overlaying='y'),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.5,  # Place legend below the chart
+                xanchor="center",
+                x=0.5,
+                title=None
+            ),
             hovermode='x unified',
             plot_bgcolor='white',
-            paper_bgcolor='white'
+            paper_bgcolor='white',
+            margin=dict(t=100, b=150)  # Add more margin at bottom for legend
         )
         img_bytes = fig_monthly_csat.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
@@ -333,8 +372,16 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             color_discrete_sequence=px.colors.qualitative.Set3
         )
         fig_priority.update_layout(
+            height=500,  # Slightly smaller for pie charts
             plot_bgcolor='white',
-            paper_bgcolor='white'
+            paper_bgcolor='white',
+            margin=dict(t=100, b=50),
+            title=dict(
+                y=0.95,
+                x=0.5,
+                xanchor='center',
+                yanchor='top'
+            )
         )
         img_bytes = fig_priority.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
@@ -360,11 +407,16 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             color_discrete_sequence=px.colors.qualitative.Set3
         )
         fig_escalation.update_layout(
+            height=500,
             plot_bgcolor='white',
             paper_bgcolor='white',
-            xaxis_title="Priority",
-            yaxis_title="Escalation Rate (%)",
-            showlegend=False
+            margin=dict(t=100, b=50),
+            title=dict(
+                y=0.95,
+                x=0.5,
+                xanchor='center',
+                yanchor='top'
+            )
         )
         img_bytes = fig_escalation.to_image(format="png", width=1000, height=600, scale=2)
         img_stream = BytesIO(img_bytes)
@@ -427,28 +479,22 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
             ))
             
             fig_resolve_time.update_layout(
-                title='Average and Median Time to Resolve by Priority',
-                xaxis_title="Priority",
-                yaxis_title="Days to Resolve",
-                barmode='group',
+                height=600,
+                title='Time to Resolve by Priority',
+                xaxis_title='Priority',
+                yaxis_title='Days to Resolve',
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                showlegend=True,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                annotations=[
-                    dict(
-                        x=x,
-                        y=y,
-                        text=f"n={c}",
-                        showarrow=False,
-                        yanchor='bottom',
-                        yshift=10
-                    ) for x, y, c in zip(
-                        avg_resolve_time['Internal_Priority__c'],
-                        avg_resolve_time['avg_days'],
-                        avg_resolve_time['count']
-                    )
-                ]
+                margin=dict(t=100, b=150),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.5,
+                    xanchor="center",
+                    x=0.5,
+                    title=None
+                ),
+                barmode='group'
             )
             
             img_bytes = fig_resolve_time.to_image(format="png", width=1000, height=600, scale=2)
@@ -513,28 +559,24 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
                     ))
                     
                     fig_response_time.update_layout(
-                        title='Average and Median First Response Time by Priority',
-                        xaxis_title="Priority",
-                        yaxis_title="Hours to First Response",
-                        barmode='group',
+                        height=600,
                         plot_bgcolor='white',
                         paper_bgcolor='white',
-                        showlegend=True,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                        annotations=[
-                            dict(
-                                x=x,
-                                y=y,
-                                text=f"n={c}",
-                                showarrow=False,
-                                yanchor='bottom',
-                                yshift=10
-                            ) for x, y, c in zip(
-                                avg_response_time['Internal_Priority__c'],
-                                avg_response_time['avg_hours'],
-                                avg_response_time['count']
-                            )
-                        ]
+                        margin=dict(t=100, b=150),
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=-0.5,
+                            xanchor="center",
+                            x=0.5,
+                            title=None
+                        ),
+                        title=dict(
+                            y=0.95,
+                            x=0.5,
+                            xanchor='center',
+                            yanchor='top'
+                        )
                     )
                     
                     img_bytes = fig_response_time.to_image(format="png", width=1000, height=600, scale=2)
@@ -810,12 +852,29 @@ def display_visualizations(filtered_df):
         
         # Customize layout
         fig_csat.update_layout(
+            height=800,  # Increased height to accommodate legend
             plot_bgcolor='white',
             paper_bgcolor='white',
             xaxis_tickangle=-45,
             yaxis_title='Average CSAT Score',
             xaxis_title='Month',
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            showlegend=True,
+            legend=dict(
+                orientation="h",  # horizontal orientation
+                yanchor="bottom",
+                y=-0.7,  # Move legend further down
+                xanchor="center",
+                x=0.5,
+                title=None,
+                font=dict(size=10),  # Smaller font size for legend
+                itemsizing='constant'  # Constant symbol size
+            ),
+            margin=dict(
+                t=100,  # top margin
+                b=300,  # increased bottom margin for legend
+                l=100,  # left margin
+                r=100   # right margin
+            ),
             hovermode='x unified'
         )
         
@@ -850,10 +909,19 @@ def display_visualizations(filtered_df):
         labels={'count': 'Number of Tickets', 'Month': 'Month', 'Account.Account_Name__c': 'Account'}
     )
     fig_monthly_volume.update_layout(
+        height=600,  # Fixed height
         xaxis_tickangle=-45,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         plot_bgcolor='white',
-        paper_bgcolor='white'
+        paper_bgcolor='white',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.5,  # Place legend below the chart
+            xanchor="center",
+            x=0.5,
+            title=None
+        ),
+        margin=dict(t=100, b=150)  # Add more margin at bottom for legend
     )
     st.plotly_chart(fig_monthly_volume, use_container_width=True, key="monthly_volume_chart")
 
@@ -894,14 +962,23 @@ def display_visualizations(filtered_df):
         )
     
     fig_monthly_csat.update_layout(
+        height=600,  # Fixed height
         title='Monthly CSAT Metrics by Account',
         xaxis=dict(title='Month', tickangle=-45),
         yaxis=dict(title='Average CSAT', side='left'),
         yaxis2=dict(title='CSAT Count', side='right', overlaying='y'),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.5,  # Place legend below the chart
+            xanchor="center",
+            x=0.5,
+            title=None
+        ),
         hovermode='x unified',
         plot_bgcolor='white',
-        paper_bgcolor='white'
+        paper_bgcolor='white',
+        margin=dict(t=100, b=150)  # Add more margin at bottom for legend
     )
     st.plotly_chart(fig_monthly_csat, use_container_width=True, key="monthly_csat_metrics_chart")
 
@@ -926,8 +1003,16 @@ def display_visualizations(filtered_df):
             color_discrete_sequence=px.colors.qualitative.Set3
         )
         fig_priority.update_layout(
+            height=500,  # Slightly smaller for pie charts
             plot_bgcolor='white',
-            paper_bgcolor='white'
+            paper_bgcolor='white',
+            margin=dict(t=100, b=50),
+            title=dict(
+                y=0.95,
+                x=0.5,
+                xanchor='center',
+                yanchor='top'
+            )
         )
         st.plotly_chart(fig_priority, use_container_width=True, key="priority_dist_chart")
     
@@ -948,11 +1033,16 @@ def display_visualizations(filtered_df):
             color_discrete_sequence=px.colors.qualitative.Set3
         )
         fig_escalation.update_layout(
+            height=500,
             plot_bgcolor='white',
             paper_bgcolor='white',
-            xaxis_title="Priority",
-            yaxis_title="Escalation Rate (%)",
-            showlegend=False
+            margin=dict(t=100, b=50),
+            title=dict(
+                y=0.95,
+                x=0.5,
+                xanchor='center',
+                yanchor='top'
+            )
         )
         st.plotly_chart(fig_escalation, use_container_width=True, key="escalation_rate_chart")
 
@@ -1011,28 +1101,22 @@ def display_visualizations(filtered_df):
         ))
         
         fig_resolve_time.update_layout(
-            title='Average and Median Time to Resolve by Priority',
-            xaxis_title="Priority",
-            yaxis_title="Days to Resolve",
-            barmode='group',
+            height=600,
+            title='Time to Resolve by Priority',
+            xaxis_title='Priority',
+            yaxis_title='Days to Resolve',
             plot_bgcolor='white',
             paper_bgcolor='white',
-            showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            annotations=[
-                dict(
-                    x=x,
-                    y=y,
-                    text=f"n={c}",
-                    showarrow=False,
-                    yanchor='bottom',
-                    yshift=10
-                ) for x, y, c in zip(
-                    avg_resolve_time['Internal_Priority__c'],
-                    avg_resolve_time['avg_days'],
-                    avg_resolve_time['count']
-                )
-            ]
+            margin=dict(t=100, b=150),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.5,
+                xanchor="center",
+                x=0.5,
+                title=None
+            ),
+            barmode='group'
         )
         
         st.plotly_chart(fig_resolve_time, use_container_width=True, key="resolve_time_chart")
@@ -1106,28 +1190,24 @@ def display_visualizations(filtered_df):
             ))
             
             fig_response_time.update_layout(
-                title='Average and Median First Response Time by Priority',
-                xaxis_title="Priority",
-                yaxis_title="Hours to First Response",
-                barmode='group',
+                height=600,
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                showlegend=True,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                annotations=[
-                    dict(
-                        x=x,
-                        y=y,
-                        text=f"n={c}",
-                        showarrow=False,
-                        yanchor='bottom',
-                        yshift=10
-                    ) for x, y, c in zip(
-                        avg_response_time['Internal_Priority__c'],
-                        avg_response_time['avg_hours'],
-                        avg_response_time['count']
-                    )
-                ]
+                margin=dict(t=100, b=150),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.5,
+                    xanchor="center",
+                    x=0.5,
+                    title=None
+                ),
+                title=dict(
+                    y=0.95,
+                    x=0.5,
+                    xanchor='center',
+                    yanchor='top'
+                )
             )
             
             st.plotly_chart(fig_response_time, use_container_width=True, key="response_time_chart")
@@ -1490,14 +1570,20 @@ if uploaded_file is not None:
             # Sidebar filters
             st.sidebar.header("Filters")
             
-            # Account filter
+            # Get top 10 accounts
+            top_10_accounts = get_top_accounts(df)
+            
+            # Account filter - now with top 10 pre-selected
             account_options = sorted([str(acc) for acc in df['Account.Account_Name__c'].unique() if str(acc) != 'Unspecified'])
             selected_accounts = st.sidebar.multiselect(
                 "Select Accounts",
                 options=account_options,
-                default=[],
-                help="Select specific accounts or leave empty to show all accounts"
+                default=top_10_accounts,
+                help="By default showing top 10 accounts by case volume. Clear selection to show all accounts."
             )
+
+            # Use selected accounts or all accounts if none selected
+            accounts_to_use = selected_accounts if selected_accounts else account_options
             
             # Case Owner filter
             if 'Case_Type__c' in df.columns:
@@ -1577,13 +1663,11 @@ if uploaded_file is not None:
                     (df['Product_Area__c'].astype(str).isin([str(area) for area in selected_areas])) &
                     (df['Internal_Priority__c'].astype(str).isin([str(p) for p in selected_priorities])) &
                     (df['CreatedDate'] >= start_date) &
-                    (df['CreatedDate'] <= end_date)
+                    (df['CreatedDate'] <= end_date) &
+                    (df['Account.Account_Name__c'].astype(str).isin([str(acc) for acc in accounts_to_use]))
                 )
             
             # Apply additional filters
-            if len(selected_accounts) > 0:
-                mask = mask & (df['Account.Account_Name__c'].astype(str).isin([str(acc) for acc in selected_accounts]))
-            
             if len(selected_owners) > 0:
                 mask = mask & (df['Case_Owner__c'].astype(str).isin([str(owner) for owner in selected_owners]))
             
