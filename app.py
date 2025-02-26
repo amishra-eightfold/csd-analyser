@@ -10,7 +10,25 @@ from pptx.util import Inches, Pt
 from PIL import Image
 from wordcloud import WordCloud, STOPWORDS
 import matplotlib.pyplot as plt
+import seaborn as sns
 from salesforce_config import init_salesforce, execute_soql_query
+
+# Set Seaborn and Matplotlib style
+sns.set_theme(style="whitegrid")
+
+# Custom color palettes for different visualizations
+BLUES_PALETTE = ["#E3F2FD", "#90CAF9", "#42A5F5", "#1E88E5", "#1565C0"]  # Material Blues
+AQUA_PALETTE = ["#E0F7FA", "#80DEEA", "#26C6DA", "#00ACC1", "#00838F"]   # Material Cyan/Aqua
+
+# Define custom color palettes for each visualization type
+VOLUME_PALETTE = [BLUES_PALETTE[2], AQUA_PALETTE[2]]  # Two distinct colors for Created/Closed
+PRIORITY_PALETTE = BLUES_PALETTE[1:]  # Blues for priority levels
+CSAT_PALETTE = sns.color_palette(AQUA_PALETTE)  # Aqua palette for CSAT
+HEATMAP_PALETTE = sns.color_palette("YlGnBu", as_cmap=True)  # Yellow-Green-Blue for heatmaps
+ROOT_CAUSE_PALETTE = sns.color_palette(BLUES_PALETTE + AQUA_PALETTE)  # Combined palette for root causes
+
+# Set default style
+plt.style.use("seaborn-v0_8-whitegrid")
 
 # Page Configuration
 st.set_page_config(
@@ -180,17 +198,22 @@ def main():
             
             with col2:
                 if 'Product_Feature__c' in st.session_state.data.columns:
+                    # Create a mapping of truncated names to original names
+                    feature_mapping = {truncate_string(feature): feature 
+                                    for feature in sorted(st.session_state.data['Product_Feature__c'].unique())}
                     product_features = st.multiselect(
                         "Filter by Product Feature",
-                        options=sorted(st.session_state.data['Product_Feature__c'].unique())
+                        options=sorted(feature_mapping.keys())
                     )
+                    # Convert truncated selections back to original values for filtering
+                    selected_features = [feature_mapping[feature] for feature in product_features]
             
             # Apply filters
             df = st.session_state.data.copy()
             if product_areas:
                 df = df[df['Product_Area__c'].isin(product_areas)]
-            if product_features:
-                df = df[df['Product_Feature__c'].isin(product_features)]
+            if selected_features:  # Use the mapped back full names
+                df = df[df['Product_Feature__c'].isin(selected_features)]
             
             # Display visualizations
             if not df.empty:
@@ -271,35 +294,47 @@ def display_visualizations(df, customers):
         st.write("Debug - Visualization data shape:", df.shape)
         st.write("Debug - Available columns:", df.columns.tolist())
         
+        # Create filtered dataframe excluding unspecified data
+        total_records = len(df)
+        df_filtered = df[
+            (df['Product_Area__c'] != 'Unspecified') &
+            (df['Product_Feature__c'] != 'Unspecified') &
+            (df['RCA__c'] != 'Not Specified')
+        ].copy()
+        
+        excluded_records = total_records - len(df_filtered)
+        if excluded_records > 0:
+            st.warning(
+                f"ℹ️ {excluded_records} records ({(excluded_records/total_records)*100:.1f}%) "
+                "are being excluded from visualizations due to unspecified values in Product Area, "
+                "Product Feature, or Root Cause fields."
+            )
+        
         # Overview Statistics
         st.header("Overview Statistics")
         col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
-            st.metric("Total Cases", len(df))
+            st.metric("Total Cases", len(df_filtered))
         with col2:
             st.metric("Active Accounts", len(customers))
         with col3:
-            st.metric("Product Areas", df['Product_Area__c'].nunique())
+            st.metric("Product Areas", df_filtered['Product_Area__c'].nunique())
         with col4:
-            avg_csat = df[df['CSAT__c'].notna()]['CSAT__c'].mean()
+            avg_csat = df_filtered[df_filtered['CSAT__c'].notna()]['CSAT__c'].mean()
             st.metric("Avg CSAT", f"{avg_csat:.2f}" if pd.notna(avg_csat) else "N/A")
         with col5:
-            escalation_rate = (df['IsEscalated'].mean() * 100)
+            escalation_rate = (df_filtered['IsEscalated'].mean() * 100)
             st.metric("Escalation Rate", f"{escalation_rate:.1f}%" if pd.notna(escalation_rate) else "N/A")
         
         # 1. Ticket Volume Analysis
         st.header("Ticket Volume Analysis")
         for customer in customers:
             try:
-                customer_df = df[df['Account_Name'] == customer].copy()
+                customer_df = df_filtered[df_filtered['Account_Name'] == customer].copy()
                 if customer_df.empty:
                     st.warning(f"No data available for customer: {customer}")
                     continue
-                
-                # Debug logging for customer data
-                st.write(f"Debug - Processing customer: {customer}")
-                st.write(f"Debug - Customer data shape: {customer_df.shape}")
                 
                 # Created tickets
                 customer_df['Month'] = pd.to_datetime(customer_df['CreatedDate']).dt.to_period('M')
@@ -310,8 +345,6 @@ def display_visualizations(df, customers):
                 if not closed_df.empty:
                     closed_df['Month'] = pd.to_datetime(closed_df['ClosedDate']).dt.to_period('M')
                     closed_monthly = closed_df.groupby('Month').size().reset_index(name='Closed')
-                    
-                    # Merge created and closed
                     monthly_data = pd.merge(created_monthly, closed_monthly, on='Month', how='outer').fillna(0)
                 else:
                     monthly_data = created_monthly
@@ -319,140 +352,131 @@ def display_visualizations(df, customers):
                 
                 monthly_data['Month'] = monthly_data['Month'].astype(str)
                 
-                # Debug logging for monthly data
-                st.write(f"Debug - Monthly data for {customer}:", monthly_data)
+                # Create Seaborn plot
+                plt.figure(figsize=(12, 6))
+                monthly_data_melted = pd.melt(monthly_data, id_vars=['Month'], value_vars=['Created', 'Closed'])
+                sns.barplot(data=monthly_data_melted, x='Month', y='value', hue='variable', palette=VOLUME_PALETTE)
+                plt.title(f"{customer} - Ticket Volume Trends")
+                plt.xlabel("Month")
+                plt.ylabel("Number of Tickets")
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                st.pyplot(plt)
+                plt.close()
                 
-                fig = go.Figure()
-                fig.add_trace(go.Bar(
-                    x=monthly_data['Month'],
-                    y=monthly_data['Created'],
-                    name='Created',
-                    marker_color='#2E86C1'  # Blue color for created tickets
-                ))
-                if 'Closed' in monthly_data.columns:
-                    fig.add_trace(go.Bar(
-                        x=monthly_data['Month'],
-                        y=monthly_data['Closed'],
-                        name='Closed',
-                        marker_color='#27AE60'  # Green color for closed tickets
-                    ))
-                fig.update_layout(
-                    title=f"{customer} - Ticket Volume Trends",
-                    xaxis_title="Month",
-                    yaxis_title="Number of Tickets",
-                    barmode='group',  # Group bars side by side
-                    bargap=0.2,       # Gap between bars in a group
-                    bargroupgap=0.1,  # Gap between bar groups
-                    hovermode='x unified',
-                    showlegend=True,
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="right",
-                        x=1
-                    )
-                )
-                st.plotly_chart(fig, use_container_width=True)
             except Exception as e:
                 st.error(f"Error displaying ticket volume analysis for {customer}: {str(e)}")
                 continue
         
         # 2. Response Time Analysis
         st.header("Response Time Analysis")
-        response_df = df[df['First_Response_Time__c'].notna()].copy()
+        response_df = df_filtered[df_filtered['First_Response_Time__c'].notna()].copy()
         response_df['Response_Time_Hours'] = (
             response_df['First_Response_Time__c'] - response_df['CreatedDate']
         ).dt.total_seconds() / 3600
         
-        fig = px.box(
-            response_df,
-            x='Account_Name',
-            y='Response_Time_Hours',
-            color='Internal_Priority__c',
-            title='Time to First Response by Priority',
-            labels={'Response_Time_Hours': 'Response Time (Hours)'}
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        # Count records before filtering
+        total_records = len(response_df)
+        
+        # Filter out negative response times but include zero
+        response_df = response_df[response_df['Response_Time_Hours'] >= 0]
+        
+        # Calculate and display filtered records
+        filtered_records = total_records - len(response_df)
+        if filtered_records > 0:
+            st.warning(f"⚠️ {filtered_records} records ({(filtered_records/total_records)*100:.1f}%) were excluded due to negative response times, which likely indicates data anomalies.")
+        
+        plt.figure(figsize=(12, 6))
+        sns.boxplot(data=response_df, x='Account_Name', y='Response_Time_Hours', 
+                   hue='Internal_Priority__c', palette=PRIORITY_PALETTE)
+        plt.title('Time to First Response by Priority')
+        plt.xlabel('Customer')
+        plt.ylabel('Response Time (Hours)')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        st.pyplot(plt)
+        plt.close()
         
         # 3. CSAT Analysis
         st.header("Customer Satisfaction Analysis")
-        csat_df = df[df['CSAT__c'].notna()].copy()
-        csat_df['Month'] = csat_df['CreatedDate'].dt.to_period('M').astype(str)
+        csat_df = df_filtered[df_filtered['CSAT__c'].notna()].copy()
         
-        fig = px.line(
-            csat_df,
-            x='Month',
-            y='CSAT__c',
-            color='Account_Name',
-            title='CSAT Scores Trend',
-            markers=True,
-            labels={'CSAT__c': 'CSAT Score'}
-        )
-        fig.update_layout(hovermode='x unified')
-        st.plotly_chart(fig, use_container_width=True)
+        if len(csat_df) == 0:
+            st.info("ℹ️ No customer satisfaction scores are available for the selected time period. This could be because customers haven't provided CSAT responses yet.")
+        else:
+            csat_df['Month'] = csat_df['CreatedDate'].dt.to_period('M').astype(str)
+            
+            plt.figure(figsize=(12, 6))
+            g = sns.lineplot(data=csat_df, x='Month', y='CSAT__c', 
+                            hue='Account_Name', marker='o', palette="Set2")
+            plt.title('CSAT Scores Trend')
+            plt.xlabel('Month')
+            plt.ylabel('CSAT Score')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(plt)
+            plt.close()
+            
+            # Display summary statistics
+            st.subheader("CSAT Summary Statistics")
+            csat_summary = csat_df.groupby('Account_Name')['CSAT__c'].agg(['count', 'mean', 'min', 'max']).round(2)
+            csat_summary.columns = ['Number of Responses', 'Average CSAT', 'Minimum CSAT', 'Maximum CSAT']
+            st.dataframe(csat_summary)
         
         # 4. Resolution Time Analysis
         st.header("Resolution Time Analysis")
-        resolved_df = df[df['ClosedDate'].notna()].copy()
+        resolved_df = df_filtered[df_filtered['ClosedDate'].notna()].copy()
+        # Filter out records where priority is not set
+        resolved_df = resolved_df[resolved_df['Internal_Priority__c'] != 'Not Set']
         resolved_df['Resolution_Time_Days'] = (
             resolved_df['ClosedDate'] - resolved_df['CreatedDate']
         ).dt.total_seconds() / (24 * 3600)
         resolved_df['Month'] = resolved_df['CreatedDate'].dt.to_period('M').astype(str)
         
-        fig = px.box(
-            resolved_df,
-            x='Month',
-            y='Resolution_Time_Days',
-            color='Internal_Priority__c',
-            facet_col='Account_Name',
-            title='Resolution Time by Priority',
-            labels={'Resolution_Time_Days': 'Resolution Time (Days)'}
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        # Create FacetGrid for resolution time by priority analysis
+        g = sns.FacetGrid(resolved_df, col='Account_Name', col_wrap=2, height=4, aspect=1.5)
+        g.map_dataframe(sns.boxplot, x='Internal_Priority__c', y='Resolution_Time_Days', 
+                       palette=PRIORITY_PALETTE)
+        g.fig.suptitle('Resolution Time by Priority', y=1.02)
+        plt.tight_layout()
+        st.pyplot(g.fig)
+        plt.close()
         
-        # 5. Product Area Distribution
+        # Add Resolution Time by Product Area visualization
+        st.subheader("Resolution Time by Product Area")
+        plt.figure(figsize=(12, 6))
+        sns.boxplot(data=resolved_df, x='Product_Area__c', y='Resolution_Time_Days',
+                   palette=BLUES_PALETTE)
+        plt.title('Resolution Time Distribution by Product Area')
+        plt.xlabel('Product Area')
+        plt.ylabel('Resolution Time (Days)')
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        st.pyplot(plt)
+        plt.close()
+        
+        # 5. Product Distribution Analysis
         st.header("Product Distribution Analysis")
         
-        # Feature Distribution by Product Area
-        st.subheader("Feature Distribution by Product Area")
+        # Create cross-tabulation for heatmap
+        # Truncate Product Feature names
+        df_filtered['Product_Feature_Truncated'] = df_filtered['Product_Feature__c'].apply(lambda x: truncate_string(x, 30))
+        product_heatmap = pd.crosstab(df_filtered['Product_Area__c'], df_filtered['Product_Feature_Truncated'])
         
-        # Create hierarchical data for the treemap
-        feature_area_data = df.groupby(['Product_Area__c', 'Product_Feature__c']).size().reset_index(name='Count')
-        
-        # Create treemap with hierarchical structure
-        fig = px.treemap(
-            feature_area_data,
-            path=['Product_Area__c', 'Product_Feature__c'],
-            values='Count',
-            title='Feature Distribution by Product Area',
-            color='Count',
-            color_continuous_scale='Teal',
-            maxdepth=2
-        )
-        
-        # Update layout and styling
-        fig.update_layout(
-            height=800,  # Increased height for better visibility
-            margin=dict(t=50, l=25, r=25, b=25),
-            uniformtext=dict(minsize=12)
-        )
-        
-        # Update trace styling
-        fig.update_traces(
-            marker=dict(cornerradius=5),  # Rounded corners
-            hovertemplate='<b>%{label}</b><br>Tickets: %{value}<extra></extra>',
-            textposition="middle center"
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Continue with other visualizations
+        plt.figure(figsize=(15, 8))
+        sns.heatmap(product_heatmap, annot=True, fmt='d', cmap=HEATMAP_PALETTE, 
+                   cbar_kws={'label': 'Ticket Count'})
+        plt.title('Product Area vs Feature Distribution')
+        plt.xlabel('Product Feature')
+        plt.ylabel('Product Area')
+        plt.tight_layout()
+        st.pyplot(plt)
+        plt.close()
         
         # 6. Text Analysis
         st.header("Text Analysis")
         for customer in customers:
-            customer_df = df[df['Account_Name'] == customer]
+            customer_df = df_filtered[df_filtered['Account_Name'] == customer]
             st.subheader(f"{customer} - Text Analysis")
             
             col1, col2 = st.columns(2)
@@ -473,135 +497,48 @@ def display_visualizations(df, customers):
                     st.pyplot(desc_cloud)
         
         # 7. Root Cause Analysis
-        if 'RCA__c' in df.columns:
+        if 'RCA__c' in df_filtered.columns:
             st.header("Root Cause Analysis")
             
-            # Distribution using treemap
-            root_cause_data = df.groupby(['RCA__c']).size().reset_index(name='Count')
+            # Distribution of root causes
+            plt.figure(figsize=(10, 6))
+            root_cause_counts = df_filtered['RCA__c'].value_counts().reset_index()
+            root_cause_counts.columns = ['RCA', 'Count']
+            sns.barplot(data=root_cause_counts, x='Count', y='RCA', 
+                       hue='RCA', palette=ROOT_CAUSE_PALETTE, legend=False)
+            plt.title('Distribution of Root Causes')
+            plt.xlabel('Number of Tickets')
+            plt.tight_layout()
+            st.pyplot(plt)
+            plt.close()
             
-            fig = px.treemap(
-                root_cause_data,
-                path=['RCA__c'],
-                values='Count',
-                title='Distribution of Root Causes',
-                color='Count',
-                color_continuous_scale='viridis'
-            )
-            
-            # Update layout and styling
-            fig.update_layout(
-                height=600,
-                margin=dict(t=50, l=25, r=25, b=25),
-                uniformtext=dict(minsize=14)
-            )
-            
-            # Update trace styling
-            fig.update_traces(
-                marker=dict(cornerradius=5),
-                hovertemplate='<b>%{label}</b><br>Tickets: %{value}<br>Percentage: %{percentParent:.1%}<extra></extra>',
-                textposition="middle center"
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Root Cause by Product Area using treemap
-            root_cause_product_data = df.groupby(['RCA__c', 'Product_Area__c']).size().reset_index(name='Count')
-            
-            fig = px.treemap(
-                root_cause_product_data,
-                path=['RCA__c', 'Product_Area__c'],
-                values='Count',
-                title='Root Cause by Product Area',
-                color='Count',
-                color_continuous_scale='viridis'
-            )
-            
-            # Update layout and styling
-            fig.update_layout(
-                height=700,
-                margin=dict(t=50, l=25, r=25, b=25),
-                uniformtext=dict(minsize=12)
-            )
-            
-            # Update trace styling
-            fig.update_traces(
-                marker=dict(cornerradius=5),
-                hovertemplate='<b>%{label}</b><br>Tickets: %{value}<br>Percentage: %{percentParent:.1%}<extra></extra>',
-                textposition="middle center"
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Trends over time
-            df['Month'] = df['CreatedDate'].dt.to_period('M').astype(str)
-            root_cause_trend = pd.crosstab(df['Month'], df['RCA__c'])
-            
-            # Create stacked area chart
-            fig = go.Figure()
-            
-            # Add area traces for each root cause
-            for column in root_cause_trend.columns:
-                fig.add_trace(
-                    go.Scatter(
-                        x=root_cause_trend.index,
-                        y=root_cause_trend[column],
-                        name=column,
-                        mode='lines',
-                        stackgroup='one',  # Enable stacking
-                        hovertemplate="<b>%{x}</b><br>" +
-                                    "Root Cause: " + column + "<br>" +
-                                    "Tickets: %{y}<br>" +
-                                    "<extra></extra>"
-                    )
-                )
-            
-            # Update layout with Viridis colors
-            fig.update_layout(
-                title='Root Cause Distribution Over Time',
-                xaxis_title="Month",
-                yaxis_title="Number of Tickets",
-                showlegend=True,
-                hovermode='x unified',
-                xaxis={'tickangle': 45},
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                )
-            )
-            
-            # Apply Viridis color scheme
-            num_colors = len(root_cause_trend.columns)
-            viridis_colors = px.colors.sequential.Viridis
-            color_scale = [viridis_colors[int(i * (len(viridis_colors)-1) / (num_colors-1))] for i in range(num_colors)]
-            
-            for i, trace in enumerate(fig.data):
-                trace.update(fillcolor=color_scale[i], line=dict(color=color_scale[i]))
-            
-            st.plotly_chart(fig, use_container_width=True)
+            # Root Cause by Product Area heatmap
+            root_cause_product = pd.crosstab(df_filtered['RCA__c'], df_filtered['Product_Area__c'])
+            plt.figure(figsize=(12, 8))
+            sns.heatmap(root_cause_product, annot=True, fmt='d', cmap=HEATMAP_PALETTE,
+                       cbar_kws={'label': 'Ticket Count'})
+            plt.title('Root Cause by Product Area')
+            plt.tight_layout()
+            st.pyplot(plt)
+            plt.close()
             
             # Resolution time by root cause
-            resolution_by_root = df[df['ClosedDate'].notna()].copy()
+            resolution_by_root = df_filtered[df_filtered['ClosedDate'].notna()].copy()
             resolution_by_root['Resolution_Time_Days'] = (
                 resolution_by_root['ClosedDate'] - resolution_by_root['CreatedDate']
             ).dt.total_seconds() / (24 * 3600)
             
-            fig = px.box(
-                resolution_by_root,
-                x='RCA__c',
-                y='Resolution_Time_Days',
-                title='Resolution Time by Root Cause',
-                labels={'Resolution_Time_Days': 'Resolution Time (Days)'},
-                color='RCA__c',
-                color_discrete_sequence=px.colors.sequential.Viridis
-            )
-            fig.update_layout(
-                showlegend=False,
-                xaxis={'tickangle': 45}
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            plt.figure(figsize=(12, 6))
+            sns.boxplot(data=resolution_by_root, x='RCA__c', y='Resolution_Time_Days',
+                       hue='RCA__c', palette=ROOT_CAUSE_PALETTE, legend=False)
+            plt.title('Resolution Time by Root Cause')
+            plt.xlabel('Root Cause')
+            plt.ylabel('Resolution Time (Days)')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(plt)
+            plt.close()
+            
     except Exception as e:
         st.error(f"Error in visualization: {str(e)}")
         st.error("Please check your data or try different selection criteria.")
@@ -789,32 +726,9 @@ def export_data(df, format, customers):
             mime="text/csv"
         )
 
+def truncate_string(s, max_length=30):
+    """Truncate a string to specified length and add ellipsis if needed."""
+    return s[:max_length] + '...' if len(s) > max_length else s
+
 if __name__ == "__main__":
-    main()
-    
-    # Sample data format
-    st.header("Expected File Format")
-    st.markdown("""
-    Your file (CSV or Excel) should contain the following columns:
-    - `Id`: Case ID
-    - `CaseNumber`: Case number
-    - `AccountId`: Account ID
-    - `Account.Account_Name__c`: Account name
-    - `Group_Id__c`: Customer Group ID
-    - `Subject`: Case subject
-    - `Description`: Case description
-    - `Product_Area__c`: Product area
-    - `Product_Feature__c`: Product feature
-    - `POD_Name__c`: POD name
-    - `CreatedDate`: Date when the ticket was created
-    - `ClosedDate`: Date when the ticket was closed
-    - `Case_Type__c`: Type of case
-    - `Age_days__c`: Age of the case in days
-    - `IsEscalated`: Whether the case is escalated
-    - `CSAT__c`: Customer satisfaction score
-    - `Internal_Priority__c`: Internal priority level
-    
-    Supported file formats:
-    - CSV (.csv)
-    - Excel (.xlsx, .xls)
-    """) 
+    main() 
