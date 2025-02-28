@@ -17,15 +17,22 @@ from salesforce_config import init_salesforce, execute_soql_query
 sns.set_theme(style="whitegrid")
 
 # Custom color palettes for different visualizations
-BLUES_PALETTE = ["#E3F2FD", "#90CAF9", "#42A5F5", "#1E88E5", "#1565C0"]  # Material Blues
-AQUA_PALETTE = ["#E0F7FA", "#80DEEA", "#26C6DA", "#00ACC1", "#00838F"]   # Material Cyan/Aqua
+BLUES_PALETTE = ["#E3F2FD", "#90CAF9", "#42A5F5", "#1E88E5", "#1565C0", "#0D47A1"]  # Material Blues
+AQUA_PALETTE = ["#E0F7FA", "#80DEEA", "#26C6DA", "#00ACC1", "#00838F", "#006064"]   # Material Cyan/Aqua
+PURPLE_PALETTE = ["#F3E5F5", "#CE93D8", "#AB47BC", "#8E24AA", "#6A1B9A", "#4A148C"]  # Material Purple
 
 # Define custom color palettes for each visualization type
 VOLUME_PALETTE = [BLUES_PALETTE[2], AQUA_PALETTE[2]]  # Two distinct colors for Created/Closed
 PRIORITY_PALETTE = BLUES_PALETTE[1:]  # Blues for priority levels
 CSAT_PALETTE = sns.color_palette(AQUA_PALETTE)  # Aqua palette for CSAT
 HEATMAP_PALETTE = sns.color_palette("YlGnBu", as_cmap=True)  # Yellow-Green-Blue for heatmaps
-ROOT_CAUSE_PALETTE = sns.color_palette(BLUES_PALETTE + AQUA_PALETTE)  # Combined palette for root causes
+
+# Create an extended palette for root causes by combining multiple color palettes
+ROOT_CAUSE_PALETTE = (
+    BLUES_PALETTE[1:] +     # 5 blues
+    AQUA_PALETTE[1:] +      # 5 aquas
+    PURPLE_PALETTE[1:]      # 5 purples
+)  # Total of 15 distinct colors
 
 # Set default style
 plt.style.use("seaborn-v0_8-whitegrid")
@@ -404,7 +411,10 @@ def display_visualizations(df, customers):
         if len(csat_df) == 0:
             st.info("ℹ️ No customer satisfaction scores are available for the selected time period. This could be because customers haven't provided CSAT responses yet.")
         else:
-            csat_df['Month'] = csat_df['CreatedDate'].dt.to_period('M').astype(str)
+            # Sort by date to ensure chronological order
+            csat_df['Month'] = csat_df['CreatedDate'].dt.to_period('M')
+            csat_df = csat_df.sort_values('Month')  # Sort by date
+            csat_df['Month'] = csat_df['Month'].astype(str)  # Convert to string after sorting
             
             plt.figure(figsize=(12, 6))
             g = sns.lineplot(data=csat_df, x='Month', y='CSAT__c', 
@@ -458,15 +468,24 @@ def display_visualizations(df, customers):
         # 5. Product Distribution Analysis
         st.header("Product Distribution Analysis")
         
-        # Create cross-tabulation for heatmap
-        # Truncate Product Feature names
-        df_filtered['Product_Feature_Truncated'] = df_filtered['Product_Feature__c'].apply(lambda x: truncate_string(x, 30))
-        product_heatmap = pd.crosstab(df_filtered['Product_Area__c'], df_filtered['Product_Feature_Truncated'])
+        # Get top 15 product areas by ticket volume
+        top_15_areas = df_filtered['Product_Area__c'].value_counts().head(15).index
+        df_top_areas = df_filtered[df_filtered['Product_Area__c'].isin(top_15_areas)].copy()
         
-        plt.figure(figsize=(15, 8))
+        # Show percentage of data represented by top 15 areas
+        total_area_cases = len(df_filtered)
+        top_15_area_cases = len(df_top_areas)
+        area_coverage_percent = (top_15_area_cases / total_area_cases) * 100
+        st.info(f"📊 Showing top 15 product areas, representing {area_coverage_percent:.1f}% of all cases.")
+        
+        # Create cross-tabulation for heatmap with top 15 areas
+        df_top_areas['Product_Feature_Truncated'] = df_top_areas['Product_Feature__c'].apply(lambda x: truncate_string(x, 30))
+        product_heatmap = pd.crosstab(df_top_areas['Product_Area__c'], df_top_areas['Product_Feature_Truncated'])
+        
+        plt.figure(figsize=(15, 10))  # Increased height for better readability
         sns.heatmap(product_heatmap, annot=True, fmt='d', cmap=HEATMAP_PALETTE, 
                    cbar_kws={'label': 'Ticket Count'})
-        plt.title('Product Area vs Feature Distribution')
+        plt.title('Top 15 Product Areas vs Feature Distribution')
         plt.xlabel('Product Feature')
         plt.ylabel('Product Area')
         plt.tight_layout()
@@ -500,45 +519,176 @@ def display_visualizations(df, customers):
         if 'RCA__c' in df_filtered.columns:
             st.header("Root Cause Analysis")
             
+            # Get root cause counts and select top 15
+            root_cause_counts = df_filtered['RCA__c'].value_counts()
+            top_15_causes = root_cause_counts.head(15).index.tolist()
+            
+            # Filter dataframe to include only top 15 root causes
+            df_top_causes = df_filtered[df_filtered['RCA__c'].isin(top_15_causes)].copy()
+            
+            # Show percentage of data represented by top 15 causes
+            total_cases = len(df_filtered)
+            top_15_cases = len(df_top_causes)
+            coverage_percent = (top_15_cases / total_cases) * 100
+            st.info(f"📊 Showing top 15 root causes, representing {coverage_percent:.1f}% of all cases.")
+            
             # Distribution of root causes
-            plt.figure(figsize=(10, 6))
-            root_cause_counts = df_filtered['RCA__c'].value_counts().reset_index()
+            plt.figure(figsize=(12, 8))  # Increased height for better readability
+            root_cause_counts = df_top_causes['RCA__c'].value_counts().reset_index()
             root_cause_counts.columns = ['RCA', 'Count']
+            
+            # Use a color palette that matches the number of categories
+            n_colors = len(root_cause_counts)
+            current_palette = ROOT_CAUSE_PALETTE[:n_colors]
+            
             sns.barplot(data=root_cause_counts, x='Count', y='RCA', 
-                       hue='RCA', palette=ROOT_CAUSE_PALETTE, legend=False)
-            plt.title('Distribution of Root Causes')
+                       palette=current_palette, legend=False)
+            plt.title('Distribution of Top 15 Root Causes')
             plt.xlabel('Number of Tickets')
             plt.tight_layout()
             st.pyplot(plt)
             plt.close()
             
             # Root Cause by Product Area heatmap
-            root_cause_product = pd.crosstab(df_filtered['RCA__c'], df_filtered['Product_Area__c'])
-            plt.figure(figsize=(12, 8))
+            root_cause_product = pd.crosstab(df_top_causes['RCA__c'], df_top_causes['Product_Area__c'])
+            plt.figure(figsize=(14, 10))  # Increased size for better readability
             sns.heatmap(root_cause_product, annot=True, fmt='d', cmap=HEATMAP_PALETTE,
                        cbar_kws={'label': 'Ticket Count'})
-            plt.title('Root Cause by Product Area')
+            plt.title('Top 15 Root Causes by Product Area')
             plt.tight_layout()
             st.pyplot(plt)
             plt.close()
             
             # Resolution time by root cause
-            resolution_by_root = df_filtered[df_filtered['ClosedDate'].notna()].copy()
+            resolution_by_root = df_top_causes[df_top_causes['ClosedDate'].notna()].copy()
             resolution_by_root['Resolution_Time_Days'] = (
                 resolution_by_root['ClosedDate'] - resolution_by_root['CreatedDate']
             ).dt.total_seconds() / (24 * 3600)
             
-            plt.figure(figsize=(12, 6))
+            plt.figure(figsize=(14, 8))  # Increased width for better readability
             sns.boxplot(data=resolution_by_root, x='RCA__c', y='Resolution_Time_Days',
-                       hue='RCA__c', palette=ROOT_CAUSE_PALETTE, legend=False)
-            plt.title('Resolution Time by Root Cause')
+                       palette=current_palette)  # Use same palette as bar chart
+            plt.title('Resolution Time by Root Cause (Top 15)')
             plt.xlabel('Root Cause')
             plt.ylabel('Resolution Time (Days)')
-            plt.xticks(rotation=45)
+            plt.xticks(rotation=45, ha='right')  # Improved label readability
             plt.tight_layout()
             st.pyplot(plt)
             plt.close()
+        
+        # 8. Configuration Analysis
+        st.header("Configuration Analysis")
+        
+        # Define configuration categories
+        config_categories = ['Configuration Implementation Miss', 'Net New Configuration']
+        
+        # Create a copy of the dataframe for configuration analysis
+        config_df = df_filtered.copy()
+        
+        # Filter for configuration-related tickets
+        config_df['Is_Config_Related'] = config_df['RCA__c'].isin(config_categories)
+        
+        # Get the first ticket date for each account
+        account_first_tickets = config_df.groupby('Account_Name')['CreatedDate'].min()
+        
+        # Calculate the date range for each account (45 days from first ticket)
+        account_date_ranges = pd.DataFrame({
+            'First_Ticket': account_first_tickets,
+            'Range_End': account_first_tickets + pd.Timedelta(days=45)
+        })
+        
+        # Initialize lists to store data for visualization
+        account_data = []
+        
+        for account in customers:
+            if account in account_date_ranges.index:
+                # Get date range for this account
+                start_date = account_date_ranges.loc[account, 'First_Ticket']
+                end_date = account_date_ranges.loc[account, 'Range_End']
+                
+                # Filter tickets for this account within the date range
+                account_tickets = config_df[
+                    (config_df['Account_Name'] == account) &
+                    (config_df['CreatedDate'] >= start_date) &
+                    (config_df['CreatedDate'] <= end_date)
+                ]
+                
+                # Count configuration-related tickets
+                config_count = account_tickets['Is_Config_Related'].sum()
+                total_count = len(account_tickets)
+                
+                # Calculate percentage
+                config_percentage = (config_count / total_count * 100) if total_count > 0 else 0
+                
+                # Store the data
+                account_data.append({
+                    'Account': account,
+                    'Config_Tickets': config_count,
+                    'Total_Tickets': total_count,
+                    'Config_Percentage': config_percentage,
+                    'Start_Date': start_date.strftime('%Y-%m-%d'),
+                    'End_Date': end_date.strftime('%Y-%m-%d')
+                })
+        
+        if account_data:
+            # Create DataFrame for visualization
+            config_analysis_df = pd.DataFrame(account_data)
             
+            # Display summary information
+            st.info("📊 This analysis shows configuration-related tickets (Configuration Implementation Miss & Net New Configuration) "
+                   "created within the first 45 days of each account's first ticket.")
+            
+            # Create two columns for the visualizations
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Bar chart showing absolute numbers
+                plt.figure(figsize=(10, 6))
+                x = range(len(config_analysis_df))
+                width = 0.35
+                
+                plt.bar(x, config_analysis_df['Config_Tickets'], width, 
+                       label='Configuration Tickets', color=BLUES_PALETTE[2])
+                plt.bar([i + width for i in x], 
+                       config_analysis_df['Total_Tickets'] - config_analysis_df['Config_Tickets'],
+                       width, label='Other Tickets', color=AQUA_PALETTE[2])
+                
+                plt.xlabel('Account')
+                plt.ylabel('Number of Tickets')
+                plt.title('Configuration vs Other Tickets\n(First 45 Days)')
+                plt.xticks([i + width/2 for i in x], config_analysis_df['Account'], 
+                          rotation=45, ha='right')
+                plt.legend()
+                plt.tight_layout()
+                st.pyplot(plt)
+                plt.close()
+            
+            with col2:
+                # Percentage visualization
+                plt.figure(figsize=(10, 6))
+                plt.bar(config_analysis_df['Account'], config_analysis_df['Config_Percentage'],
+                       color=PURPLE_PALETTE[2])
+                plt.xlabel('Account')
+                plt.ylabel('Percentage of Configuration Tickets')
+                plt.title('Configuration Tickets Percentage\n(First 45 Days)')
+                plt.xticks(rotation=45, ha='right')
+                plt.axhline(y=50, color='r', linestyle='--', alpha=0.5)
+                plt.tight_layout()
+                st.pyplot(plt)
+                plt.close()
+            
+            # Display detailed statistics
+            st.subheader("Configuration Analysis Details")
+            
+            # Format the DataFrame for display
+            display_df = config_analysis_df.copy()
+            display_df['Config_Percentage'] = display_df['Config_Percentage'].round(1).astype(str) + '%'
+            display_df.columns = ['Account', 'Configuration Tickets', 'Total Tickets', 
+                                'Configuration %', 'Analysis Start', 'Analysis End']
+            
+            st.dataframe(display_df.set_index('Account'))
+        else:
+            st.warning("No configuration-related tickets found in the first 45 days for any account.")
     except Exception as e:
         st.error(f"Error in visualization: {str(e)}")
         st.error("Please check your data or try different selection criteria.")
@@ -655,76 +805,90 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
 
 def export_data(df, format, customers):
     """Export data to the selected format."""
-    if format == "Excel":
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Summary sheet
-            summary_data = {
-                'Customer': [],
-                'Total Tickets': [],
-                'Avg Response Time (hrs)': [],
-                'Avg Resolution Time (days)': [],
-                'Avg CSAT': []
-            }
-            
-            for customer in customers:
-                customer_df = df[df['Account_Name'] == customer]
-                summary_data['Customer'].append(customer)
-                summary_data['Total Tickets'].append(len(customer_df))
-                
-                # Response Time
-                if 'First_Response_Time__c' in customer_df.columns:
-                    resp_time = (customer_df['First_Response_Time__c'] - customer_df['CreatedDate']).dt.total_seconds().mean() / 3600
-                    summary_data['Avg Response Time (hrs)'].append(round(resp_time, 2))
-                else:
-                    summary_data['Avg Response Time (hrs)'].append('N/A')
-                
-                # Resolution Time
-                if 'ClosedDate' in customer_df.columns:
-                    res_time = (customer_df['ClosedDate'] - customer_df['CreatedDate']).dt.total_seconds().mean() / (24 * 3600)
-                    summary_data['Avg Resolution Time (days)'].append(round(res_time, 2))
-                else:
-                    summary_data['Avg Resolution Time (days)'].append('N/A')
-                
-                # CSAT
-                if 'CSAT__c' in customer_df.columns:
-                    avg_csat = customer_df['CSAT__c'].mean()
-                    summary_data['Avg CSAT'].append(round(avg_csat, 2))
-                else:
-                    summary_data['Avg CSAT'].append('N/A')
-            
-            # Write summary sheet
-            pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
-            
-            # Write detailed data sheets
-            for customer in customers:
-                customer_df = df[df['Account_Name'] == customer]
-                customer_df.to_excel(writer, sheet_name=customer[:31], index=False)  # Excel sheet names limited to 31 chars
+    try:
+        # Create a copy of the dataframe to avoid modifying the original
+        export_df = df.copy()
         
-        # Offer download
-        st.download_button(
-            label="Download Excel Report",
-            data=output.getvalue(),
-            file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    elif format == "PowerPoint":
-        pptx_data = generate_powerpoint(df, len(df['Account_Name'].unique()), df['CSAT__c'].mean(), df['IsEscalated'].mean() * 100)
-        st.download_button(
-            label="Download PowerPoint",
-            data=pptx_data,
-            file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx",
-            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        )
-    elif format == "CSV":
-        output = BytesIO()
-        df.to_csv(output, index=False)
-        st.download_button(
-            label="Download CSV",
-            data=output.getvalue(),
-            file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        # Convert timezone-aware datetime columns to timezone-naive
+        datetime_columns = export_df.select_dtypes(include=['datetime64[ns, UTC]']).columns
+        for col in datetime_columns:
+            export_df[col] = export_df[col].dt.tz_localize(None)
+        
+        if format == "Excel":
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # Summary sheet
+                summary_data = {
+                    'Customer': [],
+                    'Total Tickets': [],
+                    'Avg Response Time (hrs)': [],
+                    'Avg Resolution Time (days)': [],
+                    'Avg CSAT': []
+                }
+                
+                for customer in customers:
+                    customer_df = export_df[export_df['Account_Name'] == customer]
+                    summary_data['Customer'].append(customer)
+                    summary_data['Total Tickets'].append(len(customer_df))
+                    
+                    # Response Time
+                    if 'First_Response_Time__c' in customer_df.columns:
+                        resp_time = (customer_df['First_Response_Time__c'] - customer_df['CreatedDate']).dt.total_seconds().mean() / 3600
+                        summary_data['Avg Response Time (hrs)'].append(round(resp_time, 2) if pd.notna(resp_time) else 'N/A')
+                    else:
+                        summary_data['Avg Response Time (hrs)'].append('N/A')
+                    
+                    # Resolution Time
+                    if 'ClosedDate' in customer_df.columns:
+                        res_time = (customer_df['ClosedDate'] - customer_df['CreatedDate']).dt.total_seconds().mean() / (24 * 3600)
+                        summary_data['Avg Resolution Time (days)'].append(round(res_time, 2) if pd.notna(res_time) else 'N/A')
+                    else:
+                        summary_data['Avg Resolution Time (days)'].append('N/A')
+                    
+                    # CSAT
+                    if 'CSAT__c' in customer_df.columns:
+                        avg_csat = customer_df['CSAT__c'].mean()
+                        summary_data['Avg CSAT'].append(round(avg_csat, 2) if pd.notna(avg_csat) else 'N/A')
+                    else:
+                        summary_data['Avg CSAT'].append('N/A')
+                
+                # Write summary sheet
+                pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
+                
+                # Write detailed data sheets
+                for customer in customers:
+                    customer_df = export_df[export_df['Account_Name'] == customer]
+                    sheet_name = truncate_string(customer, 31)  # Excel sheet names limited to 31 chars
+                    customer_df.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            # Offer download
+            st.download_button(
+                label="Download Excel Report",
+                data=output.getvalue(),
+                file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        elif format == "PowerPoint":
+            pptx_data = generate_powerpoint(export_df, len(export_df['Account_Name'].unique()), 
+                                          export_df['CSAT__c'].mean(), export_df['IsEscalated'].mean() * 100)
+            st.download_button(
+                label="Download PowerPoint",
+                data=pptx_data,
+                file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            )
+        elif format == "CSV":
+            output = BytesIO()
+            export_df.to_csv(output, index=False)
+            st.download_button(
+                label="Download CSV",
+                data=output.getvalue(),
+                file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+    except Exception as e:
+        st.error(f"Error exporting data: {str(e)}")
+        st.error("Please check the data format and try again.")
 
 def truncate_string(s, max_length=30):
     """Truncate a string to specified length and add ellipsis if needed."""
