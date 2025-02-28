@@ -456,7 +456,7 @@ def display_visualizations(df, customers):
         st.subheader("Resolution Time by Product Area")
         plt.figure(figsize=(12, 6))
         sns.boxplot(data=resolved_df, x='Product_Area__c', y='Resolution_Time_Days',
-                   palette=BLUES_PALETTE)
+                   hue='Product_Area__c', palette=BLUES_PALETTE, legend=False)
         plt.title('Resolution Time Distribution by Product Area')
         plt.xlabel('Product Area')
         plt.ylabel('Resolution Time (Days)')
@@ -539,10 +539,11 @@ def display_visualizations(df, customers):
             
             # Use a color palette that matches the number of categories
             n_colors = len(root_cause_counts)
-            current_palette = ROOT_CAUSE_PALETTE[:n_colors]
+            current_palette = sns.color_palette(ROOT_CAUSE_PALETTE[:n_colors])
             
+            # Fix palette warning by using hue parameter
             sns.barplot(data=root_cause_counts, x='Count', y='RCA', 
-                       palette=current_palette, legend=False)
+                       hue='RCA', palette=current_palette, legend=False)
             plt.title('Distribution of Top 15 Root Causes')
             plt.xlabel('Number of Tickets')
             plt.tight_layout()
@@ -566,8 +567,9 @@ def display_visualizations(df, customers):
             ).dt.total_seconds() / (24 * 3600)
             
             plt.figure(figsize=(14, 8))  # Increased width for better readability
+            # Fix palette warning by using hue parameter
             sns.boxplot(data=resolution_by_root, x='RCA__c', y='Resolution_Time_Days',
-                       palette=current_palette)  # Use same palette as bar chart
+                       hue='RCA__c', palette=current_palette, legend=False)
             plt.title('Resolution Time by Root Cause (Top 15)')
             plt.xlabel('Root Cause')
             plt.ylabel('Resolution Time (Days)')
@@ -647,18 +649,26 @@ def display_visualizations(df, customers):
                 x = range(len(config_analysis_df))
                 width = 0.35
                 
-                plt.bar(x, config_analysis_df['Config_Tickets'], width, 
-                       label='Configuration Tickets', color=BLUES_PALETTE[2])
-                plt.bar([i + width for i in x], 
-                       config_analysis_df['Total_Tickets'] - config_analysis_df['Config_Tickets'],
-                       width, label='Other Tickets', color=AQUA_PALETTE[2])
+                # Create a categorical color palette for the bars
+                config_palette = {'Configuration Tickets': BLUES_PALETTE[2], 'Other Tickets': AQUA_PALETTE[2]}
+                
+                # Prepare data for seaborn
+                plot_data = pd.DataFrame({
+                    'Account': config_analysis_df['Account'].repeat(2),
+                    'Type': ['Configuration Tickets'] * len(config_analysis_df) + ['Other Tickets'] * len(config_analysis_df),
+                    'Count': list(config_analysis_df['Config_Tickets']) + 
+                            list(config_analysis_df['Total_Tickets'] - config_analysis_df['Config_Tickets'])
+                })
+                
+                # Use seaborn's barplot with proper hue
+                sns.barplot(data=plot_data, x='Account', y='Count', 
+                          hue='Type', palette=config_palette)
                 
                 plt.xlabel('Account')
                 plt.ylabel('Number of Tickets')
                 plt.title('Configuration vs Other Tickets\n(First 45 Days)')
-                plt.xticks([i + width/2 for i in x], config_analysis_df['Account'], 
-                          rotation=45, ha='right')
-                plt.legend()
+                plt.xticks(rotation=45, ha='right')
+                plt.legend(title='')
                 plt.tight_layout()
                 st.pyplot(plt)
                 plt.close()
@@ -666,8 +676,9 @@ def display_visualizations(df, customers):
             with col2:
                 # Percentage visualization
                 plt.figure(figsize=(10, 6))
-                plt.bar(config_analysis_df['Account'], config_analysis_df['Config_Percentage'],
-                       color=PURPLE_PALETTE[2])
+                # Fix palette warning by using hue parameter
+                sns.barplot(data=config_analysis_df, x='Account', y='Config_Percentage',
+                          hue='Account', palette=[PURPLE_PALETTE[2]], legend=False)
                 plt.xlabel('Account')
                 plt.ylabel('Percentage of Configuration Tickets')
                 plt.title('Configuration Tickets Percentage\n(First 45 Days)')
