@@ -16,6 +16,7 @@ import openai
 import time
 import json
 import re
+import os
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -1215,11 +1216,30 @@ def display_detailed_analysis(data, enable_ai_analysis):
 def generate_ai_insights(data):
     """Generate AI insights from ticket data using OpenAI."""
     try:
-        # Check if OpenAI API key is available
-        openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
-        if not openai_api_key:
-            st.warning("OpenAI API key not found. Please add it to your Streamlit secrets.")
+        # Check if OpenAI package is installed
+        try:
+            import openai
+        except ImportError:
+            st.error("OpenAI package is not installed. Please run 'pip install openai' to enable AI analysis.")
             return None
+            
+        # Check if OpenAI API key is available
+        openai_api_key = os.getenv('OPENAI_API_KEY') or st.secrets.get("OPENAI_API_KEY", None)
+        if not openai_api_key:
+            st.warning("OpenAI API key not found. Please add it to your environment variables or Streamlit secrets.")
+            
+            # Provide a sample response for demonstration purposes
+            return {
+                "summary": "This is a sample AI analysis. To get real insights, please configure your OpenAI API key.",
+                "patterns": [
+                    {"title": "Sample Pattern", "description": "This is an example pattern that would be identified by the AI."},
+                    {"title": "Demo Insight", "description": "In a real analysis, the AI would identify trends and patterns in your ticket data."}
+                ],
+                "recommendations": [
+                    "This is a sample recommendation. Configure your OpenAI API key to get actual insights.",
+                    "Another example recommendation that would be tailored to your specific data."
+                ]
+            }
         
         # Set up OpenAI client
         client = openai.OpenAI(api_key=openai_api_key)
