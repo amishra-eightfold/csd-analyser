@@ -12,6 +12,10 @@ from wordcloud import WordCloud, STOPWORDS
 import matplotlib.pyplot as plt
 import seaborn as sns
 from salesforce_config import init_salesforce, execute_soql_query
+import openai
+import time
+import json
+import re
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -190,6 +194,21 @@ def main():
                     export_data(st.session_state.data, export_format, selected_customers)
                 except Exception as e:
                     st.error(f"Error exporting data: {str(e)}")
+        
+        # Add a section for detailed analysis (only enabled when a single customer is selected)
+        if len(selected_customers) == 1:
+            st.sidebar.markdown("---")
+            st.sidebar.header("Detailed Analysis")
+            
+            detailed_analysis = st.sidebar.checkbox("Enable Detailed Ticket Analysis", 
+                                                   help="Fetch additional data and perform detailed analysis for the selected customer")
+            
+            if detailed_analysis:
+                ai_analysis = st.sidebar.checkbox("Enable AI-powered Analysis", 
+                                                 help="Use OpenAI to analyze ticket patterns and provide insights")
+                
+                if ai_analysis:
+                    st.sidebar.info("AI analysis will process ticket data to identify patterns and provide recommendations.")
     
     # Main Content
     if st.session_state.data_loaded and hasattr(st.session_state, 'data'):
@@ -225,6 +244,13 @@ def main():
             # Display visualizations
             if not df.empty:
                 display_visualizations(df, selected_customers)
+                
+                # Detailed ticket analysis (only for single customer selection)
+                if len(selected_customers) == 1 and 'detailed_analysis' in locals() and detailed_analysis:
+                    with st.spinner("Fetching detailed ticket information..."):
+                        detailed_data = fetch_detailed_data(selected_customers[0], start_date, end_date)
+                        if detailed_data is not None:
+                            display_detailed_analysis(detailed_data, 'ai_analysis' in locals() and ai_analysis)
             else:
                 st.warning("No data available after applying filters.")
         except Exception as e:
@@ -583,12 +609,14 @@ def display_visualizations(df, customers):
         
         # Define configuration categories
         config_categories = ['Configuration Implementation Miss', 'Net New Configuration']
+        config_miss_category = ['Configuration Implementation Miss']
         
         # Create a copy of the dataframe for configuration analysis
         config_df = df_filtered.copy()
         
         # Filter for configuration-related tickets
         config_df['Is_Config_Related'] = config_df['RCA__c'].isin(config_categories)
+        config_df['Is_Config_Miss'] = config_df['RCA__c'].isin(config_miss_category)
         
         # Get the first ticket date for each account
         account_first_tickets = config_df.groupby('Account_Name')['CreatedDate'].min()
@@ -617,17 +645,30 @@ def display_visualizations(df, customers):
                 
                 # Count configuration-related tickets
                 config_count = account_tickets['Is_Config_Related'].sum()
+                config_miss_count = account_tickets['Is_Config_Miss'].sum()
                 total_count = len(account_tickets)
                 
-                # Calculate percentage
+                # Calculate percentages
                 config_percentage = (config_count / total_count * 100) if total_count > 0 else 0
+                config_miss_percentage = (config_miss_count / total_count * 100) if total_count > 0 else 0
+                
+                # Calculate average resolution time for config miss cases
+                config_miss_resolution = account_tickets[account_tickets['Is_Config_Miss']]
+                avg_resolution_time = None
+                if not config_miss_resolution.empty and 'ClosedDate' in config_miss_resolution.columns:
+                    resolved_cases = config_miss_resolution[config_miss_resolution['ClosedDate'].notna()]
+                    if not resolved_cases.empty:
+                        avg_resolution_time = (resolved_cases['ClosedDate'] - resolved_cases['CreatedDate']).dt.total_seconds().mean() / (24 * 3600)
                 
                 # Store the data
                 account_data.append({
                     'Account': account,
                     'Config_Tickets': config_count,
+                    'Config_Miss_Tickets': config_miss_count,
                     'Total_Tickets': total_count,
                     'Config_Percentage': config_percentage,
+                    'Config_Miss_Percentage': config_miss_percentage,
+                    'Avg_Resolution_Days': avg_resolution_time,
                     'Start_Date': start_date.strftime('%Y-%m-%d'),
                     'End_Date': end_date.strftime('%Y-%m-%d')
                 })
@@ -637,26 +678,31 @@ def display_visualizations(df, customers):
             config_analysis_df = pd.DataFrame(account_data)
             
             # Display summary information
-            st.info("📊 This analysis shows configuration-related tickets (Configuration Implementation Miss & Net New Configuration) "
-                   "created within the first 45 days of each account's first ticket.")
+            st.info("📊 This analysis shows configuration-related tickets created within the first 45 days "
+                   "of each account's first ticket, with special focus on Configuration Implementation Miss cases.")
             
-            # Create two columns for the visualizations
-            col1, col2 = st.columns(2)
+            # Create three columns for the visualizations
+            col1, col2, col3 = st.columns(3)
             
             with col1:
                 # Bar chart showing absolute numbers
                 plt.figure(figsize=(10, 6))
-                x = range(len(config_analysis_df))
-                width = 0.35
                 
                 # Create a categorical color palette for the bars
-                config_palette = {'Configuration Tickets': BLUES_PALETTE[2], 'Other Tickets': AQUA_PALETTE[2]}
+                config_palette = {
+                    'Config Miss': BLUES_PALETTE[2],
+                    'Other Config': AQUA_PALETTE[2],
+                    'Other Tickets': PURPLE_PALETTE[2]
+                }
                 
                 # Prepare data for seaborn
                 plot_data = pd.DataFrame({
-                    'Account': config_analysis_df['Account'].repeat(2),
-                    'Type': ['Configuration Tickets'] * len(config_analysis_df) + ['Other Tickets'] * len(config_analysis_df),
-                    'Count': list(config_analysis_df['Config_Tickets']) + 
+                    'Account': config_analysis_df['Account'].repeat(3),
+                    'Type': ['Config Miss'] * len(config_analysis_df) + 
+                           ['Other Config'] * len(config_analysis_df) + 
+                           ['Other Tickets'] * len(config_analysis_df),
+                    'Count': list(config_analysis_df['Config_Miss_Tickets']) + 
+                            list(config_analysis_df['Config_Tickets'] - config_analysis_df['Config_Miss_Tickets']) +
                             list(config_analysis_df['Total_Tickets'] - config_analysis_df['Config_Tickets'])
                 })
                 
@@ -666,7 +712,7 @@ def display_visualizations(df, customers):
                 
                 plt.xlabel('Account')
                 plt.ylabel('Number of Tickets')
-                plt.title('Configuration vs Other Tickets\n(First 45 Days)')
+                plt.title('Ticket Distribution\n(First 45 Days)')
                 plt.xticks(rotation=45, ha='right')
                 plt.legend(title='')
                 plt.tight_layout()
@@ -677,13 +723,27 @@ def display_visualizations(df, customers):
                 # Percentage visualization
                 plt.figure(figsize=(10, 6))
                 # Fix palette warning by using hue parameter
-                sns.barplot(data=config_analysis_df, x='Account', y='Config_Percentage',
-                          hue='Account', palette=[PURPLE_PALETTE[2]], legend=False)
+                sns.barplot(data=config_analysis_df, x='Account', y='Config_Miss_Percentage',
+                          hue='Account', palette=[BLUES_PALETTE[2]], legend=False)
                 plt.xlabel('Account')
-                plt.ylabel('Percentage of Configuration Tickets')
-                plt.title('Configuration Tickets Percentage\n(First 45 Days)')
+                plt.ylabel('Percentage of Config Miss Tickets')
+                plt.title('Config Miss Percentage\n(First 45 Days)')
                 plt.xticks(rotation=45, ha='right')
                 plt.axhline(y=50, color='r', linestyle='--', alpha=0.5)
+                plt.tight_layout()
+                st.pyplot(plt)
+                plt.close()
+            
+            with col3:
+                # Resolution time visualization
+                plt.figure(figsize=(10, 6))
+                # Fix palette warning by using hue parameter
+                sns.barplot(data=config_analysis_df, x='Account', y='Avg_Resolution_Days',
+                          hue='Account', palette=[AQUA_PALETTE[2]], legend=False)
+                plt.xlabel('Account')
+                plt.ylabel('Average Resolution Time (Days)')
+                plt.title('Config Miss Resolution Time\n(First 45 Days)')
+                plt.xticks(rotation=45, ha='right')
                 plt.tight_layout()
                 st.pyplot(plt)
                 plt.close()
@@ -694,10 +754,27 @@ def display_visualizations(df, customers):
             # Format the DataFrame for display
             display_df = config_analysis_df.copy()
             display_df['Config_Percentage'] = display_df['Config_Percentage'].round(1).astype(str) + '%'
-            display_df.columns = ['Account', 'Configuration Tickets', 'Total Tickets', 
-                                'Configuration %', 'Analysis Start', 'Analysis End']
+            display_df['Config_Miss_Percentage'] = display_df['Config_Miss_Percentage'].round(1).astype(str) + '%'
+            display_df['Avg_Resolution_Days'] = display_df['Avg_Resolution_Days'].round(1)
+            display_df.columns = ['Account', 'All Config Tickets', 'Config Miss Tickets', 'Total Tickets', 
+                                'All Config %', 'Config Miss %', 'Avg Resolution (Days)', 'Analysis Start', 'Analysis End']
             
             st.dataframe(display_df.set_index('Account'))
+            
+            # Add summary statistics
+            st.subheader("Summary Statistics")
+            total_config_miss = config_analysis_df['Config_Miss_Tickets'].sum()
+            total_tickets = config_analysis_df['Total_Tickets'].sum()
+            overall_config_miss_percentage = (total_config_miss / total_tickets * 100) if total_tickets > 0 else 0
+            avg_resolution_time = config_analysis_df['Avg_Resolution_Days'].mean()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Config Miss Tickets", total_config_miss)
+            with col2:
+                st.metric("Overall Config Miss %", f"{overall_config_miss_percentage:.1f}%")
+            with col3:
+                st.metric("Average Resolution Time", f"{avg_resolution_time:.1f} days")
         else:
             st.warning("No configuration-related tickets found in the first 45 days for any account.")
     except Exception as e:
@@ -904,6 +981,320 @@ def export_data(df, format, customers):
 def truncate_string(s, max_length=30):
     """Truncate a string to specified length and add ellipsis if needed."""
     return s[:max_length] + '...' if len(s) > max_length else s
+
+def fetch_detailed_data(customer, start_date, end_date):
+    """Fetch detailed ticket information for a single customer."""
+    try:
+        # Create a progress bar
+        progress_bar = st.progress(0)
+        st.info("Fetching detailed ticket data. This may take a moment...")
+        
+        # Step 1: Get basic case information (25%)
+        query = f"""
+            SELECT 
+                Id, CaseNumber, Subject, Description,
+                Account.Name, CreatedDate, ClosedDate, Status, Internal_Priority__c,
+                Product_Area__c, Product_Feature__c, RCA__c,
+                First_Response_Time__c, CSAT__c, IsEscalated,
+                ContactId, OwnerId, Origin, Type, Reason,
+                Group_Id__c, Environment__c, Browser__c, Browser_Version__c,
+                Implementation_Phase__c, Last_Escalated_Date__c
+            FROM Case
+            WHERE Account.Name = '{customer}'
+            AND CreatedDate >= {start_date.strftime('%Y-%m-%d')}T00:00:00Z
+            AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
+        """
+        
+        cases = execute_soql_query(st.session_state.sf_connection, query)
+        if not cases:
+            st.warning(f"No cases found for {customer} in the selected date range.")
+            return None
+        
+        cases_df = pd.DataFrame(cases)
+        
+        # Extract Account Name from nested structure
+        if 'Account' in cases_df.columns and isinstance(cases_df['Account'].iloc[0], dict):
+            cases_df['Account_Name'] = cases_df['Account'].apply(lambda x: x.get('Name') if isinstance(x, dict) else None)
+            cases_df = cases_df.drop('Account', axis=1)
+        
+        progress_bar.progress(25)
+        
+        # Step 2: Get case comments (50%)
+        case_ids = cases_df['Id'].tolist()
+        comments_query = f"""
+            SELECT 
+                Id, ParentId, CommentBody, CreatedDate, CreatedById
+            FROM CaseComment
+            WHERE ParentId IN ('{"','".join(case_ids)}')
+            ORDER BY CreatedDate ASC
+        """
+        
+        comments = execute_soql_query(st.session_state.sf_connection, comments_query)
+        comments_df = pd.DataFrame(comments) if comments else pd.DataFrame()
+        
+        progress_bar.progress(50)
+        
+        # Step 3: Get case history (75%)
+        history_query = f"""
+            SELECT 
+                Id, CaseId, Field, OldValue, NewValue, CreatedDate, CreatedById
+            FROM CaseHistory
+            WHERE CaseId IN ('{"','".join(case_ids)}')
+            ORDER BY CreatedDate ASC
+        """
+        
+        history = execute_soql_query(st.session_state.sf_connection, history_query)
+        history_df = pd.DataFrame(history) if history else pd.DataFrame()
+        
+        progress_bar.progress(75)
+        
+        # Step 4: Get email messages (100%)
+        email_query = f"""
+            SELECT 
+                Id, ParentId, Subject, TextBody, HtmlBody, FromAddress, ToAddress,
+                CcAddress, BccAddress, MessageDate, Status, HasAttachment
+            FROM EmailMessage
+            WHERE ParentId IN ('{"','".join(case_ids)}')
+            ORDER BY MessageDate ASC
+        """
+        
+        emails = execute_soql_query(st.session_state.sf_connection, email_query)
+        emails_df = pd.DataFrame(emails) if emails else pd.DataFrame()
+        
+        progress_bar.progress(100)
+        
+        # Combine all data into a dictionary
+        detailed_data = {
+            'cases': cases_df,
+            'comments': comments_df,
+            'history': history_df,
+            'emails': emails_df
+        }
+        
+        return detailed_data
+    
+    except Exception as e:
+        st.error(f"Error fetching detailed data: {str(e)}")
+        return None
+
+def display_detailed_analysis(data, enable_ai_analysis):
+    """Display detailed analysis of ticket data."""
+    st.header("Detailed Ticket Analysis")
+    
+    cases_df = data['cases']
+    comments_df = data['comments']
+    history_df = data['history']
+    emails_df = data['emails']
+    
+    # Basic statistics
+    st.subheader("Ticket Overview")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Tickets", len(cases_df))
+    with col2:
+        closed_cases = cases_df[cases_df['Status'].isin(['Closed', 'Resolved'])]
+        st.metric("Closed Tickets", len(closed_cases))
+    with col3:
+        avg_resolution_time = None
+        if not closed_cases.empty:
+            resolution_times = (closed_cases['ClosedDate'] - closed_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
+            avg_resolution_time = resolution_times.mean()
+        st.metric("Avg Resolution Time", f"{avg_resolution_time:.1f} days" if avg_resolution_time else "N/A")
+    with col4:
+        escalated_count = cases_df['IsEscalated'].sum()
+        escalation_rate = (escalated_count / len(cases_df)) * 100 if len(cases_df) > 0 else 0
+        st.metric("Escalation Rate", f"{escalation_rate:.1f}%")
+    
+    # Ticket details
+    with st.expander("Ticket Details", expanded=False):
+        st.dataframe(cases_df[['CaseNumber', 'Subject', 'Status', 'Internal_Priority__c', 
+                              'Product_Area__c', 'Product_Feature__c', 'CreatedDate', 'ClosedDate']])
+    
+    # Comments analysis
+    if not comments_df.empty:
+        st.subheader("Comments Analysis")
+        
+        # Group comments by case
+        comments_by_case = comments_df.groupby('ParentId').size().reset_index(name='comment_count')
+        cases_with_comments = pd.merge(
+            cases_df[['Id', 'CaseNumber', 'Subject']], 
+            comments_by_case, 
+            left_on='Id', 
+            right_on='ParentId', 
+            how='left'
+        )
+        cases_with_comments['comment_count'] = cases_with_comments['comment_count'].fillna(0).astype(int)
+        
+        # Visualize comment distribution
+        plt.figure(figsize=(10, 6))
+        sns.histplot(data=cases_with_comments, x='comment_count', bins=10, kde=True)
+        plt.title('Distribution of Comments per Ticket')
+        plt.xlabel('Number of Comments')
+        plt.ylabel('Number of Tickets')
+        st.pyplot(plt)
+        plt.close()
+        
+        # Show cases with most comments
+        st.subheader("Tickets with Most Comments")
+        top_commented = cases_with_comments.sort_values('comment_count', ascending=False).head(5)
+        st.dataframe(top_commented[['CaseNumber', 'Subject', 'comment_count']])
+    
+    # Email analysis
+    if not emails_df.empty:
+        st.subheader("Email Communication Analysis")
+        
+        # Group emails by case
+        emails_by_case = emails_df.groupby('ParentId').size().reset_index(name='email_count')
+        cases_with_emails = pd.merge(
+            cases_df[['Id', 'CaseNumber', 'Subject']], 
+            emails_by_case, 
+            left_on='Id', 
+            right_on='ParentId', 
+            how='left'
+        )
+        cases_with_emails['email_count'] = cases_with_emails['email_count'].fillna(0).astype(int)
+        
+        # Visualize email distribution
+        plt.figure(figsize=(10, 6))
+        sns.histplot(data=cases_with_emails, x='email_count', bins=10, kde=True)
+        plt.title('Distribution of Emails per Ticket')
+        plt.xlabel('Number of Emails')
+        plt.ylabel('Number of Tickets')
+        st.pyplot(plt)
+        plt.close()
+    
+    # Status change analysis
+    if not history_df.empty:
+        st.subheader("Status Change Analysis")
+        
+        # Filter for status changes
+        status_changes = history_df[history_df['Field'] == 'Status']
+        
+        if not status_changes.empty:
+            # Count status transitions
+            status_transitions = status_changes.groupby(['OldValue', 'NewValue']).size().reset_index(name='count')
+            
+            # Create a heatmap of status transitions
+            pivot_table = status_transitions.pivot_table(
+                values='count', 
+                index='OldValue', 
+                columns='NewValue', 
+                fill_value=0
+            )
+            
+            plt.figure(figsize=(12, 8))
+            sns.heatmap(pivot_table, annot=True, cmap='YlGnBu', fmt='g')
+            plt.title('Status Transition Heatmap')
+            plt.tight_layout()
+            st.pyplot(plt)
+            plt.close()
+    
+    # AI Analysis
+    if enable_ai_analysis:
+        st.header("AI-Powered Insights")
+        
+        with st.spinner("Analyzing ticket data with AI..."):
+            ai_insights = generate_ai_insights(data)
+            
+            if ai_insights:
+                # Display AI insights
+                st.subheader("Key Insights")
+                st.markdown(ai_insights['summary'])
+                
+                # Display patterns
+                st.subheader("Identified Patterns")
+                for pattern in ai_insights['patterns']:
+                    st.markdown(f"- **{pattern['title']}**: {pattern['description']}")
+                
+                # Display recommendations
+                st.subheader("Recommendations")
+                for rec in ai_insights['recommendations']:
+                    st.markdown(f"- {rec}")
+
+def generate_ai_insights(data):
+    """Generate AI insights from ticket data using OpenAI."""
+    try:
+        # Check if OpenAI API key is available
+        openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
+        if not openai_api_key:
+            st.warning("OpenAI API key not found. Please add it to your Streamlit secrets.")
+            return None
+        
+        # Set up OpenAI client
+        client = openai.OpenAI(api_key=openai_api_key)
+        
+        # Prepare data for analysis
+        cases_df = data['cases']
+        
+        # Create a summary of the data
+        case_summary = {
+            "total_cases": len(cases_df),
+            "product_areas": cases_df['Product_Area__c'].value_counts().to_dict(),
+            "priorities": cases_df['Internal_Priority__c'].value_counts().to_dict(),
+            "statuses": cases_df['Status'].value_counts().to_dict(),
+            "root_causes": cases_df['RCA__c'].value_counts().to_dict(),
+        }
+        
+        # Sample of case subjects and descriptions (limit to 20 for API constraints)
+        case_samples = cases_df.sample(min(20, len(cases_df)))[['Subject', 'Description', 'RCA__c', 'Status']].to_dict('records')
+        
+        # Prepare the prompt
+        prompt = f"""
+        Analyze the following support ticket data and provide insights:
+        
+        Summary Statistics:
+        {json.dumps(case_summary, indent=2)}
+        
+        Sample Cases:
+        {json.dumps(case_samples, indent=2)}
+        
+        Please provide:
+        1. A summary of key insights from the data
+        2. Patterns or trends you identify in the tickets
+        3. Recommendations for improving customer support
+        
+        Format your response as JSON with the following structure:
+        {{
+            "summary": "Overall summary of insights",
+            "patterns": [
+                {{"title": "Pattern 1", "description": "Description of pattern 1"}},
+                {{"title": "Pattern 2", "description": "Description of pattern 2"}}
+            ],
+            "recommendations": [
+                "Recommendation 1",
+                "Recommendation 2"
+            ]
+        }}
+        """
+        
+        # Call OpenAI API
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.5,
+            max_tokens=2000
+        )
+        
+        # Extract and parse the response
+        ai_response = response.choices[0].message.content
+        
+        # Extract JSON from the response (in case there's additional text)
+        json_match = re.search(r'({.*})', ai_response, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+            insights = json.loads(json_str)
+            return insights
+        else:
+            st.warning("Could not parse AI response into the expected format.")
+            return None
+            
+    except Exception as e:
+        st.error(f"Error generating AI insights: {str(e)}")
+        return None
 
 if __name__ == "__main__":
     main() 
