@@ -61,6 +61,8 @@ if 'sf_connection' not in st.session_state:
     st.session_state.sf_connection = None
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
+if 'debug_mode' not in st.session_state:
+    st.session_state.debug_mode = False
 
 # Custom CSS
 st.markdown("""
@@ -107,16 +109,52 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# Helper function to conditionally display debug information
+def debug(message, data=None):
+    """Display debug information only if debug mode is enabled."""
+    if st.session_state.debug_mode:
+        if data is not None:
+            st.write(f"Debug - {message}:", data)
+        else:
+            st.write(f"Debug - {message}")
+
 def main():
     st.title("Support Ticket Analytics")
     
-    # Initialize Salesforce connection
-    if not st.session_state.sf_connection:
+    # Initialize Salesforce connection if not already done
+    if st.session_state.sf_connection is None:
         with st.spinner("Connecting to Salesforce..."):
             st.session_state.sf_connection = init_salesforce()
-            if not st.session_state.sf_connection:
+            if st.session_state.sf_connection is None:
                 st.error("Failed to connect to Salesforce. Please check your credentials.")
                 return
+    
+    # Sidebar for filters and controls
+    st.sidebar.title("Controls")
+    
+    # Debug mode toggle
+    st.session_state.debug_mode = st.sidebar.checkbox("Debug Mode", value=st.session_state.debug_mode, 
+                                                     help="Show detailed debug information")
+    
+    # Date range selection
+    st.sidebar.header("Date Range")
+    
+    # Default to last 90 days
+    default_end_date = datetime.now()
+    default_start_date = default_end_date - timedelta(days=90)
+    
+    start_date = st.sidebar.date_input(
+        "Start Date",
+        value=default_start_date,
+        max_value=default_end_date
+    )
+    
+    end_date = st.sidebar.date_input(
+        "End Date",
+        value=default_end_date,
+        min_value=start_date,
+        max_value=datetime.now()
+    )
     
     # Fetch customers if not already loaded
     if not st.session_state.customers:
@@ -129,14 +167,14 @@ def main():
             """
             try:
                 # Debug logging for customer query
-                st.write("Debug - Customer query:", customer_query)
+                debug("Customer query", customer_query)
                 
                 records = execute_soql_query(st.session_state.sf_connection, customer_query)
                 if records:
                     customers_df = pd.DataFrame(records)
-                    st.write("Debug - Customer data:", customers_df.head())
+                    debug("Customer data", customers_df.head())
                     st.session_state.customers = customers_df['Account_Name__c'].unique().tolist()
-                    st.write("Debug - Unique customers:", len(st.session_state.customers))
+                    debug("Unique customers", len(st.session_state.customers))
                 else:
                     st.error("No customers found in Salesforce.")
                     return
@@ -155,20 +193,6 @@ def main():
             max_selections=10,
             help="Choose up to 10 customers to analyze"
         )
-        
-        # Date Range Selection
-        st.subheader("Date Range")
-        col1, col2 = st.columns(2)
-        with col1:
-            start_date = st.date_input(
-                "Start Date",
-                value=datetime.now().date() - timedelta(days=90)
-            )
-        with col2:
-            end_date = st.date_input(
-                "End Date",
-                value=datetime.now().date()
-            )
         
         # Generate Analysis Button
         if selected_customers and start_date <= end_date:
@@ -275,7 +299,7 @@ def fetch_data(customers, start_date, end_date):
         """
         
         # Debug logging
-        st.write("Debug - SOQL Query:", query)
+        debug("SOQL Query", query)
         
         records = execute_soql_query(st.session_state.sf_connection, query)
         if not records:
@@ -290,9 +314,9 @@ def fetch_data(customers, start_date, end_date):
             df = df.drop('Account', axis=1)
         
         # Debug logging
-        st.write("Debug - DataFrame columns:", df.columns.tolist())
-        st.write("Debug - First few rows:", df.head())
-        st.write("Debug - Number of records:", len(df))
+        debug("DataFrame columns", df.columns.tolist())
+        debug("First few rows", df.head())
+        debug("Number of records", len(df))
         
         # Handle missing values
         df['Subject'] = df['Subject'].fillna('')
@@ -325,8 +349,8 @@ def display_visualizations(df, customers):
             return
         
         # Debug logging for data validation
-        st.write("Debug - Visualization data shape:", df.shape)
-        st.write("Debug - Available columns:", df.columns.tolist())
+        debug("Visualization data shape", df.shape)
+        debug("Available columns", df.columns.tolist())
         
         # Create filtered dataframe excluding unspecified data
         total_records = len(df)
