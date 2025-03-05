@@ -299,7 +299,7 @@ def main():
                                 st.info("AI-powered analysis is enabled. Scroll down to see AI insights after the detailed analysis.")
                             
                             # Pass the AI analysis flag to the display function
-                            display_detailed_analysis(detailed_data, st.session_state.ai_analysis_enabled)
+                            display_detailed_analysis(detailed_data, st.session_state.ai_analysis_enabled, skip_impl_phase_analysis=True)
             else:
                 st.warning("No data available after applying filters.")
         except Exception as e:
@@ -1417,12 +1417,13 @@ def fetch_detailed_data(customer, start_date, end_date):
         st.error(f"Error fetching detailed data: {str(e)}")
         return None
 
-def display_detailed_analysis(data, enable_ai_analysis):
+def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis=True):
     """Display detailed analysis of ticket data."""
     st.header("Detailed Ticket Analysis")
     
     # Debug the AI analysis flag
     debug("AI analysis flag in display_detailed_analysis:", enable_ai_analysis)
+    debug("Skip implementation phase analysis:", skip_impl_phase_analysis)
     
     # Create a progress bar for the entire analysis process
     progress_bar = st.progress(0)
@@ -1474,79 +1475,84 @@ def display_detailed_analysis(data, enable_ai_analysis):
         escalation_rate = (escalated_count / len(cases_df)) * 100 if len(cases_df) > 0 else 0
         st.metric("Escalation Rate", f"{escalation_rate:.1f}%")
     
-    # Update progress
-    progress_bar.progress(20, text="Analyzing implementation phases...")
-    
-    # Implementation Phase Analysis (if available)
-    if 'IMPL_Phase__c' in cases_df.columns:
-        st.subheader("Implementation Phase Analysis")
+    # Update progress - adjust based on whether we're skipping implementation phase analysis
+    if skip_impl_phase_analysis:
+        progress_bar.progress(25, text="Preparing ticket details...")
+    else:
+        progress_bar.progress(20, text="Analyzing implementation phases...")
         
-        # Count cases by implementation phase
-        phase_counts = cases_df['IMPL_Phase__c'].fillna('Not Specified').value_counts()
-        
-        # Create a pie chart
-        plt.figure(figsize=(10, 6))
-        plt.pie(phase_counts, labels=phase_counts.index, autopct='%1.1f%%', 
-                startangle=90, colors=sns.color_palette('Blues', len(phase_counts)))
-        plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
-        plt.title('Cases by Implementation Phase')
-        st.pyplot(plt)
-        plt.close()
-        
-        # Create a bar chart showing resolution time by implementation phase
-        if not closed_cases.empty and 'IMPL_Phase__c' in closed_cases.columns:
-            try:
-                # Calculate resolution time
-                closed_cases = closed_cases.copy()
-                
-                # Ensure CreatedDate and ClosedDate are datetime objects
-                if pd.api.types.is_datetime64_any_dtype(closed_cases['CreatedDate']) and pd.api.types.is_datetime64_any_dtype(closed_cases['ClosedDate']):
-                    # Calculate resolution time only for rows where both dates are valid
-                    mask = closed_cases['ClosedDate'].notna() & closed_cases['CreatedDate'].notna()
-                    valid_cases = closed_cases[mask].copy()
+        # Implementation Phase Analysis (if available and not skipped)
+        if 'IMPL_Phase__c' in cases_df.columns and not skip_impl_phase_analysis:
+            st.subheader("Implementation Phase Analysis")
+            
+            # Count cases by implementation phase
+            phase_counts = cases_df['IMPL_Phase__c'].fillna('Not Specified').value_counts()
+            
+            # Create a pie chart
+            plt.figure(figsize=(10, 6))
+            plt.pie(phase_counts, labels=phase_counts.index, autopct='%1.1f%%', 
+                    startangle=90, colors=sns.color_palette('Blues', len(phase_counts)))
+            plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
+            plt.title('Cases by Implementation Phase')
+            st.pyplot(plt)
+            plt.close()
+            
+            # Create a bar chart showing resolution time by implementation phase
+            if not closed_cases.empty and 'IMPL_Phase__c' in closed_cases.columns:
+                try:
+                    # Calculate resolution time
+                    closed_cases = closed_cases.copy()
                     
-                    if not valid_cases.empty:
-                        valid_cases['Resolution_Time_Days'] = (valid_cases['ClosedDate'] - valid_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
+                    # Ensure CreatedDate and ClosedDate are datetime objects
+                    if pd.api.types.is_datetime64_any_dtype(closed_cases['CreatedDate']) and pd.api.types.is_datetime64_any_dtype(closed_cases['ClosedDate']):
+                        # Calculate resolution time only for rows where both dates are valid
+                        mask = closed_cases['ClosedDate'].notna() & closed_cases['CreatedDate'].notna()
+                        valid_cases = closed_cases[mask].copy()
                         
-                        # Group by implementation phase
-                        phase_resolution = valid_cases.groupby('IMPL_Phase__c')['Resolution_Time_Days'].mean().reset_index()
-                        phase_resolution = phase_resolution.sort_values('Resolution_Time_Days', ascending=False)
-                        
-                        # Create bar chart - fix the palette warning by setting hue and legend=False
-                        plt.figure(figsize=(10, 6))
-                        sns.barplot(data=phase_resolution, x='IMPL_Phase__c', y='Resolution_Time_Days', 
-                                   hue='IMPL_Phase__c', palette='Blues', legend=False)
-                        plt.title('Average Resolution Time by Implementation Phase')
-                        plt.xlabel('Implementation Phase')
-                        plt.ylabel('Resolution Time (Days)')
-                        plt.xticks(rotation=45)
-                        plt.tight_layout()
-                        st.pyplot(plt)
-                        plt.close()
+                        if not valid_cases.empty:
+                            valid_cases['Resolution_Time_Days'] = (valid_cases['ClosedDate'] - valid_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
+                            
+                            # Group by implementation phase
+                            phase_resolution = valid_cases.groupby('IMPL_Phase__c')['Resolution_Time_Days'].mean().reset_index()
+                            phase_resolution = phase_resolution.sort_values('Resolution_Time_Days', ascending=False)
+                            
+                            # Create bar chart - fix the palette warning by setting hue and legend=False
+                            plt.figure(figsize=(10, 6))
+                            sns.barplot(data=phase_resolution, x='IMPL_Phase__c', y='Resolution_Time_Days', 
+                                       hue='IMPL_Phase__c', palette='Blues', legend=False)
+                            plt.title('Average Resolution Time by Implementation Phase')
+                            plt.xlabel('Implementation Phase')
+                            plt.ylabel('Resolution Time (Days)')
+                            plt.xticks(rotation=45)
+                            plt.tight_layout()
+                            st.pyplot(plt)
+                            plt.close()
+                        else:
+                            st.info("No cases with valid creation and closure dates to calculate resolution time by implementation phase.")
                     else:
-                        st.info("No cases with valid creation and closure dates to calculate resolution time by implementation phase.")
-                else:
-                    st.info("Cannot calculate resolution time: date fields are not in the expected datetime format.")
-            except Exception as e:
-                st.error(f"Error calculating resolution time by implementation phase: {str(e)}")
-                debug(f"Resolution time calculation error: {str(e)}")
-    
-    # Update progress
-    progress_bar.progress(40, text="Preparing ticket details...")
+                        st.info("Cannot calculate resolution time: date fields are not in the expected datetime format.")
+                except Exception as e:
+                    st.error(f"Error calculating resolution time by implementation phase: {str(e)}")
+                    debug(f"Resolution time calculation error: {str(e)}")
+        
+        progress_bar.progress(40, text="Preparing ticket details...")
     
     # Ticket details
     with st.expander("Ticket Details", expanded=False):
         display_columns = ['CaseNumber', 'Subject', 'Status', 'Internal_Priority__c', 
                           'Product_Area__c', 'Product_Feature__c', 'CreatedDate', 'ClosedDate']
         
-        # Add IMPL_Phase__c if available
-        if 'IMPL_Phase__c' in cases_df.columns:
+        # Add IMPL_Phase__c if available and not skipping implementation phase
+        if 'IMPL_Phase__c' in cases_df.columns and not skip_impl_phase_analysis:
             display_columns.append('IMPL_Phase__c')
             
         st.dataframe(cases_df[display_columns])
     
-    # Update progress
-    progress_bar.progress(50, text="Analyzing comments...")
+    # Update progress - adjust based on whether we're skipping implementation phase analysis
+    if skip_impl_phase_analysis:
+        progress_bar.progress(40, text="Analyzing comments...")
+    else:
+        progress_bar.progress(50, text="Analyzing comments...")
     
     # Comments analysis
     if not comments_df.empty:
@@ -1577,8 +1583,11 @@ def display_detailed_analysis(data, enable_ai_analysis):
         top_commented = cases_with_comments.sort_values('comment_count', ascending=False).head(5)
         st.dataframe(top_commented[['CaseNumber', 'Subject', 'comment_count']])
     
-    # Update progress
-    progress_bar.progress(60, text="Analyzing email communications...")
+    # Update progress - adjust based on whether we're skipping implementation phase analysis
+    if skip_impl_phase_analysis:
+        progress_bar.progress(55, text="Analyzing email communications...")
+    else:
+        progress_bar.progress(60, text="Analyzing email communications...")
     
     # Email analysis
     if not emails_df.empty:
@@ -1604,8 +1613,11 @@ def display_detailed_analysis(data, enable_ai_analysis):
         st.pyplot(plt)
         plt.close()
     
-    # Update progress
-    progress_bar.progress(70, text="Analyzing status changes...")
+    # Update progress - adjust based on whether we're skipping implementation phase analysis
+    if skip_impl_phase_analysis:
+        progress_bar.progress(70, text="Analyzing status changes...")
+    else:
+        progress_bar.progress(70, text="Analyzing status changes...")
     
     # Status change analysis
     if not history_df.empty:
@@ -1635,8 +1647,11 @@ def display_detailed_analysis(data, enable_ai_analysis):
     
     # AI Analysis
     if enable_ai_analysis:
-        # Update progress
-        progress_bar.progress(80, text="Generating AI-powered insights...")
+        # Update progress - adjust based on whether we're skipping implementation phase analysis
+        if skip_impl_phase_analysis:
+            progress_bar.progress(85, text="Generating AI-powered insights...")
+        else:
+            progress_bar.progress(80, text="Generating AI-powered insights...")
         
         # Create a separate section for AI insights with a clear header
         st.markdown("---")
