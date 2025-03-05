@@ -76,3 +76,33 @@ Your input file should contain the following columns:
 ## License
 
 MIT License
+
+## Secrets Management
+
+This application uses a `.streamlit/secrets.toml` file for storing sensitive information like API keys and database credentials. To protect your secrets:
+
+1. The `.streamlit/secrets.toml` file and `.env` files are excluded from Git via the `.gitignore` file.
+2. Never commit sensitive information directly in code files.
+3. If you need to share your code, make sure these files are not included.
+
+### Setting up your secrets
+
+To set up your secrets:
+
+1. Create a `.streamlit/secrets.toml` file in the project root (if not already present)
+2. Add your sensitive information in the following format:
+
+```toml
+[salesforce]
+username = "your_username"
+password = "your_password"
+security_token = "your_security_token"
+domain = "your_domain"
+
+[openai]
+api_key = "your_openai_api_key"
+```
+
+The application will use these variables for authentication with external services.
+
+# Checking if secrets are properly handled
