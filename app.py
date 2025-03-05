@@ -226,15 +226,29 @@ def main():
             st.sidebar.markdown("---")
             st.sidebar.header("Detailed Analysis")
             
-            detailed_analysis = st.sidebar.checkbox("Enable Detailed Ticket Analysis", 
-                                                   help="Fetch additional data and perform detailed analysis for the selected customer")
-            
-            if detailed_analysis:
-                ai_analysis = st.sidebar.checkbox("Enable AI-powered Analysis", 
-                                                 help="Use OpenAI to analyze ticket patterns and provide insights")
+            # Store detailed analysis settings in session state
+            if 'detailed_analysis_enabled' not in st.session_state:
+                st.session_state.detailed_analysis_enabled = False
+            if 'ai_analysis_enabled' not in st.session_state:
+                st.session_state.ai_analysis_enabled = False
                 
-                if ai_analysis:
-                    st.sidebar.info("AI analysis will process ticket data to identify patterns and provide recommendations.")
+            # Update session state based on checkbox values
+            st.session_state.detailed_analysis_enabled = st.sidebar.checkbox(
+                "Enable Detailed Ticket Analysis", 
+                value=st.session_state.detailed_analysis_enabled,
+                help="Fetch additional data and perform detailed analysis for the selected customer"
+            )
+            
+            if st.session_state.detailed_analysis_enabled:
+                st.session_state.ai_analysis_enabled = st.sidebar.checkbox(
+                    "Enable AI-powered Analysis", 
+                    value=st.session_state.ai_analysis_enabled,
+                    help="Use OpenAI to analyze ticket patterns and provide insights"
+                )
+                
+                if st.session_state.ai_analysis_enabled:
+                    st.sidebar.info("AI-powered analysis is enabled. Scroll down to see AI insights after the detailed analysis.")
+                    debug("AI analysis is enabled in main function")
     
     # Main Content
     if st.session_state.data_loaded and hasattr(st.session_state, 'data'):
@@ -272,16 +286,20 @@ def main():
                 display_visualizations(df, selected_customers)
                 
                 # Detailed ticket analysis (only for single customer selection)
-                if len(selected_customers) == 1 and detailed_analysis:
+                if len(selected_customers) == 1 and st.session_state.detailed_analysis_enabled:
                     with st.spinner("Fetching detailed ticket information..."):
                         detailed_data = fetch_detailed_data(selected_customers[0], start_date, end_date)
                         if detailed_data is not None:
                             # Add debug output to help troubleshoot
-                            debug("AI analysis enabled", ai_analysis)
+                            debug("AI analysis enabled", st.session_state.ai_analysis_enabled)
                             debug("Detailed data structure", {k: type(v) for k, v in detailed_data.items()})
                             
-                            # Make sure ai_analysis is properly passed
-                            display_detailed_analysis(detailed_data, ai_analysis)
+                            # Display a clear message about AI status
+                            if st.session_state.ai_analysis_enabled:
+                                st.info("AI-powered analysis is enabled. Scroll down to see AI insights after the detailed analysis.")
+                            
+                            # Pass the AI analysis flag to the display function
+                            display_detailed_analysis(detailed_data, st.session_state.ai_analysis_enabled)
             else:
                 st.warning("No data available after applying filters.")
         except Exception as e:
@@ -812,6 +830,248 @@ def display_visualizations(df, customers):
         st.error(f"Error in visualization: {str(e)}")
         st.error("Please check your data or try different selection criteria.")
 
+def generate_ai_insights(data):
+    """Generate AI insights from ticket data using OpenAI."""
+    try:
+        # Check if OpenAI package is installed
+        try:
+            import openai
+            debug("OpenAI package imported successfully")
+        except ImportError:
+            st.error("OpenAI package is not installed. Please run 'pip install openai' to enable AI analysis.")
+            debug("OpenAI import error - package not installed")
+            return None
+            
+        # Check if OpenAI API key is available
+        openai_api_key = os.getenv('OPENAI_API_KEY') or st.secrets.get("OPENAI_API_KEY", None)
+        if not openai_api_key:
+            st.warning("OpenAI API key not found. Please add it to your environment variables or Streamlit secrets.")
+            debug("OpenAI API key not found")
+            
+            # Provide a sample response for demonstration purposes
+            sample_response = {
+                "summary": "This is a sample AI analysis. To get real insights, please configure your OpenAI API key.",
+                "patterns": [
+                    {"title": "Sample Pattern", "description": "This is an example pattern that would be identified by the AI."},
+                    {"title": "Demo Insight", "description": "In a real analysis, the AI would identify trends and patterns in your ticket data."}
+                ],
+                "recommendations": [
+                    "This is a sample recommendation. Configure your OpenAI API key to get actual insights.",
+                    "Another example recommendation that would be tailored to your specific data."
+                ]
+            }
+            
+            # Save a sample HTML file for demonstration
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            html_filename = f"sample_ai_response_{timestamp}.html"
+            
+            with open(html_filename, "w") as f:
+                f.write(f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Sample AI Response</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
+                        pre {{ background-color: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }}
+                        h1, h2 {{ color: #333; }}
+                        .metadata {{ color: #666; font-size: 0.9em; }}
+                        .json {{ color: #0066cc; }}
+                        .warning {{ color: #ff6600; background-color: #fff3e0; padding: 10px; border-radius: 5px; }}
+                    </style>
+                </head>
+                <body>
+                    <h1>Sample AI Response</h1>
+                    <div class="warning">
+                        <p><strong>Note:</strong> This is a sample response because no OpenAI API key was found.</p>
+                        <p>To get real AI insights, please configure your OpenAI API key in the environment variables or Streamlit secrets.</p>
+                    </div>
+                    <div class="metadata">
+                        <p>Generated on: {timestamp}</p>
+                    </div>
+                    <h2>Sample JSON:</h2>
+                    <pre class="json">{json.dumps(sample_response, indent=2)}</pre>
+                </body>
+                </html>
+                """)
+            
+            # Store the HTML file path in session state for download
+            st.session_state.latest_ai_html_file = html_filename
+            debug(f"Saved sample AI response to {html_filename}")
+            
+            return sample_response
+        
+        debug("OpenAI API key found")
+        
+        # Set up OpenAI client
+        try:
+            client = openai.OpenAI(api_key=openai_api_key)
+            debug("OpenAI client initialized successfully")
+        except Exception as e:
+            st.error(f"Error initializing OpenAI client: {str(e)}")
+            debug("OpenAI client initialization error", str(e))
+            return None
+        
+        # Prepare data for analysis
+        cases_df = data['cases']
+        
+        # Create a summary of the data
+        case_summary = {
+            "total_cases": len(cases_df),
+            "product_areas": cases_df['Product_Area__c'].value_counts().to_dict(),
+            "priorities": cases_df['Internal_Priority__c'].value_counts().to_dict(),
+            "statuses": cases_df['Status'].value_counts().to_dict(),
+            "root_causes": cases_df['RCA__c'].value_counts().to_dict(),
+        }
+        
+        # Add implementation phase data if available
+        if 'IMPL_Phase__c' in cases_df.columns:
+            case_summary["implementation_phases"] = cases_df['IMPL_Phase__c'].fillna('Not Specified').value_counts().to_dict()
+        
+        # Sample of case subjects and descriptions (limit to 20 for API constraints)
+        sample_columns = ['Subject', 'Description', 'RCA__c', 'Status']
+        if 'IMPL_Phase__c' in cases_df.columns:
+            sample_columns.append('IMPL_Phase__c')
+            
+        case_samples = cases_df.sample(min(20, len(cases_df)))[sample_columns].to_dict('records')
+        
+        debug("Data prepared for OpenAI", f"Summary contains {len(case_summary)} keys, {len(case_samples)} samples")
+        
+        # Prepare the prompt
+        prompt = f"""
+        Analyze the following support ticket data and provide insights:
+        
+        Summary Statistics:
+        {json.dumps(case_summary, indent=2)}
+        
+        Sample Cases:
+        {json.dumps(case_samples, indent=2)}
+        
+        Please provide:
+        1. A summary of key insights from the data
+        2. Patterns or trends you identify in the tickets
+        3. Recommendations for improving customer support
+        
+        Format your response as JSON with the following structure:
+        {{
+            "summary": "Overall summary of insights",
+            "patterns": [
+                {{"title": "Pattern 1", "description": "Description of pattern 1"}},
+                {{"title": "Pattern 2", "description": "Description of pattern 2"}}
+            ],
+            "recommendations": [
+                "Recommendation 1",
+                "Recommendation 2"
+            ]
+        }}
+        
+        IMPORTANT: Your entire response must be valid JSON that can be parsed with json.loads().
+        """
+        
+        # Call OpenAI API
+        try:
+            debug("Calling OpenAI API")
+            st.session_state.ai_analysis_in_progress = True
+            
+            # Add a clear message that API call is in progress
+            st.info("🧠 Calling OpenAI API to analyze ticket data... This may take a moment.")
+            
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights. Your response must be valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.5,
+                max_tokens=2000,
+                response_format={"type": "json_object"}  # Request JSON format specifically
+            )
+            debug("OpenAI API call successful")
+            st.session_state.ai_analysis_in_progress = False
+        except Exception as e:
+            st.error(f"Error calling OpenAI API: {str(e)}")
+            debug("OpenAI API call error", str(e))
+            st.session_state.ai_analysis_in_progress = False
+            return None
+        
+        # Extract and parse the response
+        ai_response = response.choices[0].message.content
+        debug("OpenAI response received", ai_response[:100] + "..." if len(ai_response) > 100 else ai_response)
+        
+        # Save the raw response to an HTML file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>OpenAI Response - {timestamp}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
+                pre {{ background-color: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }}
+                h1, h2 {{ color: #333; }}
+                .metadata {{ color: #666; font-size: 0.9em; }}
+                .json {{ color: #0066cc; }}
+            </style>
+        </head>
+        <body>
+            <h1>OpenAI Response</h1>
+            <div class="metadata">
+                <p>Generated on: {timestamp}</p>
+                <p>Model: gpt-4</p>
+            </div>
+            <h2>Raw Response:</h2>
+            <pre>{html.escape(ai_response)}</pre>
+            
+            <h2>Parsed JSON:</h2>
+            <pre class="json" id="parsed-json"></pre>
+        </body>
+        </html>
+        """
+        
+        # Save the HTML file
+        html_filename = f"openai_response_{timestamp}.html"
+        with open(html_filename, "w") as f:
+            f.write(html_content)
+        debug(f"Saved OpenAI response to {html_filename}")
+        
+        # Store the HTML file path in session state for download
+        st.session_state.latest_ai_html_file = html_filename
+        
+        # Parse the JSON response
+        try:
+            insights = json.loads(ai_response)
+            debug("JSON parsed successfully")
+            
+            # Also save as JSON file for easier processing
+            json_filename = f"openai_response_{timestamp}.json"
+            with open(json_filename, "w") as f:
+                json.dump(insights, f, indent=2)
+            debug(f"Saved parsed JSON to {json_filename}")
+            
+            return insights
+        except json.JSONDecodeError as e:
+            st.error(f"Error parsing JSON response: {str(e)}")
+            debug("JSON parsing error", str(e))
+            debug("Raw response that failed to parse:", ai_response)
+            
+            # Try a more lenient approach to extract JSON
+            json_match = re.search(r'({.*})', ai_response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+                try:
+                    insights = json.loads(json_str)
+                    debug("JSON extracted and parsed successfully using regex")
+                    return insights
+                except json.JSONDecodeError:
+                    debug("Failed to parse JSON even with regex extraction")
+            
+            return None
+            
+    except Exception as e:
+        st.error(f"Error generating AI insights: {str(e)}")
+        debug("General error in generate_ai_insights", str(e))
+        return None
+
 def generate_wordcloud(text_data, title):
     """Generate a word cloud from the given text data."""
     if not isinstance(text_data, str):
@@ -1111,6 +1371,9 @@ def display_detailed_analysis(data, enable_ai_analysis):
     """Display detailed analysis of ticket data."""
     st.header("Detailed Ticket Analysis")
     
+    # Debug the AI analysis flag
+    debug("AI analysis flag in display_detailed_analysis:", enable_ai_analysis)
+    
     # Create a progress bar for the entire analysis process
     progress_bar = st.progress(0)
     
@@ -1298,11 +1561,18 @@ def display_detailed_analysis(data, enable_ai_analysis):
         # Use a spinner to indicate that AI analysis is in progress
         with st.spinner("🧠 Analyzing ticket data with AI... This may take a moment."):
             debug("Calling generate_ai_insights")
+            
+            # Force display of the spinner by adding a small delay
+            time.sleep(1)
+            
+            # Call the AI insights function
             ai_insights = generate_ai_insights(data)
             debug("generate_ai_insights returned", ai_insights is not None)
             
             if ai_insights and isinstance(ai_insights, dict):
                 # Display AI insights
+                st.success("AI analysis completed successfully!")
+                
                 st.subheader("Key Insights")
                 st.markdown(ai_insights.get('summary', 'No summary available'))
                 
@@ -1321,14 +1591,17 @@ def display_detailed_analysis(data, enable_ai_analysis):
                 
                 # Add a download button for the HTML file
                 if hasattr(st.session_state, 'latest_ai_html_file') and st.session_state.latest_ai_html_file:
-                    with open(st.session_state.latest_ai_html_file, 'r') as f:
-                        html_content = f.read()
-                    st.download_button(
-                        label="Download AI Analysis as HTML",
-                        data=html_content,
-                        file_name=os.path.basename(st.session_state.latest_ai_html_file),
-                        mime="text/html"
-                    )
+                    try:
+                        with open(st.session_state.latest_ai_html_file, 'r') as f:
+                            html_content = f.read()
+                        st.download_button(
+                            label="Download AI Analysis as HTML",
+                            data=html_content,
+                            file_name=os.path.basename(st.session_state.latest_ai_html_file),
+                            mime="text/html"
+                        )
+                    except Exception as e:
+                        debug(f"Error creating download button: {str(e)}")
             else:
                 st.warning("No AI insights were generated. Please check the debug output for more information.")
                 debug("No AI insights were generated or invalid format returned")
@@ -1364,207 +1637,6 @@ def display_detailed_analysis(data, enable_ai_analysis):
     progress_bar.progress(100, text="Analysis complete!")
     time.sleep(0.5)  # Short delay to show the completed progress
     progress_bar.empty()  # Remove the progress bar after completion
-
-def generate_ai_insights(data):
-    """Generate AI insights from ticket data using OpenAI."""
-    try:
-        # Check if OpenAI package is installed
-        try:
-            import openai
-            debug("OpenAI package imported successfully")
-        except ImportError:
-            st.error("OpenAI package is not installed. Please run 'pip install openai' to enable AI analysis.")
-            return None
-            
-        # Check if OpenAI API key is available
-        openai_api_key = os.getenv('OPENAI_API_KEY') or st.secrets.get("OPENAI_API_KEY", None)
-        if not openai_api_key:
-            st.warning("OpenAI API key not found. Please add it to your environment variables or Streamlit secrets.")
-            debug("OpenAI API key not found")
-            
-            # Provide a sample response for demonstration purposes
-            return {
-                "summary": "This is a sample AI analysis. To get real insights, please configure your OpenAI API key.",
-                "patterns": [
-                    {"title": "Sample Pattern", "description": "This is an example pattern that would be identified by the AI."},
-                    {"title": "Demo Insight", "description": "In a real analysis, the AI would identify trends and patterns in your ticket data."}
-                ],
-                "recommendations": [
-                    "This is a sample recommendation. Configure your OpenAI API key to get actual insights.",
-                    "Another example recommendation that would be tailored to your specific data."
-                ]
-            }
-        
-        debug("OpenAI API key found")
-        
-        # Set up OpenAI client
-        try:
-            client = openai.OpenAI(api_key=openai_api_key)
-            debug("OpenAI client initialized successfully")
-        except Exception as e:
-            st.error(f"Error initializing OpenAI client: {str(e)}")
-            debug("OpenAI client initialization error", str(e))
-            return None
-        
-        # Prepare data for analysis
-        cases_df = data['cases']
-        
-        # Create a summary of the data
-        case_summary = {
-            "total_cases": len(cases_df),
-            "product_areas": cases_df['Product_Area__c'].value_counts().to_dict(),
-            "priorities": cases_df['Internal_Priority__c'].value_counts().to_dict(),
-            "statuses": cases_df['Status'].value_counts().to_dict(),
-            "root_causes": cases_df['RCA__c'].value_counts().to_dict(),
-        }
-        
-        # Add implementation phase data if available
-        if 'IMPL_Phase__c' in cases_df.columns:
-            case_summary["implementation_phases"] = cases_df['IMPL_Phase__c'].fillna('Not Specified').value_counts().to_dict()
-        
-        # Sample of case subjects and descriptions (limit to 20 for API constraints)
-        sample_columns = ['Subject', 'Description', 'RCA__c', 'Status']
-        if 'IMPL_Phase__c' in cases_df.columns:
-            sample_columns.append('IMPL_Phase__c')
-            
-        case_samples = cases_df.sample(min(20, len(cases_df)))[sample_columns].to_dict('records')
-        
-        debug("Data prepared for OpenAI", f"Summary contains {len(case_summary)} keys, {len(case_samples)} samples")
-        
-        # Prepare the prompt
-        prompt = f"""
-        Analyze the following support ticket data and provide insights:
-        
-        Summary Statistics:
-        {json.dumps(case_summary, indent=2)}
-        
-        Sample Cases:
-        {json.dumps(case_samples, indent=2)}
-        
-        Please provide:
-        1. A summary of key insights from the data
-        2. Patterns or trends you identify in the tickets
-        3. Recommendations for improving customer support
-        
-        Format your response as JSON with the following structure:
-        {{
-            "summary": "Overall summary of insights",
-            "patterns": [
-                {{"title": "Pattern 1", "description": "Description of pattern 1"}},
-                {{"title": "Pattern 2", "description": "Description of pattern 2"}}
-            ],
-            "recommendations": [
-                "Recommendation 1",
-                "Recommendation 2"
-            ]
-        }}
-        """
-        
-        # Call OpenAI API
-        try:
-            debug("Calling OpenAI API")
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.5,
-                max_tokens=2000
-            )
-            debug("OpenAI API call successful")
-        except Exception as e:
-            st.error(f"Error calling OpenAI API: {str(e)}")
-            debug("OpenAI API call error", str(e))
-            return None
-        
-        # Extract and parse the response
-        ai_response = response.choices[0].message.content
-        debug("OpenAI response received", ai_response[:100] + "..." if len(ai_response) > 100 else ai_response)
-        
-        # Save the raw response to an HTML file
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>OpenAI Response - {timestamp}</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
-                pre {{ background-color: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }}
-                h1, h2 {{ color: #333; }}
-                .metadata {{ color: #666; font-size: 0.9em; }}
-                .json {{ color: #0066cc; }}
-            </style>
-        </head>
-        <body>
-            <h1>OpenAI Response</h1>
-            <div class="metadata">
-                <p>Generated on: {timestamp}</p>
-                <p>Model: gpt-4</p>
-            </div>
-            <h2>Raw Response:</h2>
-            <pre>{html.escape(ai_response)}</pre>
-            
-            <h2>Parsed JSON:</h2>
-            <pre class="json" id="parsed-json"></pre>
-            
-            <script>
-                try {{
-                    // Try to extract and parse JSON
-                    const jsonPattern = /({{\s*"summary".*}})/s;
-                    const jsonMatch = `{html.escape(ai_response)}`.match(jsonPattern);
-                    if (jsonMatch) {{
-                        const parsedJson = JSON.parse(jsonMatch[1]);
-                        document.getElementById('parsed-json').textContent = JSON.stringify(parsedJson, null, 2);
-                    }} else {{
-                        document.getElementById('parsed-json').textContent = "Could not extract JSON from response";
-                    }}
-                }} catch (e) {{
-                    document.getElementById('parsed-json').textContent = "Error parsing JSON: " + e.message;
-                }}
-            </script>
-        </body>
-        </html>
-        """
-        
-        # Save the HTML file
-        html_filename = f"openai_response_{timestamp}.html"
-        with open(html_filename, "w") as f:
-            f.write(html_content)
-        debug(f"Saved OpenAI response to {html_filename}")
-        
-        # Store the HTML file path in session state for download
-        st.session_state.latest_ai_html_file = html_filename
-        
-        # Extract JSON from the response (in case there's additional text)
-        json_match = re.search(r'({.*})', ai_response, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(1)
-            try:
-                insights = json.loads(json_str)
-                debug("JSON parsed successfully")
-                
-                # Also save as JSON file for easier processing
-                json_filename = f"openai_response_{timestamp}.json"
-                with open(json_filename, "w") as f:
-                    json.dump(insights, f, indent=2)
-                debug(f"Saved parsed JSON to {json_filename}")
-                
-                return insights
-            except json.JSONDecodeError as e:
-                st.error(f"Error parsing JSON response: {str(e)}")
-                debug("JSON parsing error", str(e))
-                return None
-        else:
-            st.warning("Could not parse AI response into the expected format.")
-            debug("No JSON found in response")
-            return None
-            
-    except Exception as e:
-        st.error(f"Error generating AI insights: {str(e)}")
-        debug("General error in generate_ai_insights", str(e))
-        return None
 
 if __name__ == "__main__":
     main() 
