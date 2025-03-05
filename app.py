@@ -18,6 +18,13 @@ import json
 import re
 import os
 import html
+import traceback
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+import joblib
+import os.path
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -42,6 +49,9 @@ ROOT_CAUSE_PALETTE = (
 
 # Set default style
 plt.style.use("seaborn-v0_8-whitegrid")
+
+# Check for debug mode
+DEBUG_MODE = os.getenv('DEBUG_MODE', 'False').lower() in ('true', '1', 't')
 
 # Page Configuration
 st.set_page_config(
@@ -199,7 +209,7 @@ def main():
         if selected_customers and start_date <= end_date:
             if st.button("Generate Analysis", use_container_width=True):
                 with st.spinner("Fetching data..."):
-                    df = fetch_data(selected_customers, start_date, end_date)
+                    df, emails_df, comments_df, history_df, attachments_df = fetch_data(selected_customers, start_date, end_date)
                     if df is not None and not df.empty:
                         st.session_state.data = df
                         st.session_state.data_loaded = True
@@ -307,528 +317,921 @@ def main():
             st.error("Please try refreshing the page or selecting different criteria.")
 
 def fetch_data(customers, start_date, end_date):
-    """Fetch data from Salesforce based on selected criteria."""
+    """Fetch data from Salesforce based on selected customers and date range."""
     try:
+        # Create customer list for SQL query
         customer_list = "'" + "','".join(customers) + "'"
+        
+        debug(f"Fetching data for customers: {customers} from {start_date} to {end_date}")
+        
+        # Fetch tickets based on customer selection
+        # Adding CSAT__c back to the query
         query = f"""
-            SELECT 
-                Id, CaseNumber, Subject, Description,
-                Account.Name, CreatedDate, ClosedDate, Status, Internal_Priority__c,
-                Product_Area__c, Product_Feature__c, RCA__c,
-                First_Response_Time__c, CSAT__c, IsEscalated
-            FROM Case
-            WHERE Account.Name IN ({customer_list})
-            AND CreatedDate >= {start_date.strftime('%Y-%m-%d')}T00:00:00Z
-            AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
+        SELECT 
+            Id, CaseNumber, Subject, Description,
+            Account.Name, CreatedDate, ClosedDate, Status, Internal_Priority__c,
+            Product_Area__c, Product_Feature__c, RCA__c,
+            First_Response_Time__c, CSAT__c, IsEscalated
+        FROM Case
+        WHERE Account.Name IN ({customer_list})
+        AND CreatedDate >= {start_date.strftime('%Y-%m-%d')}T00:00:00Z
+        AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
         """
         
-        # Debug logging
-        debug("SOQL Query", query)
-        
+        # Execute the SOQL query
         records = execute_soql_query(st.session_state.sf_connection, query)
         if not records:
-            st.warning("No data found for the selected criteria.")
-            return None
+            debug("No tickets found for the selected criteria")
+            return None, None, None, None, None
         
+        # Convert to dataframe
         df = pd.DataFrame(records)
         
         # Extract Account Name from nested structure
         if 'Account' in df.columns and isinstance(df['Account'].iloc[0], dict):
             df['Account_Name'] = df['Account'].apply(lambda x: x.get('Name') if isinstance(x, dict) else None)
             df = df.drop('Account', axis=1)
-        
-        # Debug logging
-        debug("DataFrame columns", df.columns.tolist())
-        debug("First few rows", df.head())
-        debug("Number of records", len(df))
-        
-        # Handle missing values
-        df['Subject'] = df['Subject'].fillna('')
-        df['Description'] = df['Description'].fillna('')
-        df['Product_Area__c'] = df['Product_Area__c'].fillna('Unspecified')
-        df['Product_Feature__c'] = df['Product_Feature__c'].fillna('Unspecified')
-        df['RCA__c'] = df['RCA__c'].fillna('Not Specified')
-        df['Internal_Priority__c'] = df['Internal_Priority__c'].fillna('Not Set')
-        df['Status'] = df['Status'].fillna('Unknown')
-        df['CSAT__c'] = pd.to_numeric(df['CSAT__c'], errors='coerce')
-        df['IsEscalated'] = df['IsEscalated'].fillna(False)
-        
-        # Convert date columns
+            
+        # Safe handling of date columns
         date_columns = ['CreatedDate', 'ClosedDate', 'First_Response_Time__c']
         for col in date_columns:
             if col in df.columns:
+                # Safely convert date columns to datetime, coercing errors to NaT
                 df[col] = pd.to_datetime(df[col], errors='coerce')
         
-        return df
+        # Dump raw data to Excel before any processing
+        try:
+            # Generate a timestamp for the filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            raw_excel_file = f"raw_data_{timestamp}.xlsx"
+            
+            # Create a copy for export to avoid modifying original data
+            export_df = df.copy()
+            
+            # Simpler, more robust approach to handle datetime columns for Excel
+            datetime_cols = export_df.select_dtypes(include=['datetime']).columns.tolist()
+            debug(f"Datetime columns detected: {datetime_cols}")
+            
+            # Convert all datetime columns to strings in ISO format for Excel compatibility
+            for col in datetime_cols:
+                export_df[col] = export_df[col].astype(str)
+                debug(f"Converted {col} to string format for Excel compatibility")
+            
+            # Save the raw data to Excel
+            try:
+                export_df.to_excel(raw_excel_file, index=False)
+                debug(f"Raw data saved to {raw_excel_file}")
+                st.info(f"Raw data saved to: {raw_excel_file}")
+            except Exception as excel_error:
+                # Fallback to CSV if Excel export fails
+                debug(f"Excel export failed: {str(excel_error)}")
+                csv_file = f"raw_data_{timestamp}.csv"
+                export_df.to_csv(csv_file, index=False)
+                debug(f"Saved data as CSV instead: {csv_file}")
+                st.info(f"Saved data as CSV (Excel export failed): {csv_file}")
+            
+        except Exception as e:
+            debug(f"Error saving raw data: {str(e)}")
+            import traceback
+            debug(traceback.format_exc())
+        
+        # Get case IDs for fetching related data
+        case_ids = df['Id'].tolist()
+        
+        # Fetch related data
+        emails_df, comments_df, history_df, attachments_df = fetch_related_data(case_ids)
+        
+        # Post-process data - ensure NA values are properly handled
+        
+        # Clean classification fields to handle problematic values
+        df = preprocess_classification_fields(df)
+        
+        # For ticket classification, also need to include emails and comments content
+        if 'Id' in df.columns and emails_df is not None and not emails_df.empty:
+            # Combine email content by case
+            email_content = emails_df.groupby('ParentId')['TextBody'].apply(lambda x: ' '.join(x) if isinstance(x, (list, pd.Series)) else str(x)).reset_index()
+            email_content.columns = ['Id', 'email_content']
+            
+            # Merge with main dataframe
+            df = pd.merge(df, email_content, on='Id', how='left')
+            
+        if 'Id' in df.columns and comments_df is not None and not comments_df.empty:
+            # Combine comment content by case
+            comment_content = comments_df.groupby('ParentId')['CommentBody'].apply(lambda x: ' '.join(x) if isinstance(x, (list, pd.Series)) else str(x)).reset_index()
+            comment_content.columns = ['Id', 'comment_content']
+            
+            # Merge with main dataframe
+            df = pd.merge(df, comment_content, on='Id', how='left')
+        
+        # Apply ticket classification
+        df = classify_tickets(df)
+            
+        # Convert any remaining NA values in text fields to empty strings to avoid boolean ambiguity
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col] = df[col].fillna('')
+            
+        debug(f"Retrieved {len(df)} tickets")
+        
+        return df, emails_df, comments_df, history_df, attachments_df
+    
     except Exception as e:
-        st.error(f"Error fetching data: {str(e)}")
-        st.error("Debug - Failed query:", query)
-        return None
+        debug(f"Error fetching data: {str(e)}")
+        import traceback
+        debug(traceback.format_exc())
+        return None, None, None, None, None
+
+def fetch_related_data(case_ids):
+    """Fetch related data for the given case IDs."""
+    try:
+        # If no case IDs, return empty dataframes
+        if not case_ids:
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        
+        # Format IDs for SOQL query
+        case_ids_str = "'" + "','".join(case_ids) + "'"
+        
+        # Fetch emails
+        email_query = f"""
+            SELECT Id, ParentId, Subject, TextBody, HtmlBody, FromAddress, ToAddress, CreatedDate
+            FROM EmailMessage
+            WHERE ParentId IN ({case_ids_str})
+        """
+        email_records = execute_soql_query(st.session_state.sf_connection, email_query)
+        emails_df = pd.DataFrame(email_records) if email_records else pd.DataFrame()
+        
+        # Fetch comments
+        comment_query = f"""
+            SELECT Id, ParentId, CommentBody, CreatedDate, CreatedById
+            FROM CaseComment
+            WHERE ParentId IN ({case_ids_str})
+        """
+        comment_records = execute_soql_query(st.session_state.sf_connection, comment_query)
+        comments_df = pd.DataFrame(comment_records) if comment_records else pd.DataFrame()
+        
+        # Fetch history
+        history_query = f"""
+            SELECT Id, CaseId, Field, OldValue, NewValue, CreatedDate
+            FROM CaseHistory
+            WHERE CaseId IN ({case_ids_str})
+        """
+        history_records = execute_soql_query(st.session_state.sf_connection, history_query)
+        history_df = pd.DataFrame(history_records) if history_records else pd.DataFrame()
+        
+        # Fetch attachments
+        attachment_query = f"""
+            SELECT Id, ParentId, Name, ContentType, CreatedDate
+            FROM Attachment
+            WHERE ParentId IN ({case_ids_str})
+        """
+        attachment_records = execute_soql_query(st.session_state.sf_connection, attachment_query)
+        attachments_df = pd.DataFrame(attachment_records) if attachment_records else pd.DataFrame()
+        
+        debug(f"Fetched related data: {len(emails_df)} emails, {len(comments_df)} comments, {len(history_df)} history records, {len(attachments_df)} attachments")
+        
+        return emails_df, comments_df, history_df, attachments_df
+    
+    except Exception as e:
+        debug(f"Error fetching related data: {str(e)}")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+def preprocess_classification_fields(df):
+    """Clean and standardize classification fields.
+    
+    This function identifies and standardizes problematic values in the 
+    classification fields (Product_Area__c, Product_Feature__c, RCA__c).
+    
+    Args:
+        df (pandas.DataFrame): The dataframe containing ticket data
+        
+    Returns:
+        pandas.DataFrame: The dataframe with cleaned classification fields
+    """
+    # Clone the dataframe to avoid modifying the original
+    df = df.copy()
+    
+    # Define problematic values
+    empty_values = ['', 'None', 'Unspecified', 'N/A', 'Unknown', 'Other', None]
+    
+    # Replace empty values with NaN for easier handling
+    for field in ['Product_Area__c', 'Product_Feature__c', 'RCA__c']:
+        if field in df.columns:
+            df[field] = df[field].apply(lambda x: pd.NA if x in empty_values or pd.isna(x) else x)
+            # Log the percentage of missing values
+            missing_pct = df[field].isna().mean() * 100
+            debug(f"Field {field} has {missing_pct:.2f}% missing values after preprocessing")
+    
+    return df
+
+def create_text_classifier(X_text, y_labels):
+    """Create a text classifier using scikit-learn.
+    
+    This function builds a machine learning pipeline that:
+    1. Converts text to numerical features using TF-IDF vectorization
+    2. Trains a Random Forest classifier on these features
+    
+    Args:
+        X_text (Series): Text data for training
+        y_labels (Series): Classification labels for training
+        
+    Returns:
+        Pipeline: Trained scikit-learn pipeline for text classification
+    """
+    # Text vectorization with TF-IDF
+    vectorizer = TfidfVectorizer(
+        max_features=5000,
+        ngram_range=(1, 2),
+        stop_words='english'
+    )
+    
+    # Create classification pipeline with Random Forest
+    pipeline = Pipeline([
+        ('vectorizer', vectorizer),
+        ('classifier', RandomForestClassifier(n_estimators=100, random_state=42))
+    ])
+    
+    # Train the model
+    debug(f"Training classifier on {len(X_text)} samples with {len(set(y_labels))} unique classes")
+    pipeline.fit(X_text, y_labels)
+    
+    return pipeline
+
+def get_cached_classifier(field, X_text=None, y_labels=None, force_retrain=False):
+    """Get or create a classifier for a field, with optional caching"""
+    model_dir = "models"
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, f"{field}_classifier.pkl")
+    
+    # Check if we need to create a new model
+    if force_retrain or not os.path.exists(model_path) or X_text is not None:
+        if X_text is not None and y_labels is not None and len(X_text) >= 10:
+            debug(f"Training new classifier for {field}")
+            classifier = create_text_classifier(X_text, y_labels)
+            
+            # Save the model for future use
+            try:
+                joblib.dump(classifier, model_path)
+                debug(f"Saved classifier to {model_path}")
+            except Exception as e:
+                debug(f"Error saving classifier: {str(e)}")
+        else:
+            debug(f"Insufficient data to train classifier for {field}")
+            return None
+    else:
+        # Load existing model
+        try:
+            classifier = joblib.load(model_path)
+            debug(f"Loaded existing classifier from {model_path}")
+        except Exception as e:
+            debug(f"Error loading classifier: {str(e)}")
+            return None
+            
+    return classifier
+
+def classify_tickets(data):
+    """
+    Classify tickets that have missing classification fields using text-based ML.
+    Returns dataframe with additional enhanced classification fields.
+    """
+    if data is None or data.empty:
+        return data
+
+    debug("Starting ticket classification")
+    
+    # Create a copy of the data to avoid modifying the original
+    data = data.copy()
+    
+    # Fields to potentially classify
+    classification_fields = ['Product_Area__c', 'Product_Feature__c', 'RCA__c']
+    
+    # Prepare text features from the tickets
+    text_features = []
+    for _, row in data.iterrows():
+        # Combine relevant text fields, safely handling NAs
+        subject = str(row['Subject']) if pd.notna(row['Subject']) else ""
+        description = str(row['Description']) if pd.notna(row['Description']) else ""
+        
+        # Create a combined feature
+        combined_text = f"{subject} {description}"
+        text_features.append(combined_text)
+    
+    # Add text features as a column for debugging
+    data['combined_text_features'] = text_features
+    
+    # For each classification field, check if we can improve it
+    for field in classification_fields:
+        # Skip if field doesn't exist in the data
+        if field not in data.columns:
+            debug(f"Field {field} not in dataset, skipping classification")
+            continue
+        
+        # Fill NA values with 'Unknown' to avoid boolean ambiguity issues
+        data[field] = data[field].fillna('Unknown')
+        
+        # Create mask for missing or problematic values (now 'Unknown')
+        missing_mask = data[field] == 'Unknown'
+        
+        # Get indices where the field is missing or problematic
+        missing_indices = data[missing_mask].index
+        
+        # Only proceed if we have missing values
+        if len(missing_indices) == 0:
+            debug(f"No missing {field} values to classify")
+            continue
+        
+        # Only proceed if we have enough known values to learn from
+        known_indices = data[~missing_mask].index
+        if len(known_indices) < 5:  # Arbitrary threshold to ensure we have enough data
+            debug(f"Not enough known {field} values to train classifier ({len(known_indices)} found)")
+            continue
+        
+        # Extract known data for training
+        X_train = [text_features[i] for i in known_indices]
+        y_train = data.loc[known_indices, field].values
+        
+        # Get text for prediction
+        X_test = [text_features[i] for i in missing_indices]
+        
+        # Get or create classifier
+        classifier = get_cached_classifier(field, X_train, y_train)
+        if classifier is None:
+            debug(f"Could not create classifier for {field}")
+            continue
+        
+        # Make predictions with probabilities
+        predictions = classifier.predict(X_test)
+        probabilities = classifier.predict_proba(X_test)
+        confidences = [max(probs) for probs in probabilities]
+        
+        # Create a enhanced field name
+        enhanced_field = f"{field}_enhanced"
+        confidence_field = f"{field}_confidence"
+        low_confidence_field = f"{field}_low_confidence"
+        
+        # Fill in the enhanced field with original values to start
+        data[enhanced_field] = data[field]
+        
+        # Flag for low confidence predictions to help users identify uncertain predictions
+        data[low_confidence_field] = False
+        
+        # Add confidence scores and handle NA values safely
+        data[confidence_field] = pd.NA
+        
+        # For indices with predictions, update the values
+        for i, (idx, pred, conf) in enumerate(zip(missing_indices, predictions, confidences)):
+            # Update enhanced field with prediction
+            data.loc[idx, enhanced_field] = pred
+            
+            # Store confidence score
+            data.loc[idx, confidence_field] = conf
+            
+            # Flag low confidence predictions (threshold arbitrary, can be tuned)
+            data.loc[idx, low_confidence_field] = conf < 0.7
+        
+        debug(f"Enhanced {field} with ML predictions for {len(missing_indices)} entries")
+    
+    # Final cleanup - make sure all enhanced fields don't have NA values
+    for field in classification_fields:
+        enhanced_field = f"{field}_enhanced"
+        confidence_field = f"{field}_confidence"
+        low_confidence_field = f"{field}_low_confidence"
+        
+        if enhanced_field in data.columns:
+            # Replace any remaining NA values with 'Unspecified'
+            data[enhanced_field] = data[enhanced_field].fillna('Unspecified')
+            
+        if confidence_field in data.columns:
+            # Fill NA confidence with 0
+            data[confidence_field] = data[confidence_field].fillna(0.0)
+            
+        if low_confidence_field in data.columns:
+            # Ensure boolean field has no NAs
+            data[low_confidence_field] = data[low_confidence_field].fillna(False)
+    
+    debug("Completed ticket classification")
+    return data
 
 def display_visualizations(df, customers):
-    """Display all visualizations according to PRD requirements."""
+    """Display visualizations using the dataset."""
     try:
         if df is None or df.empty:
             st.warning("No data available for visualization.")
             return
+            
+        # Make a defensive copy of the dataframe
+        df = df.copy()
         
-        # Debug logging for data validation
-        debug("Visualization data shape", df.shape)
-        debug("Available columns", df.columns.tolist())
-        
-        # Create filtered dataframe excluding unspecified data
-        total_records = len(df)
-        df_filtered = df[
-            (df['Product_Area__c'] != 'Unspecified') &
-            (df['Product_Feature__c'] != 'Unspecified') &
-            (df['RCA__c'] != 'Not Specified')
-        ].copy()
-        
-        excluded_records = total_records - len(df_filtered)
-        if excluded_records > 0:
-            st.warning(
-                f"ℹ️ {excluded_records} records ({(excluded_records/total_records)*100:.1f}%) "
-                "are being excluded from visualizations due to unspecified values in Product Area, "
-                "Product Feature, or Root Cause fields."
-            )
-        
-        # Overview Statistics
-        st.header("Overview Statistics")
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        with col1:
-            st.metric("Total Cases", len(df_filtered))
-        with col2:
-            st.metric("Active Accounts", len(customers))
-        with col3:
-            st.metric("Product Areas", df_filtered['Product_Area__c'].nunique())
-        with col4:
-            avg_csat = df_filtered[df_filtered['CSAT__c'].notna()]['CSAT__c'].mean()
-            st.metric("Avg CSAT", f"{avg_csat:.2f}" if pd.notna(avg_csat) else "N/A")
-        with col5:
-            escalation_rate = (df_filtered['IsEscalated'].mean() * 100)
-            st.metric("Escalation Rate", f"{escalation_rate:.1f}%" if pd.notna(escalation_rate) else "N/A")
-        
-        # 1. Ticket Volume Analysis
-        st.header("Ticket Volume Analysis")
-        for customer in customers:
-            try:
-                customer_df = df_filtered[df_filtered['Account_Name'] == customer].copy()
-                if customer_df.empty:
-                    st.warning(f"No data available for customer: {customer}")
-                    continue
-                
-                # Created tickets
-                customer_df['Month'] = pd.to_datetime(customer_df['CreatedDate']).dt.to_period('M')
-                created_monthly = customer_df.groupby('Month').size().reset_index(name='Created')
-                
-                # Closed tickets
-                closed_df = customer_df[customer_df['ClosedDate'].notna()].copy()
-                if not closed_df.empty:
-                    closed_df['Month'] = pd.to_datetime(closed_df['ClosedDate']).dt.to_period('M')
-                    closed_monthly = closed_df.groupby('Month').size().reset_index(name='Closed')
-                    monthly_data = pd.merge(created_monthly, closed_monthly, on='Month', how='outer').fillna(0)
-                else:
-                    monthly_data = created_monthly
-                    monthly_data['Closed'] = 0
-                
-                monthly_data['Month'] = monthly_data['Month'].astype(str)
-                
-                # Create Seaborn plot
-                plt.figure(figsize=(12, 6))
-                monthly_data_melted = pd.melt(monthly_data, id_vars=['Month'], value_vars=['Created', 'Closed'])
-                sns.barplot(data=monthly_data_melted, x='Month', y='value', hue='variable', palette=VOLUME_PALETTE)
-                plt.title(f"{customer} - Ticket Volume Trends")
-                plt.xlabel("Month")
-                plt.ylabel("Number of Tickets")
-                plt.xticks(rotation=45)
-                plt.tight_layout()
-                st.pyplot(plt)
-                plt.close()
-                
-            except Exception as e:
-                st.error(f"Error displaying ticket volume analysis for {customer}: {str(e)}")
+        # Pre-emptively handle NA values in ALL columns to avoid boolean ambiguity
+        for col in df.columns:
+            # Skip CSAT__c column as it needs special handling
+            if col == 'CSAT__c':
                 continue
+            # For object (string) columns, fill NAs with 'Unspecified'
+            if df[col].dtype == 'object' or pd.api.types.is_string_dtype(df[col]):
+                df[col] = df[col].fillna('Unspecified')
+            # For numeric columns, fill NAs with 0
+            elif pd.api.types.is_numeric_dtype(df[col]):
+                df[col] = df[col].fillna(0)
+            # For boolean columns, fill NAs with False
+            elif pd.api.types.is_bool_dtype(df[col]):
+                df[col] = df[col].fillna(False)
+            # For datetime columns, don't modify (we'll handle them specially)
         
-        # 2. Response Time Analysis
-        st.header("Response Time Analysis")
-        response_df = df_filtered[df_filtered['First_Response_Time__c'].notna()].copy()
-        response_df['Response_Time_Hours'] = (
-            response_df['First_Response_Time__c'] - response_df['CreatedDate']
-        ).dt.total_seconds() / 3600
+        # Debug CSAT data before any processing
+        debug(f"CSAT data types before processing: {df['CSAT__c'].apply(type).value_counts()}")
+        debug(f"CSAT null count before processing: {df['CSAT__c'].isna().sum()}")
+        debug(f"CSAT value counts before processing: {df['CSAT__c'].value_counts().head()}")
         
-        # Count records before filtering
-        total_records = len(response_df)
+        debug("Pre-processed visualization dataframe to handle NA values")
+            
+        # Check if we have enhanced classification fields and inform user
+        has_enhanced_fields = any(col.endswith('_enhanced') for col in df.columns)
+        if has_enhanced_fields:
+            st.info("📊 Using AI-enhanced classification fields for visualizations where available.")
+            
+            # Show sample of reclassified tickets
+            with st.expander("View AI-Enhanced Classifications"):
+                # Get fields that have been enhanced
+                enhanced_fields = [col[:-9] for col in df.columns if col.endswith('_enhanced')]
+                
+                if enhanced_fields:
+                    # For each enhanced field, show before/after
+                    for orig_field in enhanced_fields:
+                        enhanced_field = f"{orig_field}_enhanced"
+                        confidence_field = f"{orig_field}_confidence"
+                        
+                        # Skip fields that aren't actually present
+                        if orig_field not in df.columns or enhanced_field not in df.columns:
+                            continue
+                            
+                        # Only show samples where the original was Unspecified but we predicted it
+                        # Handle NA values safely by using string comparison to avoid boolean issues
+                        reclassified = df[(df[orig_field] == 'Unspecified') & (df[enhanced_field] != 'Unspecified')].copy()
+                        
+                        if not reclassified.empty:
+                            st.write(f"### {orig_field} Reclassifications")
+                            st.write(f"Found {len(reclassified)} tickets with missing {orig_field} that were automatically classified.")
+                            
+                            # Prepare a nice display table
+                            display_df = reclassified[['CaseNumber', 'Subject', enhanced_field]].copy()
+                            
+                            # Add confidence if available
+                            if confidence_field in reclassified.columns:
+                                display_df['Confidence'] = reclassified[confidence_field].apply(lambda x: f"{x:.1%}" if pd.notna(x) else "N/A")
+                                
+                            # Limit to 10 examples
+                            if len(display_df) > 10:
+                                display_df = display_df.head(10)
+                                
+                            st.dataframe(display_df)
         
-        # Filter out negative response times but include zero
-        response_df = response_df[response_df['Response_Time_Hours'] >= 0]
+        # Use enhanced fields when available for visualizations
+        # Make sure to handle NAs appropriately in all visualizations
+        area_field = 'Product_Area__c_enhanced' if 'Product_Area__c_enhanced' in df.columns else 'Product_Area__c'
+        feature_field = 'Product_Feature__c_enhanced' if 'Product_Feature__c_enhanced' in df.columns else 'Product_Feature__c'
+        rca_field = 'RCA__c_enhanced' if 'RCA__c_enhanced' in df.columns else 'RCA__c'
         
-        # Calculate and display filtered records
-        filtered_records = total_records - len(response_df)
-        if filtered_records > 0:
-            st.warning(f"⚠️ {filtered_records} records ({(filtered_records/total_records)*100:.1f}%) were excluded due to negative response times, which likely indicates data anomalies.")
+        # Fill NAs in classification fields to avoid boolean ambiguity issues
+        for field in [area_field, feature_field, rca_field]:
+            if field in df.columns:
+                df[field] = df[field].fillna('Unspecified')
         
-        plt.figure(figsize=(12, 6))
-        sns.boxplot(data=response_df, x='Account_Name', y='Response_Time_Hours', 
-                   hue='Internal_Priority__c', palette=PRIORITY_PALETTE)
-        plt.title('Time to First Response by Priority')
+        # Count of tickets by customer
+        st.subheader("Tickets by Customer")
+        
+        # Determine active accounts based on whether they have tickets in the dataset
+        active_accounts = df['Account_Name'].unique()
+        
+        # Count tickets by account
+        customer_df = df.copy()
+        ticket_counts = customer_df.groupby('Account_Name').size().reset_index(name='Ticket_Count')
+        
+        plt.figure(figsize=(10, 6))
+        bar_plot = sns.barplot(x='Account_Name', y='Ticket_Count', data=ticket_counts)
+        plt.title('Ticket Count by Customer')
         plt.xlabel('Customer')
-        plt.ylabel('Response Time (Hours)')
+        plt.ylabel('Number of Tickets')
         plt.xticks(rotation=45)
+        
+        # Add count labels on top of each bar
+        for i, count in enumerate(ticket_counts['Ticket_Count']):
+            bar_plot.text(i, count + 0.1, str(count), ha='center')
+            
         plt.tight_layout()
         st.pyplot(plt)
         plt.close()
         
-        # 3. CSAT Analysis
-        st.header("Customer Satisfaction Analysis")
-        csat_df = df_filtered[df_filtered['CSAT__c'].notna()].copy()
+        # Tickets over time
+        st.subheader("Ticket Volume Over Time (Created vs Closed)")
         
-        if len(csat_df) == 0:
-            st.info("ℹ️ No customer satisfaction scores are available for the selected time period. This could be because customers haven't provided CSAT responses yet.")
-        else:
-            # Sort by date to ensure chronological order
-            csat_df['Month'] = csat_df['CreatedDate'].dt.to_period('M')
-            csat_df = csat_df.sort_values('Month')  # Sort by date
-            csat_df['Month'] = csat_df['Month'].astype(str)  # Convert to string after sorting
+        # Convert CreatedDate to month periods for time series analysis
+        customer_df['Month'] = pd.to_datetime(customer_df['CreatedDate']).dt.to_period('M')
+        ticket_trend = customer_df.groupby(['Month', 'Account_Name']).size().reset_index(name='Count')
+        
+        # Sort by month to ensure chronological order
+        ticket_trend = ticket_trend.sort_values('Month')
+        
+        # Convert Month back to string for plotting
+        ticket_trend['Month'] = ticket_trend['Month'].astype(str)
+        ticket_trend['Type'] = 'Created'
+        
+        # Filter for closed tickets
+        closed_df = df[df['Status'] == 'Closed'].copy()
+        
+        # Process closed tickets if available
+        if not closed_df.empty:
+            # Convert ClosedDate to month periods
+            closed_df['Month'] = pd.to_datetime(closed_df['ClosedDate']).dt.to_period('M')
+            closed_trend = closed_df.groupby(['Month', 'Account_Name']).size().reset_index(name='Count')
             
-            plt.figure(figsize=(12, 6))
-            g = sns.lineplot(data=csat_df, x='Month', y='CSAT__c', 
-                            hue='Account_Name', marker='o', palette="Set2")
-            plt.title('CSAT Scores Trend')
+            # Sort by month to ensure chronological order
+            closed_trend = closed_trend.sort_values('Month')
+            
+            # Convert Month back to string for plotting
+            closed_trend['Month'] = closed_trend['Month'].astype(str)
+            closed_trend['Type'] = 'Closed'
+            
+            # Combine created and closed ticket data
+            combined_trend = pd.concat([ticket_trend, closed_trend], ignore_index=True)
+            
+            # Create the combined visualization
+            plt.figure(figsize=(14, 7))
+            
+            # Use barplot with hue for ticket type (Created vs Closed)
+            sns.barplot(data=combined_trend, x='Month', y='Count', hue='Type')
+            
+            plt.title('Ticket Volume Over Time (Created vs Closed)')
             plt.xlabel('Month')
-            plt.ylabel('CSAT Score')
+            plt.ylabel('Number of Tickets')
             plt.xticks(rotation=45)
+            plt.legend(title='Ticket Type')
             plt.tight_layout()
             st.pyplot(plt)
             plt.close()
-            
-            # Display summary statistics
-            st.subheader("CSAT Summary Statistics")
-            csat_summary = csat_df.groupby('Account_Name')['CSAT__c'].agg(['count', 'mean', 'min', 'max']).round(2)
-            csat_summary.columns = ['Number of Responses', 'Average CSAT', 'Minimum CSAT', 'Maximum CSAT']
-            st.dataframe(csat_summary)
-        
-        # 4. Resolution Time Analysis
-        st.header("Resolution Time Analysis")
-        resolved_df = df_filtered[df_filtered['ClosedDate'].notna()].copy()
-        # Filter out records where priority is not set
-        resolved_df = resolved_df[resolved_df['Internal_Priority__c'] != 'Not Set']
-        resolved_df['Resolution_Time_Days'] = (
-            resolved_df['ClosedDate'] - resolved_df['CreatedDate']
-        ).dt.total_seconds() / (24 * 3600)
-        resolved_df['Month'] = resolved_df['CreatedDate'].dt.to_period('M').astype(str)
-        
-        # Create FacetGrid for resolution time by priority analysis
-        g = sns.FacetGrid(resolved_df, col='Account_Name', col_wrap=2, height=4, aspect=1.5)
-        g.map_dataframe(sns.boxplot, x='Internal_Priority__c', y='Resolution_Time_Days', 
-                       hue='Internal_Priority__c', palette=PRIORITY_PALETTE, legend=False)
-        g.fig.suptitle('Resolution Time by Priority', y=1.02)
-        plt.tight_layout()
-        st.pyplot(g.fig)
-        plt.close()
-        
-        # Add Resolution Time by Product Area visualization
-        st.subheader("Resolution Time by Product Area")
-        plt.figure(figsize=(12, 6))
-        sns.boxplot(data=resolved_df, x='Product_Area__c', y='Resolution_Time_Days',
-                   hue='Product_Area__c', palette=BLUES_PALETTE, legend=False)
-        plt.title('Resolution Time Distribution by Product Area')
-        plt.xlabel('Product Area')
-        plt.ylabel('Resolution Time (Days)')
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        st.pyplot(plt)
-        plt.close()
-        
-        # 5. Product Distribution Analysis
-        st.header("Product Distribution Analysis")
-        
-        # Get top 15 product areas by ticket volume
-        top_15_areas = df_filtered['Product_Area__c'].value_counts().head(15).index
-        df_top_areas = df_filtered[df_filtered['Product_Area__c'].isin(top_15_areas)].copy()
-        
-        # Show percentage of data represented by top 15 areas
-        total_area_cases = len(df_filtered)
-        top_15_area_cases = len(df_top_areas)
-        area_coverage_percent = (top_15_area_cases / total_area_cases) * 100
-        st.info(f"📊 Showing top 15 product areas, representing {area_coverage_percent:.1f}% of all cases.")
-        
-        # Create cross-tabulation for heatmap with top 15 areas
-        df_top_areas['Product_Feature_Truncated'] = df_top_areas['Product_Feature__c'].apply(lambda x: truncate_string(x, 30))
-        product_heatmap = pd.crosstab(df_top_areas['Product_Area__c'], df_top_areas['Product_Feature_Truncated'])
-        
-        plt.figure(figsize=(15, 10))  # Increased height for better readability
-        sns.heatmap(product_heatmap, annot=True, fmt='d', cmap=HEATMAP_PALETTE, 
-                   cbar_kws={'label': 'Ticket Count'})
-        plt.title('Top 15 Product Areas vs Feature Distribution')
-        plt.xlabel('Product Feature')
-        plt.ylabel('Product Area')
-        plt.tight_layout()
-        st.pyplot(plt)
-        plt.close()
-        
-        # 6. Text Analysis
-        st.header("Text Analysis")
-        for customer in customers:
-            customer_df = df_filtered[df_filtered['Account_Name'] == customer]
-            st.subheader(f"{customer} - Text Analysis")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                subject_cloud = generate_wordcloud(
-                    customer_df['Subject'].str.cat(sep=' '),
-                    'Common Terms in Subjects'
-                )
-                if subject_cloud:
-                    st.pyplot(subject_cloud)
-            
-            with col2:
-                desc_cloud = generate_wordcloud(
-                    customer_df['Description'].str.cat(sep=' '),
-                    'Common Terms in Descriptions'
-                )
-                if desc_cloud:
-                    st.pyplot(desc_cloud)
-        
-        # 7. Root Cause Analysis
-        if 'RCA__c' in df_filtered.columns:
-            st.header("Root Cause Analysis")
-            
-            # Get root cause counts and select top 15
-            root_cause_counts = df_filtered['RCA__c'].value_counts()
-            top_15_causes = root_cause_counts.head(15).index.tolist()
-            
-            # Filter dataframe to include only top 15 root causes
-            df_top_causes = df_filtered[df_filtered['RCA__c'].isin(top_15_causes)].copy()
-            
-            # Show percentage of data represented by top 15 causes
-            total_cases = len(df_filtered)
-            top_15_cases = len(df_top_causes)
-            coverage_percent = (top_15_cases / total_cases) * 100
-            st.info(f"📊 Showing top 15 root causes, representing {coverage_percent:.1f}% of all cases.")
-            
-            # Distribution of root causes
-            plt.figure(figsize=(12, 8))  # Increased height for better readability
-            root_cause_counts = df_top_causes['RCA__c'].value_counts().reset_index()
-            root_cause_counts.columns = ['RCA', 'Count']
-            
-            # Use a color palette that matches the number of categories
-            n_colors = len(root_cause_counts)
-            current_palette = sns.color_palette(ROOT_CAUSE_PALETTE[:n_colors])
-            
-            # Fix palette warning by using hue parameter
-            sns.barplot(data=root_cause_counts, x='Count', y='RCA', 
-                       hue='RCA', palette=current_palette, legend=False)
-            plt.title('Distribution of Top 15 Root Causes')
-            plt.xlabel('Number of Tickets')
-            plt.tight_layout()
-            st.pyplot(plt)
-            plt.close()
-            
-            # Root Cause by Product Area heatmap
-            root_cause_product = pd.crosstab(df_top_causes['RCA__c'], df_top_causes['Product_Area__c'])
-            plt.figure(figsize=(14, 10))  # Increased size for better readability
-            sns.heatmap(root_cause_product, annot=True, fmt='d', cmap=HEATMAP_PALETTE,
-                       cbar_kws={'label': 'Ticket Count'})
-            plt.title('Top 15 Root Causes by Product Area')
-            plt.tight_layout()
-            st.pyplot(plt)
-            plt.close()
-            
-            # Resolution time by root cause
-            resolution_by_root = df_top_causes[df_top_causes['ClosedDate'].notna()].copy()
-            resolution_by_root['Resolution_Time_Days'] = (
-                resolution_by_root['ClosedDate'] - resolution_by_root['CreatedDate']
-            ).dt.total_seconds() / (24 * 3600)
-            
-            plt.figure(figsize=(14, 8))  # Increased width for better readability
-            # Fix palette warning by using hue parameter
-            sns.boxplot(data=resolution_by_root, x='RCA__c', y='Resolution_Time_Days',
-                       hue='RCA__c', palette=current_palette, legend=False)
-            plt.title('Resolution Time by Root Cause (Top 15)')
-            plt.xlabel('Root Cause')
-            plt.ylabel('Resolution Time (Days)')
-            plt.xticks(rotation=45, ha='right')  # Improved label readability
-            plt.tight_layout()
-            st.pyplot(plt)
-            plt.close()
-        
-        # 8. Configuration Analysis
-        st.header("Configuration Analysis")
-        
-        # Define configuration categories
-        config_categories = ['Configuration Implementation Miss', 'Net New Configuration']
-        config_miss_category = ['Configuration Implementation Miss']
-        
-        # Create a copy of the dataframe for configuration analysis
-        config_df = df_filtered.copy()
-        
-        # Filter for configuration-related tickets
-        config_df['Is_Config_Related'] = config_df['RCA__c'].isin(config_categories)
-        config_df['Is_Config_Miss'] = config_df['RCA__c'].isin(config_miss_category)
-        
-        # Get the first ticket date for each account
-        account_first_tickets = config_df.groupby('Account_Name')['CreatedDate'].min()
-        
-        # Calculate the date range for each account (45 days from first ticket)
-        account_date_ranges = pd.DataFrame({
-            'First_Ticket': account_first_tickets,
-            'Range_End': account_first_tickets + pd.Timedelta(days=45)
-        })
-        
-        # Initialize lists to store data for visualization
-        account_data = []
-        
-        for account in customers:
-            if account in account_date_ranges.index:
-                # Get date range for this account
-                start_date = account_date_ranges.loc[account, 'First_Ticket']
-                end_date = account_date_ranges.loc[account, 'Range_End']
-                
-                # Filter tickets for this account within the date range
-                account_tickets = config_df[
-                    (config_df['Account_Name'] == account) &
-                    (config_df['CreatedDate'] >= start_date) &
-                    (config_df['CreatedDate'] <= end_date)
-                ]
-                
-                # Count configuration-related tickets
-                config_count = account_tickets['Is_Config_Related'].sum()
-                config_miss_count = account_tickets['Is_Config_Miss'].sum()
-                total_count = len(account_tickets)
-                
-                # Calculate percentages
-                config_percentage = (config_count / total_count * 100) if total_count > 0 else 0
-                config_miss_percentage = (config_miss_count / total_count * 100) if total_count > 0 else 0
-                
-                # Calculate average resolution time for config miss cases
-                config_miss_resolution = account_tickets[account_tickets['Is_Config_Miss']]
-                avg_resolution_time = None
-                if not config_miss_resolution.empty and 'ClosedDate' in config_miss_resolution.columns:
-                    resolved_cases = config_miss_resolution[config_miss_resolution['ClosedDate'].notna()]
-                    if not resolved_cases.empty:
-                        avg_resolution_time = (resolved_cases['ClosedDate'] - resolved_cases['CreatedDate']).dt.total_seconds().mean() / (24 * 3600)
-                
-                # Store the data
-                account_data.append({
-                    'Account': account,
-                    'Config_Tickets': config_count,
-                    'Config_Miss_Tickets': config_miss_count,
-                    'Total_Tickets': total_count,
-                    'Config_Percentage': config_percentage,
-                    'Config_Miss_Percentage': config_miss_percentage,
-                    'Avg_Resolution_Days': avg_resolution_time,
-                    'Start_Date': start_date.strftime('%Y-%m-%d'),
-                    'End_Date': end_date.strftime('%Y-%m-%d')
-                })
-        
-        if account_data:
-            # Create DataFrame for visualization
-            config_analysis_df = pd.DataFrame(account_data)
-            
-            # Display summary information
-            st.info("📊 This analysis shows configuration-related tickets created within the first 45 days "
-                   "of each account's first ticket, with special focus on Configuration Implementation Miss cases.")
-            
-            # Create three columns for the visualizations
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                # Bar chart showing absolute numbers
-                plt.figure(figsize=(10, 6))
-                
-                # Create a categorical color palette for the bars
-                config_palette = {
-                    'Config Miss': BLUES_PALETTE[2],
-                    'Other Config': AQUA_PALETTE[2],
-                    'Other Tickets': PURPLE_PALETTE[2]
-                }
-                
-                # Prepare data for seaborn
-                plot_data = pd.DataFrame({
-                    'Account': config_analysis_df['Account'].repeat(3),
-                    'Type': ['Config Miss'] * len(config_analysis_df) + 
-                           ['Other Config'] * len(config_analysis_df) + 
-                           ['Other Tickets'] * len(config_analysis_df),
-                    'Count': list(config_analysis_df['Config_Miss_Tickets']) + 
-                            list(config_analysis_df['Config_Tickets'] - config_analysis_df['Config_Miss_Tickets']) +
-                            list(config_analysis_df['Total_Tickets'] - config_analysis_df['Config_Tickets'])
-                })
-                
-                # Use seaborn's barplot with proper hue
-                sns.barplot(data=plot_data, x='Account', y='Count', 
-                          hue='Type', palette=config_palette)
-                
-                plt.xlabel('Account')
-                plt.ylabel('Number of Tickets')
-                plt.title('Ticket Distribution\n(First 45 Days)')
-                plt.xticks(rotation=45, ha='right')
-                plt.legend(title='')
-                plt.tight_layout()
-                st.pyplot(plt)
-                plt.close()
-            
-            with col2:
-                # Percentage visualization
-                plt.figure(figsize=(10, 6))
-                # Fix palette warning by using hue parameter
-                sns.barplot(data=config_analysis_df, x='Account', y='Config_Miss_Percentage',
-                          hue='Account', palette=[BLUES_PALETTE[2]], legend=False)
-                plt.xlabel('Account')
-                plt.ylabel('Percentage of Config Miss Tickets')
-                plt.title('Config Miss Percentage\n(First 45 Days)')
-                plt.xticks(rotation=45, ha='right')
-                plt.axhline(y=50, color='r', linestyle='--', alpha=0.5)
-                plt.tight_layout()
-                st.pyplot(plt)
-                plt.close()
-            
-            with col3:
-                # Resolution time visualization
-                plt.figure(figsize=(10, 6))
-                # Fix palette warning by using hue parameter
-                sns.barplot(data=config_analysis_df, x='Account', y='Avg_Resolution_Days',
-                          hue='Account', palette=[AQUA_PALETTE[2]], legend=False)
-                plt.xlabel('Account')
-                plt.ylabel('Average Resolution Time (Days)')
-                plt.title('Config Miss Resolution Time\n(First 45 Days)')
-                plt.xticks(rotation=45, ha='right')
-                plt.tight_layout()
-                st.pyplot(plt)
-                plt.close()
-            
-            # Display detailed statistics
-            st.subheader("Configuration Analysis Details")
-            
-            # Format the DataFrame for display
-            display_df = config_analysis_df.copy()
-            display_df['Config_Percentage'] = display_df['Config_Percentage'].round(1).astype(str) + '%'
-            display_df['Config_Miss_Percentage'] = display_df['Config_Miss_Percentage'].round(1).astype(str) + '%'
-            display_df['Avg_Resolution_Days'] = display_df['Avg_Resolution_Days'].round(1)
-            display_df.columns = ['Account', 'All Config Tickets', 'Config Miss Tickets', 'Total Tickets', 
-                                'All Config %', 'Config Miss %', 'Avg Resolution (Days)', 'Analysis Start', 'Analysis End']
-            
-            st.dataframe(display_df.set_index('Account'))
-            
-            # Add summary statistics
-            st.subheader("Summary Statistics")
-            total_config_miss = config_analysis_df['Config_Miss_Tickets'].sum()
-            total_tickets = config_analysis_df['Total_Tickets'].sum()
-            overall_config_miss_percentage = (total_config_miss / total_tickets * 100) if total_tickets > 0 else 0
-            avg_resolution_time = config_analysis_df['Avg_Resolution_Days'].mean()
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Config Miss Tickets", total_config_miss)
-            with col2:
-                st.metric("Overall Config Miss %", f"{overall_config_miss_percentage:.1f}%")
-            with col3:
-                st.metric("Average Resolution Time", f"{avg_resolution_time:.1f} days")
         else:
-            st.warning("No configuration-related tickets found in the first 45 days for any account.")
+            # If no closed tickets, just show created tickets
+            plt.figure(figsize=(12, 6))
+            sns.barplot(data=ticket_trend, x='Month', y='Count', hue='Account_Name')
+            plt.title('Ticket Volume Over Time (Created)')
+            plt.xlabel('Month')
+            plt.ylabel('Number of Tickets')
+            plt.xticks(rotation=45)
+            plt.legend(title='Customer')
+            plt.tight_layout()
+            st.pyplot(plt)
+            plt.close()
+            st.info("No closed tickets found in the selected date range.")
+        
+        # First Response Time Analysis
+        st.subheader("First Response Time Analysis")
+
+        try:
+            # Get case IDs for fetching related data
+            case_ids = df['Id'].tolist()
+            
+            if not case_ids:
+                st.info("No cases available for response time analysis.")
+                return
+                
+            # Fetch related data (comments and emails)
+            debug(f"Fetching related data for {len(case_ids)} cases")
+            emails_df, comments_df, history_df, attachments_df = fetch_related_data(case_ids)
+            
+            # Calculate first response time
+            response_times = []
+            for idx, case in df.iterrows():
+                if pd.isna(case['CreatedDate']):
+                    continue
+                    
+                case_id = case['Id']
+                created_date = pd.to_datetime(case['CreatedDate'])
+                priority = case.get('Priority', 'Not Set')
+                account_name = case['Account_Name']
+                
+                # Find first public comment or email
+                first_response = None
+                
+                # Check comments
+                if comments_df is not None and not comments_df.empty:
+                    case_comments = comments_df[comments_df['ParentId'] == case_id]
+                    if not case_comments.empty:
+                        first_comment = pd.to_datetime(case_comments['CreatedDate'].min())
+                        first_response = first_comment if first_response is None else min(first_response, first_comment)
+                
+                # Check emails
+                if emails_df is not None and not emails_df.empty:
+                    case_emails = emails_df[emails_df['ParentId'] == case_id]
+                    if not case_emails.empty:
+                        first_email = pd.to_datetime(case_emails['CreatedDate'].min())
+                        first_response = first_email if first_response is None else min(first_response, first_email)
+                
+                if first_response is not None:
+                    response_time = (first_response - created_date).total_seconds() / 3600  # Convert to hours
+                    if response_time >= 0:  # Filter out negative response times (data errors)
+                        response_times.append({
+                            'Case_Id': case_id,
+                            'Account_Name': account_name,
+                            'Priority': priority,
+                            'Response_Time_Hours': response_time
+                        })
+            
+            if response_times:
+                response_times_df = pd.DataFrame(response_times)
+                
+                # Original account-based analysis
+                account_response_stats = response_times_df.groupby('Account_Name').agg({
+                    'Response_Time_Hours': ['count', 'mean', 'median', 'std']
+                }).round(2)
+                
+                account_response_stats.columns = ['Count', 'Mean Hours', 'Median Hours', 'Std Dev']
+                st.write("### Response Time by Customer")
+                st.dataframe(account_response_stats, use_container_width=True)
+                
+                # Priority-based Response Time Analysis
+                if 'Priority' in df.columns:
+                    st.write("### Response Time by Priority")
+                    priority_stats = response_times_df.groupby('Priority').agg({
+                        'Response_Time_Hours': ['count', 'mean', 'median', 'std']
+                    }).round(2)
+                    
+                    priority_stats.columns = ['Count', 'Mean Hours', 'Median Hours', 'Std Dev']
+                    st.dataframe(priority_stats, use_container_width=True)
+                    
+                    # Box plot of response times by priority
+                    plt.figure(figsize=(12, 6))
+                    sns.boxplot(data=response_times_df, x='Priority', y='Response_Time_Hours', hue='Priority', legend=False)
+                    plt.title('Distribution of First Response Time by Priority')
+                    plt.xlabel('Priority')
+                    plt.ylabel('Response Time (Hours)')
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                    
+                    # Trend analysis by priority
+                    response_times_df['Month'] = pd.to_datetime(df.loc[response_times_df['Case_Id'], 'CreatedDate']).dt.to_period('M')
+                    monthly_priority_stats = response_times_df.groupby(['Month', 'Priority'])['Response_Time_Hours'].mean().reset_index()
+                    monthly_priority_stats['Month'] = monthly_priority_stats['Month'].astype(str)
+                    
+                    plt.figure(figsize=(12, 6))
+                    for priority in monthly_priority_stats['Priority'].unique():
+                        priority_data = monthly_priority_stats[monthly_priority_stats['Priority'] == priority]
+                        plt.plot(priority_data['Month'], priority_data['Response_Time_Hours'], 
+                                marker='o', label=priority)
+                    
+                    plt.title('Average First Response Time Trend by Priority')
+                    plt.xlabel('Month')
+                    plt.ylabel('Average Response Time (Hours)')
+                    plt.legend(title='Priority')
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                    
+                    # Add SLA analysis if available
+                    if 'SLA_Response_Time__c' in df.columns:
+                        st.write("### SLA Compliance Analysis")
+                        response_times_df['SLA_Target'] = df.loc[response_times_df['Case_Id'], 'SLA_Response_Time__c'].values
+                        response_times_df['Within_SLA'] = response_times_df['Response_Time_Hours'] <= response_times_df['SLA_Target']
+                        
+                        sla_stats = response_times_df.groupby('Priority').agg({
+                            'Within_SLA': ['count', 'mean']
+                        }).round(3)
+                        
+                        sla_stats.columns = ['Total Cases', 'SLA Compliance Rate']
+                        sla_stats['SLA Compliance Rate'] = (sla_stats['SLA Compliance Rate'] * 100).round(1).astype(str) + '%'
+                        st.dataframe(sla_stats, use_container_width=True)
+            else:
+                st.warning("No valid response time data available.")
+
+        except Exception as e:
+            st.error(f"Error analyzing First Response Time: {str(e)}")
+            debug(f"First Response Time analysis error: {str(e)}")
+            debug(traceback.format_exc())
+
+        # Continue with Resolution Time Analysis if available
+        st.subheader("Resolution Time Analysis")
+        
+        # Filter for resolved cases
+        resolved_df = df[df['Status'] == 'Closed'].copy()
+        
+        if not resolved_df.empty:
+            # Calculate resolution time in days
+            resolved_df['Resolution_Time_Days'] = (pd.to_datetime(resolved_df['ClosedDate']) - 
+                                                pd.to_datetime(resolved_df['CreatedDate'])).dt.total_seconds() / (60*60*24)
+            
+            # Filter out any negative resolution times (data errors)
+            resolved_df = resolved_df[resolved_df['Resolution_Time_Days'] >= 0]
+            
+            # Add month for time series
+            resolved_df['Month'] = resolved_df['CreatedDate'].dt.to_period('M').astype(str)
+            
+            # By Product Area - Use enhanced field if available
+            if 'Product_Area__c_enhanced' in resolved_df.columns:
+                product_field = 'Product_Area__c_enhanced'
+                debug("Using enhanced Product Area field for visualizations")
+            else:
+                product_field = 'Product_Area__c'
+            
+            if product_field in resolved_df.columns:
+                # Drop rows with null product area - explicitly fill NA values first
+                resolved_df[product_field] = resolved_df[product_field].fillna('Unspecified')
+                product_resolution = resolved_df[resolved_df[product_field] != 'Unspecified'].copy()
+                
+                if not product_resolution.empty:
+                    plt.figure(figsize=(10, 6))
+                    # Get unique values to set appropriate palette size
+                    unique_areas = product_resolution[product_field].dropna().unique()
+                    palette = sns.color_palette("Set2", n_colors=len(unique_areas))
+                    
+                    sns.boxplot(data=product_resolution, x=product_field, y='Resolution_Time_Days',
+                              palette=palette)
+                    plt.title('Resolution Time by Product Area')
+                    plt.xlabel('Product Area')
+                    plt.ylabel('Resolution Time (Days)')
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+            
+            # By Product Feature - Use enhanced field if available
+            if feature_field in resolved_df.columns:
+                # Drop rows with null product feature - explicitly fill NA values first
+                resolved_df[feature_field] = resolved_df[feature_field].fillna('Unspecified')
+                feature_resolution = resolved_df[resolved_df[feature_field] != 'Unspecified'].copy()
+                
+                if not feature_resolution.empty:
+                    plt.figure(figsize=(10, 6))
+                    # Get unique values to set appropriate palette size
+                    unique_features = feature_resolution[feature_field].dropna().unique()
+                    palette = sns.color_palette("Set2", n_colors=len(unique_features))
+                    
+                    sns.boxplot(data=feature_resolution, x=feature_field, y='Resolution_Time_Days',
+                              palette=palette)
+                    plt.title('Resolution Time by Product Feature')
+                    plt.xlabel('Product Feature')
+                    plt.ylabel('Resolution Time (Days)')
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+            
+            # Root Cause Analysis - Use enhanced field if available
+            if rca_field in resolved_df.columns:
+                st.subheader("Root Cause Analysis")
+                
+                # Drop rows with null RCA - explicitly fill NA values first
+                resolved_df[rca_field] = resolved_df[rca_field].fillna('Unspecified')
+                resolution_by_root = resolved_df[resolved_df[rca_field] != 'Unspecified'].copy()
+                
+                if not resolution_by_root.empty:
+                    # Distribution of RCA
+                    plt.figure(figsize=(10, 6))
+                    root_counts = resolution_by_root[rca_field].value_counts()
+                    # Only plot the top N causes to avoid cluttering
+                    top_n = min(10, len(root_counts))
+                    # Get unique values to set appropriate palette size
+                    unique_rca = resolution_by_root[rca_field].unique()
+                    palette = sns.color_palette("Set3", n_colors=len(unique_rca))
+                    
+                    sns.countplot(data=resolution_by_root, x=rca_field, 
+                                order=root_counts.index[:top_n],
+                                palette=palette)
+                    plt.title('Distribution of Root Causes')
+                    plt.xlabel('Root Cause')
+                    plt.ylabel('Number of Tickets')
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                    
+                    # Resolution time by RCA
+                    plt.figure(figsize=(10, 6))
+                    sns.boxplot(data=resolution_by_root, x=rca_field, y='Resolution_Time_Days',
+                              order=root_counts.index[:top_n],
+                              palette=palette)
+                    plt.title('Resolution Time by Root Cause')
+                    plt.xlabel('Root Cause')
+                    plt.ylabel('Resolution Time (Days)')
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                    
+                    # In the Resolution Time Analysis section
+                    if not resolved_df.empty:
+                        # Priority-based Resolution Time Analysis
+                        if 'Priority' in resolved_df.columns:
+                            st.write("### Resolution Time by Priority")
+                            priority_resolution_stats = resolved_df.groupby('Priority').agg({
+                                'Resolution_Time_Days': ['count', 'mean', 'median', 'std']
+                            }).round(2)
+                            
+                            priority_resolution_stats.columns = ['Count', 'Mean Days', 'Median Days', 'Std Dev']
+                            st.dataframe(priority_resolution_stats, use_container_width=True)
+                            
+                            # Box plot of resolution times by priority
+                            plt.figure(figsize=(12, 6))
+                            sns.boxplot(data=resolved_df, x='Priority', y='Resolution_Time_Days')
+                            plt.title('Distribution of Resolution Time by Priority')
+                            plt.xlabel('Priority')
+                            plt.ylabel('Resolution Time (Days)')
+                            plt.xticks(rotation=45)
+                            plt.tight_layout()
+                            st.pyplot(plt)
+                            plt.close()
+                            
+                            # Trend analysis by priority
+                            resolved_df['Month'] = pd.to_datetime(resolved_df['CreatedDate']).dt.to_period('M')
+                            monthly_priority_resolution = resolved_df.groupby(['Month', 'Priority'])['Resolution_Time_Days'].mean().reset_index()
+                            monthly_priority_resolution['Month'] = monthly_priority_resolution['Month'].astype(str)
+                            
+                            plt.figure(figsize=(12, 6))
+                            for priority in monthly_priority_resolution['Priority'].unique():
+                                priority_data = monthly_priority_resolution[monthly_priority_resolution['Priority'] == priority]
+                                plt.plot(priority_data['Month'], priority_data['Resolution_Time_Days'], 
+                                        marker='o', label=priority)
+                            
+                            plt.title('Average Resolution Time Trend by Priority')
+                            plt.xlabel('Month')
+                            plt.ylabel('Average Resolution Time (Days)')
+                            plt.legend(title='Priority')
+                            plt.xticks(rotation=45)
+                            plt.tight_layout()
+                            st.pyplot(plt)
+                            plt.close()
+            
+            # Add heatmap analysis for Product Area and Product Feature
+            st.subheader("Product Area and Feature Analysis")
+            
+            if product_field in resolved_df.columns and feature_field in resolved_df.columns:
+                # Create pivot tables for volume and resolution time
+                volume_heatmap = pd.crosstab(resolved_df[product_field], resolved_df[feature_field])
+                resolution_time_heatmap = pd.pivot_table(
+                    resolved_df,
+                    values='Resolution_Time_Days',
+                    index=product_field,
+                    columns=feature_field,
+                    aggfunc='mean'
+                )
+                
+                # Create two columns for the heatmaps
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("#### Ticket Volume by Product Area and Feature")
+                    plt.figure(figsize=(12, 8))
+                    sns.heatmap(volume_heatmap, annot=True, fmt='d', cmap='YlOrRd',
+                               cbar_kws={'label': 'Number of Tickets'})
+                    plt.title('Ticket Volume Heatmap')
+                    plt.xlabel('Product Feature')
+                    plt.ylabel('Product Area')
+                    plt.xticks(rotation=45, ha='right')
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                
+                with col2:
+                    st.write("#### Average Resolution Time by Product Area and Feature")
+                    plt.figure(figsize=(12, 8))
+                    sns.heatmap(resolution_time_heatmap, annot=True, fmt='.1f', cmap='YlOrRd',
+                               cbar_kws={'label': 'Average Resolution Time (Days)'})
+                    plt.title('Resolution Time Heatmap')
+                    plt.xlabel('Product Feature')
+                    plt.ylabel('Product Area')
+                    plt.xticks(rotation=45, ha='right')
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                
+                # Add summary statistics
+                st.write("#### Summary Statistics")
+                summary_stats = pd.DataFrame({
+                    'Metric': [
+                        'Total Unique Product Areas',
+                        'Total Unique Features',
+                        'Most Common Product Area',
+                        'Most Common Feature',
+                        'Highest Volume Combination',
+                        'Longest Avg Resolution Time Combination'
+                    ],
+                    'Value': [
+                        len(volume_heatmap.index),
+                        len(volume_heatmap.columns),
+                        volume_heatmap.sum(axis=1).idxmax(),
+                        volume_heatmap.sum(axis=0).idxmax(),
+                        f"{volume_heatmap.stack().idxmax()[0]} - {volume_heatmap.stack().idxmax()[1]} ({volume_heatmap.stack().max()} tickets)",
+                        f"{resolution_time_heatmap.stack().idxmax()[0]} - {resolution_time_heatmap.stack().idxmax()[1]} ({resolution_time_heatmap.stack().max():.1f} days)"
+                    ]
+                })
+                st.dataframe(summary_stats, use_container_width=True)
+        else:
+            st.info("No resolved tickets found in the selected date range.")
+            
     except Exception as e:
-        st.error(f"Error in visualization: {str(e)}")
-        st.error("Please check your data or try different selection criteria.")
+        st.error(f"Error displaying visualizations: {str(e)}")
+        debug(f"Error in display_visualizations: {str(e)}")
+        if st.session_state.debug_mode:
+            st.error(f"Debug - Visualization error details: {str(e)}")
 
 def generate_ai_insights(data):
     """Generate AI insights from ticket data using OpenAI."""
@@ -850,249 +1253,180 @@ def generate_ai_insights(data):
             
             # Provide a sample response for demonstration purposes
             sample_response = {
-                "summary": "This is a sample AI analysis. To get real insights, please configure your OpenAI API key.",
-                "patterns": [
-                    {"title": "Sample Pattern", "description": "This is an example pattern that would be identified by the AI."},
-                    {"title": "Demo Insight", "description": "In a real analysis, the AI would identify trends and patterns in your ticket data."}
-                ],
-                "recommendations": [
-                    "This is a sample recommendation. Configure your OpenAI API key to get actual insights.",
-                    "Another example recommendation that would be tailored to your specific data."
-                ]
+                "summary": "Sample AI Analysis (OpenAI API key not configured)",
+                "trends": [],
+                "recommendations": [],
+                "csat_analysis": ["CSAT analysis not available - OpenAI API key not configured"]
             }
-            
-            # Save a sample HTML file for demonstration
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            html_filename = f"sample_ai_response_{timestamp}.html"
-            
-            with open(html_filename, "w") as f:
-                f.write(f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Sample AI Response</title>
-                    <style>
-                        body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
-                        pre {{ background-color: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }}
-                        h1, h2 {{ color: #333; }}
-                        .metadata {{ color: #666; font-size: 0.9em; }}
-                        .json {{ color: #0066cc; }}
-                        .warning {{ color: #ff6600; background-color: #fff3e0; padding: 10px; border-radius: 5px; }}
-                    </style>
-                </head>
-                <body>
-                    <h1>Sample AI Response</h1>
-                    <div class="warning">
-                        <p><strong>Note:</strong> This is a sample response because no OpenAI API key was found.</p>
-                        <p>To get real AI insights, please configure your OpenAI API key in the environment variables or Streamlit secrets.</p>
-                    </div>
-                    <div class="metadata">
-                        <p>Generated on: {timestamp}</p>
-                    </div>
-                    <h2>Sample JSON:</h2>
-                    <pre class="json">{json.dumps(sample_response, indent=2)}</pre>
-                </body>
-                </html>
-                """)
-            
-            # Store the HTML file path in session state for download
-            st.session_state.latest_ai_html_file = html_filename
-            debug(f"Saved sample AI response to {html_filename}")
-            
             return sample_response
+
+        # Prepare CSAT data for analysis
+        csat_data = data.copy()
         
-        debug("OpenAI API key found")
+        # Convert CSAT to numeric, keeping only valid values (0-5)
+        csat_data['CSAT__c'] = pd.to_numeric(csat_data['CSAT__c'], errors='coerce')
+        valid_csat = csat_data[
+            (csat_data['CSAT__c'].notna()) & 
+            (csat_data['CSAT__c'] >= 0) & 
+            (csat_data['CSAT__c'] <= 5)
+        ]
         
-        # Set up OpenAI client
-        try:
-            client = openai.OpenAI(api_key=openai_api_key)
-            debug("OpenAI client initialized successfully")
-        except Exception as e:
-            st.error(f"Error initializing OpenAI client: {str(e)}")
-            debug("OpenAI client initialization error", str(e))
-            return None
+        # Calculate CSAT metrics
+        total_tickets = len(data)
+        total_csat_responses = len(valid_csat)
+        response_rate = (total_csat_responses / total_tickets * 100) if total_tickets > 0 else 0
         
-        # Prepare data for analysis
-        cases_df = data['cases']
+        csat_insights = []
+        if not valid_csat.empty:
+            avg_csat = valid_csat['CSAT__c'].mean()
+            median_csat = valid_csat['CSAT__c'].median()
+            
+            # Group by month for trend analysis
+            valid_csat['Month'] = pd.to_datetime(valid_csat['CreatedDate']).dt.to_period('M')
+            monthly_csat = valid_csat.groupby('Month')['CSAT__c'].agg(['mean', 'count']).reset_index()
+            monthly_csat['Month'] = monthly_csat['Month'].astype(str)
+            
+            # Identify trends
+            if len(monthly_csat) > 1:
+                latest_month = monthly_csat.iloc[-1]
+                previous_month = monthly_csat.iloc[-2]
+                csat_change = latest_month['mean'] - previous_month['mean']
+                response_change = latest_month['count'] - previous_month['count']
+                
+                if abs(csat_change) >= 0.5:  # Significant change threshold
+                    trend = "increased" if csat_change > 0 else "decreased"
+                    csat_insights.append(
+                        f"CSAT scores have {trend} by {abs(csat_change):.1f} points "
+                        f"from {previous_month['Month']} to {latest_month['Month']}"
+                    )
+                
+                if abs(response_change) >= 2:  # Significant change threshold
+                    trend = "increased" if response_change > 0 else "decreased"
+                    csat_insights.append(
+                        f"CSAT response count has {trend} by {abs(response_change)} "
+                        f"from {previous_month['Month']} to {latest_month['Month']}"
+                    )
+            
+            # Analyze CSAT by status
+            status_csat = valid_csat.groupby('Status')['CSAT__c'].agg(['mean', 'count']).round(2)
+            status_csat = status_csat[status_csat['count'] >= 3]  # Only include statuses with sufficient data
+            
+            if not status_csat.empty:
+                best_status = status_csat.nlargest(1, 'mean').index[0]
+                worst_status = status_csat.nsmallest(1, 'mean').index[0]
+                csat_insights.append(
+                    f"Tickets with status '{best_status}' have the highest average CSAT ({status_csat.loc[best_status, 'mean']:.1f}), "
+                    f"while '{worst_status}' have the lowest ({status_csat.loc[worst_status, 'mean']:.1f})"
+                )
+            
+            # Analyze CSAT by priority
+            if 'Priority' in valid_csat.columns:
+                priority_csat = valid_csat.groupby('Priority')['CSAT__c'].agg(['mean', 'count']).round(2)
+                priority_csat = priority_csat[priority_csat['count'] >= 3]
+                
+                if not priority_csat.empty:
+                    best_priority = priority_csat.nlargest(1, 'mean').index[0]
+                    worst_priority = priority_csat.nsmallest(1, 'mean').index[0]
+                    csat_insights.append(
+                        f"{best_priority} priority tickets have the highest average CSAT ({priority_csat.loc[best_priority, 'mean']:.1f}), "
+                        f"while {worst_priority} priority have the lowest ({priority_csat.loc[worst_priority, 'mean']:.1f})"
+                    )
+            
+            # Add overall CSAT metrics
+            csat_insights.insert(0, 
+                f"Overall CSAT metrics: Average: {avg_csat:.1f}, Median: {median_csat:.1f}, "
+                f"Response rate: {response_rate:.1f}% ({total_csat_responses} out of {total_tickets} tickets)"
+            )
+        else:
+            csat_insights.append("No valid CSAT responses found in the selected date range")
         
-        # Create a summary of the data
-        case_summary = {
-            "total_cases": len(cases_df),
-            "product_areas": cases_df['Product_Area__c'].value_counts().to_dict(),
-            "priorities": cases_df['Internal_Priority__c'].value_counts().to_dict(),
-            "statuses": cases_df['Status'].value_counts().to_dict(),
-            "root_causes": cases_df['RCA__c'].value_counts().to_dict(),
+        # Initialize OpenAI client and continue with existing analysis
+        debug("Initializing OpenAI client")
+        from openai import OpenAI
+        client = OpenAI(api_key=openai_api_key)
+        
+        # Prepare data for OpenAI analysis
+        analysis_data = data.copy()
+        
+        # Create a summary for the OpenAI prompt
+        summary = {
+            "total_tickets": len(analysis_data),
+            "customers": analysis_data['Account_Name'].unique().tolist() if 'Account_Name' in analysis_data.columns else [],
+            "ticket_statuses": analysis_data['Status'].value_counts().to_dict() if 'Status' in analysis_data.columns else {},
+            "csat_summary": {
+                "total_responses": total_csat_responses,
+                "response_rate": response_rate,
+                "average_csat": float(avg_csat) if 'avg_csat' in locals() else None,
+                "median_csat": float(median_csat) if 'median_csat' in locals() else None
+            }
         }
         
-        # Add implementation phase data if available
-        if 'IMPL_Phase__c' in cases_df.columns:
-            case_summary["implementation_phases"] = cases_df['IMPL_Phase__c'].fillna('Not Specified').value_counts().to_dict()
-        
-        # Sample of case subjects and descriptions (limit to 20 for API constraints)
-        sample_columns = ['Subject', 'Description', 'RCA__c', 'Status']
-        if 'IMPL_Phase__c' in cases_df.columns:
-            sample_columns.append('IMPL_Phase__c')
-            
-        case_samples = cases_df.sample(min(20, len(cases_df)))[sample_columns].to_dict('records')
-        
-        debug("Data prepared for OpenAI", f"Summary contains {len(case_summary)} keys, {len(case_samples)} samples")
-        
-        # Prepare the prompt
+        # Construct a prompt for OpenAI
         prompt = f"""
-        Analyze the following support ticket data and provide insights:
+        Analyze this support ticket data summary:
         
-        Summary Statistics:
-        {json.dumps(case_summary, indent=2)}
+        {json.dumps(summary, indent=2)}
         
-        Sample Cases:
-        {json.dumps(case_samples, indent=2)}
+        CSAT Insights:
+        {json.dumps(csat_insights, indent=2)}
         
-        Please provide:
-        1. A summary of key insights from the data
-        2. Patterns or trends you identify in the tickets
-        3. Recommendations for improving customer support
+        Please generate a comprehensive analysis focusing on:
+        1. Overall summary of the ticket data and CSAT metrics
+        2. Identified patterns and trends in CSAT scores
+        3. Specific recommendations for improving customer satisfaction
         
-        Format your response as JSON with the following structure:
+        Respond with valid JSON in this format:
         {{
-            "summary": "Overall summary of insights",
-            "patterns": [
-                {{"title": "Pattern 1", "description": "Description of pattern 1"}},
-                {{"title": "Pattern 2", "description": "Description of pattern 2"}}
-            ],
-            "recommendations": [
-                "Recommendation 1",
-                "Recommendation 2"
-            ]
+            "summary": "General overview and key insights",
+            "trends": ["Trend 1", "Trend 2", ...],
+            "recommendations": ["Recommendation 1", "Recommendation 2", ...],
+            "csat_analysis": {json.dumps(csat_insights)}
         }}
-        
-        IMPORTANT: Your entire response must be valid JSON that can be parsed with json.loads().
-        Do not include any text before or after the JSON object.
-        Do not include markdown formatting like ```json or ``` around the JSON.
-        Just return the raw JSON object.
         """
         
         # Call OpenAI API
         try:
-            debug("Calling OpenAI API")
-            st.session_state.ai_analysis_in_progress = True
-            
-            # Add a clear message that API call is in progress
-            st.info("🧠 Calling OpenAI API to analyze ticket data... This may take a moment.")
-            
             response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights. Your response must be valid JSON."},
+                    {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights about customer satisfaction and support performance."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.5,
-                max_tokens=2000
-                # Removed response_format parameter which is not supported by the model
+                temperature=0.7,
+                max_tokens=2000,
+                response_format={"type": "json_object"}
             )
-            debug("OpenAI API call successful")
-            st.session_state.ai_analysis_in_progress = False
-        except Exception as e:
-            st.error(f"Error calling OpenAI API: {str(e)}")
-            debug("OpenAI API call error", str(e))
-            st.session_state.ai_analysis_in_progress = False
-            return None
-        
-        # Extract and parse the response
-        ai_response = response.choices[0].message.content
-        debug("OpenAI response received", ai_response[:100] + "..." if len(ai_response) > 100 else ai_response)
-        
-        # Save the raw response to an HTML file
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>OpenAI Response - {timestamp}</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
-                pre {{ background-color: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }}
-                h1, h2 {{ color: #333; }}
-                .metadata {{ color: #666; font-size: 0.9em; }}
-                .json {{ color: #0066cc; }}
-            </style>
-        </head>
-        <body>
-            <h1>OpenAI Response</h1>
-            <div class="metadata">
-                <p>Generated on: {timestamp}</p>
-                <p>Model: gpt-4</p>
-            </div>
-            <h2>Raw Response:</h2>
-            <pre>{html.escape(ai_response)}</pre>
             
-            <h2>Parsed JSON:</h2>
-            <pre class="json" id="parsed-json"></pre>
-        </body>
-        </html>
-        """
-        
-        # Save the HTML file
-        html_filename = f"openai_response_{timestamp}.html"
-        with open(html_filename, "w") as f:
-            f.write(html_content)
-        debug(f"Saved OpenAI response to {html_filename}")
-        
-        # Store the HTML file path in session state for download
-        st.session_state.latest_ai_html_file = html_filename
-        
-        # Parse the JSON response
-        try:
-            # First try direct JSON parsing
-            try:
-                insights = json.loads(ai_response)
-                debug("JSON parsed successfully on first attempt")
-            except json.JSONDecodeError:
-                # If direct parsing fails, try to extract JSON using regex
-                debug("Direct JSON parsing failed, trying regex extraction")
-                json_match = re.search(r'({.*})', ai_response, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(1)
-                    try:
-                        insights = json.loads(json_str)
-                        debug("JSON extracted and parsed successfully using regex")
-                    except json.JSONDecodeError:
-                        # If regex extraction fails, try to clean the response
-                        debug("Regex extraction failed, trying to clean the response")
-                        # Remove markdown code block markers if present
-                        cleaned_response = re.sub(r'```json|```', '', ai_response).strip()
-                        try:
-                            insights = json.loads(cleaned_response)
-                            debug("JSON parsed successfully after cleaning")
-                        except json.JSONDecodeError as e:
-                            st.error(f"Error parsing JSON response: {str(e)}")
-                            debug("All JSON parsing attempts failed")
-                            debug("Raw response that failed to parse:", ai_response)
-                            return None
-                else:
-                    st.error("Could not extract JSON from the response")
-                    debug("No JSON-like structure found in the response")
-                    debug("Raw response:", ai_response)
-                    return None
+            # Parse the response
+            ai_response = json.loads(response.choices[0].message.content)
             
-            # Also save as JSON file for easier processing
-            json_filename = f"openai_response_{timestamp}.json"
-            with open(json_filename, "w") as f:
-                json.dump(insights, f, indent=2)
-            debug(f"Saved parsed JSON to {json_filename}")
+            # Ensure CSAT insights are included
+            if 'csat_analysis' not in ai_response:
+                ai_response['csat_analysis'] = csat_insights
+                
+            return ai_response
             
-            return insights
-        except Exception as e:
-            st.error(f"Unexpected error processing AI response: {str(e)}")
-            debug("Unexpected error in JSON processing", str(e))
-            debug("Raw response:", ai_response)
-            return None
+        except Exception as api_error:
+            debug(f"OpenAI API error: {str(api_error)}")
+            # Return basic insights without AI analysis
+            return {
+                "summary": "AI analysis unavailable - using basic statistical analysis",
+                "trends": [],
+                "recommendations": [
+                    "Monitor CSAT response rate and work on improving it",
+                    "Focus on addressing issues in statuses with lower CSAT scores",
+                    "Consider priority-based routing for better customer satisfaction"
+                ],
+                "csat_analysis": csat_insights
+            }
             
     except Exception as e:
         st.error(f"Error generating AI insights: {str(e)}")
-        debug("General error in generate_ai_insights", str(e))
+        debug(f"Error in generate_ai_insights: {str(e)}")
+        debug(traceback.format_exc())
         return None
 
-def generate_wordcloud(text_data, title):
+def generate_wordcloud(text_data, title, additional_stopwords=None):
     """Generate a word cloud from the given text data."""
     if not isinstance(text_data, str):
         text_data = ' '.join(str(x) for x in text_data if pd.notna(x))
@@ -1138,6 +1472,9 @@ def generate_wordcloud(text_data, title):
     # Update stopwords with custom ones
     stopwords.update(custom_stopwords)
     
+    if additional_stopwords:
+        stopwords.update(additional_stopwords)
+    
     try:
         # Generate word cloud
         wordcloud = WordCloud(
@@ -1161,7 +1498,7 @@ def generate_wordcloud(text_data, title):
         st.error(f"Error generating word cloud: {str(e)}")
         return None
 
-def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate):
+def generate_powerpoint(filtered_df, active_accounts, escalation_rate):
     """Generate PowerPoint presentation with charts and statistics."""
     try:
         # Create presentation
@@ -1185,12 +1522,29 @@ def generate_powerpoint(filtered_df, active_accounts, avg_csat, escalation_rate)
         title.text = "Overview Statistics"
         content = slide.placeholders[1]
         
-        # Add statistics as bullet points
+        # Calculate average CSAT if available
+        avg_csat_text = "N/A"
+        if 'CSAT__c' in filtered_df.columns:
+            try:
+                # Convert to numeric and filter for valid range
+                csat_numeric = pd.to_numeric(filtered_df['CSAT__c'], errors='coerce')
+                # Only include non-null values in the valid range
+                valid_csat = csat_numeric[(csat_numeric >= 0) & (csat_numeric <= 5) & csat_numeric.notna()]
+                if not valid_csat.empty:
+                    avg_csat = valid_csat.mean()
+                    avg_csat_text = f"{avg_csat:.2f}"
+                    debug(f"PowerPoint CSAT calculation: {len(valid_csat)} valid values, average: {avg_csat:.2f}")
+                else:
+                    debug("PowerPoint CSAT calculation: No valid CSAT values found")
+            except Exception as e:
+                debug(f"Error calculating CSAT for PowerPoint: {str(e)}")
+        
+        # Add statistics as bullet points - CSAT reference added back
         stats_text = (
             f"• Total Cases: {len(filtered_df)}\n"
             f"• Active Accounts: {active_accounts}\n"
             f"• Product Areas: {filtered_df['Product_Area__c'].nunique()}\n"
-            f"• Average CSAT: {avg_csat:.2f}\n"
+            f"• Average CSAT: {avg_csat_text}\n"
             f"• Escalation Rate: {escalation_rate:.1f}%"
         )
         content.text = stats_text
@@ -1208,68 +1562,106 @@ def export_data(df, format, customers):
         # Create a copy of the dataframe to avoid modifying the original
         export_df = df.copy()
         
-        # Convert timezone-aware datetime columns to timezone-naive
-        datetime_columns = export_df.select_dtypes(include=['datetime64[ns, UTC]']).columns
-        for col in datetime_columns:
-            export_df[col] = export_df[col].dt.tz_localize(None)
+        # Handle datetime columns - convert to strings for Excel compatibility
+        datetime_cols = export_df.select_dtypes(include=['datetime']).columns.tolist()
+        if datetime_cols:
+            debug(f"Converting datetime columns for export: {datetime_cols}")
+            for col in datetime_cols:
+                export_df[col] = export_df[col].astype(str)
         
         if format == "Excel":
             output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                # Summary sheet
-                summary_data = {
-                    'Customer': [],
-                    'Total Tickets': [],
-                    'Avg Response Time (hrs)': [],
-                    'Avg Resolution Time (days)': [],
-                    'Avg CSAT': []
-                }
-                
-                for customer in customers:
-                    customer_df = export_df[export_df['Account_Name'] == customer]
-                    summary_data['Customer'].append(customer)
-                    summary_data['Total Tickets'].append(len(customer_df))
+            try:
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    # Summary sheet - CSAT removed from summary
+                    summary_data = {
+                        'Customer': [],
+                        'Total Tickets': [],
+                        'Avg Response Time (hrs)': [],
+                        'Avg Resolution Time (days)': [],
+                        'Avg CSAT (0-5)': []  # Add CSAT back to summary
+                    }
                     
-                    # Response Time
-                    if 'First_Response_Time__c' in customer_df.columns:
-                        resp_time = (customer_df['First_Response_Time__c'] - customer_df['CreatedDate']).dt.total_seconds().mean() / 3600
-                        summary_data['Avg Response Time (hrs)'].append(round(resp_time, 2) if pd.notna(resp_time) else 'N/A')
-                    else:
-                        summary_data['Avg Response Time (hrs)'].append('N/A')
+                    for customer in customers:
+                        customer_df = export_df[export_df['Account_Name'] == customer]
+                        summary_data['Customer'].append(customer)
+                        summary_data['Total Tickets'].append(len(customer_df))
+                        
+                        # Response Time calculation using string dates
+                        if 'First_Response_Time__c' in customer_df.columns and 'CreatedDate' in customer_df.columns:
+                            try:
+                                # Convert back to datetime for calculation
+                                response_times = pd.to_datetime(customer_df['First_Response_Time__c']) - pd.to_datetime(customer_df['CreatedDate'])
+                                # Calculate mean in hours
+                                resp_time = response_times.dt.total_seconds().mean() / 3600
+                                summary_data['Avg Response Time (hrs)'].append(round(resp_time, 2) if pd.notna(resp_time) else 'N/A')
+                            except Exception as e:
+                                debug(f"Error calculating response time: {str(e)}")
+                                summary_data['Avg Response Time (hrs)'].append('N/A')
+                        else:
+                            summary_data['Avg Response Time (hrs)'].append('N/A')
+                        
+                        # Resolution Time calculation using string dates
+                        if 'ClosedDate' in customer_df.columns and 'CreatedDate' in customer_df.columns:
+                            try:
+                                # Convert back to datetime for calculation
+                                resolution_times = pd.to_datetime(customer_df['ClosedDate']) - pd.to_datetime(customer_df['CreatedDate'])
+                                # Calculate mean in days
+                                res_time = resolution_times.dt.total_seconds().mean() / (24 * 3600)
+                                summary_data['Avg Resolution Time (days)'].append(round(res_time, 2) if pd.notna(res_time) else 'N/A')
+                            except Exception as e:
+                                debug(f"Error calculating resolution time: {str(e)}")
+                                summary_data['Avg Resolution Time (days)'].append('N/A')
+                        else:
+                            summary_data['Avg Resolution Time (days)'].append('N/A')
+                        
+                        # CSAT calculation
+                        if 'CSAT__c' in customer_df.columns:
+                            try:
+                                # Convert CSAT to numeric
+                                csat_numeric = pd.to_numeric(customer_df['CSAT__c'], errors='coerce')
+                                # Only include non-null values in the valid range
+                                valid_csat = csat_numeric[(csat_numeric >= 0) & (csat_numeric <= 5) & csat_numeric.notna()]
+                                if not valid_csat.empty:
+                                    # Calculate average CSAT using only valid values
+                                    avg_csat = valid_csat.mean()
+                                    summary_data['Avg CSAT (0-5)'].append(round(avg_csat, 2) if pd.notna(avg_csat) else 'N/A')
+                                    debug(f"Export CSAT for {customer}: {len(valid_csat)} valid values, average: {avg_csat:.2f}")
+                                else:
+                                    summary_data['Avg CSAT (0-5)'].append('N/A')
+                                    debug(f"Export CSAT for {customer}: No valid CSAT values found")
+                            except Exception as e:
+                                debug(f"Error calculating CSAT for {customer}: {str(e)}")
+                                summary_data['Avg CSAT (0-5)'].append('N/A')
+                        else:
+                            summary_data['Avg CSAT (0-5)'].append('N/A')
                     
-                    # Resolution Time
-                    if 'ClosedDate' in customer_df.columns:
-                        res_time = (customer_df['ClosedDate'] - customer_df['CreatedDate']).dt.total_seconds().mean() / (24 * 3600)
-                        summary_data['Avg Resolution Time (days)'].append(round(res_time, 2) if pd.notna(res_time) else 'N/A')
-                    else:
-                        summary_data['Avg Resolution Time (days)'].append('N/A')
+                    # Write summary sheet
+                    pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
                     
-                    # CSAT
-                    if 'CSAT__c' in customer_df.columns:
-                        avg_csat = customer_df['CSAT__c'].mean()
-                        summary_data['Avg CSAT'].append(round(avg_csat, 2) if pd.notna(avg_csat) else 'N/A')
-                    else:
-                        summary_data['Avg CSAT'].append('N/A')
+                    # Write detailed data sheets
+                    for customer in customers:
+                        customer_df = export_df[export_df['Account_Name'] == customer]
+                        sheet_name = truncate_string(customer, 31)  # Excel sheet names limited to 31 chars
+                        customer_df.to_excel(writer, sheet_name=sheet_name, index=False)
                 
-                # Write summary sheet
-                pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
+                # Offer download
+                st.download_button(
+                    label="Download Excel Report",
+                    data=output.getvalue(),
+                    file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as excel_error:
+                debug(f"Excel export failed: {str(excel_error)}")
+                st.error(f"Excel export failed. Error: {str(excel_error)}")
+                # Fallback to CSV
+                st.info("Attempting CSV export as fallback...")
+                export_data(df, "CSV", customers)
                 
-                # Write detailed data sheets
-                for customer in customers:
-                    customer_df = export_df[export_df['Account_Name'] == customer]
-                    sheet_name = truncate_string(customer, 31)  # Excel sheet names limited to 31 chars
-                    customer_df.to_excel(writer, sheet_name=sheet_name, index=False)
-            
-            # Offer download
-            st.download_button(
-                label="Download Excel Report",
-                data=output.getvalue(),
-                file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
         elif format == "PowerPoint":
             pptx_data = generate_powerpoint(export_df, len(export_df['Account_Name'].unique()), 
-                                          export_df['CSAT__c'].mean(), export_df['IsEscalated'].mean() * 100)
+                                          export_df['IsEscalated'].mean() * 100)
             st.download_button(
                 label="Download PowerPoint",
                 data=pptx_data,
@@ -1418,325 +1810,575 @@ def fetch_detailed_data(customer, start_date, end_date):
         return None
 
 def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis=True):
-    """Display detailed analysis of ticket data."""
-    st.header("Detailed Ticket Analysis")
-    
-    # Debug the AI analysis flag
-    debug("AI analysis flag in display_detailed_analysis:", enable_ai_analysis)
-    debug("Skip implementation phase analysis:", skip_impl_phase_analysis)
-    
-    # Create a progress bar for the entire analysis process
-    progress_bar = st.progress(0)
-    
-    cases_df = data['cases']
-    comments_df = data['comments']
-    history_df = data['history']
-    emails_df = data['emails']
-    
-    # Update progress
-    progress_bar.progress(10, text="Analyzing basic statistics...")
-    
-    # Basic statistics
-    st.subheader("Ticket Overview")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Tickets", len(cases_df))
-    with col2:
-        closed_cases = cases_df[cases_df['Status'].isin(['Closed', 'Resolved'])]
-        st.metric("Closed Tickets", len(closed_cases))
-    with col3:
-        avg_resolution_time = None
-        if not closed_cases.empty:
-            try:
-                # Ensure both date columns are datetime objects and not null
-                valid_cases = closed_cases[closed_cases['ClosedDate'].notna() & closed_cases['CreatedDate'].notna()].copy()
-                
-                if not valid_cases.empty:
-                    # Convert to datetime if not already
-                    if not pd.api.types.is_datetime64_any_dtype(valid_cases['CreatedDate']):
-                        valid_cases['CreatedDate'] = pd.to_datetime(valid_cases['CreatedDate'], errors='coerce')
-                    if not pd.api.types.is_datetime64_any_dtype(valid_cases['ClosedDate']):
-                        valid_cases['ClosedDate'] = pd.to_datetime(valid_cases['ClosedDate'], errors='coerce')
-                    
-                    # Recalculate with valid datetime objects only
-                    valid_cases = valid_cases[valid_cases['ClosedDate'].notna() & valid_cases['CreatedDate'].notna()]
-                    
-                    if not valid_cases.empty:
-                        resolution_times = (valid_cases['ClosedDate'] - valid_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
-                        avg_resolution_time = resolution_times.mean()
-            except Exception as e:
-                debug(f"Error calculating average resolution time: {str(e)}")
-                avg_resolution_time = None
-        
-        st.metric("Avg Resolution Time", f"{avg_resolution_time:.1f} days" if avg_resolution_time else "N/A")
-    with col4:
-        escalated_count = cases_df['IsEscalated'].sum()
-        escalation_rate = (escalated_count / len(cases_df)) * 100 if len(cases_df) > 0 else 0
-        st.metric("Escalation Rate", f"{escalation_rate:.1f}%")
-    
-    # Update progress - adjust based on whether we're skipping implementation phase analysis
-    if skip_impl_phase_analysis:
-        progress_bar.progress(25, text="Preparing ticket details...")
-    else:
-        progress_bar.progress(20, text="Analyzing implementation phases...")
-        
-        # Implementation Phase Analysis (if available and not skipped)
-        if 'IMPL_Phase__c' in cases_df.columns and not skip_impl_phase_analysis:
-            st.subheader("Implementation Phase Analysis")
+    """Display detailed analysis of the selected customer's tickets."""
+    try:
+        # Check if data is None
+        if data is None:
+            st.warning("No data available for analysis.")
+            return
             
-            # Count cases by implementation phase
-            phase_counts = cases_df['IMPL_Phase__c'].fillna('Not Specified').value_counts()
-            
-            # Create a pie chart
-            plt.figure(figsize=(10, 6))
-            plt.pie(phase_counts, labels=phase_counts.index, autopct='%1.1f%%', 
-                    startangle=90, colors=sns.color_palette('Blues', len(phase_counts)))
-            plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
-            plt.title('Cases by Implementation Phase')
-            st.pyplot(plt)
-            plt.close()
-            
-            # Create a bar chart showing resolution time by implementation phase
-            if not closed_cases.empty and 'IMPL_Phase__c' in closed_cases.columns:
-                try:
-                    # Calculate resolution time
-                    closed_cases = closed_cases.copy()
-                    
-                    # Ensure CreatedDate and ClosedDate are datetime objects
-                    if pd.api.types.is_datetime64_any_dtype(closed_cases['CreatedDate']) and pd.api.types.is_datetime64_any_dtype(closed_cases['ClosedDate']):
-                        # Calculate resolution time only for rows where both dates are valid
-                        mask = closed_cases['ClosedDate'].notna() & closed_cases['CreatedDate'].notna()
-                        valid_cases = closed_cases[mask].copy()
-                        
-                        if not valid_cases.empty:
-                            valid_cases['Resolution_Time_Days'] = (valid_cases['ClosedDate'] - valid_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
-                            
-                            # Group by implementation phase
-                            phase_resolution = valid_cases.groupby('IMPL_Phase__c')['Resolution_Time_Days'].mean().reset_index()
-                            phase_resolution = phase_resolution.sort_values('Resolution_Time_Days', ascending=False)
-                            
-                            # Create bar chart - fix the palette warning by setting hue and legend=False
-                            plt.figure(figsize=(10, 6))
-                            sns.barplot(data=phase_resolution, x='IMPL_Phase__c', y='Resolution_Time_Days', 
-                                       hue='IMPL_Phase__c', palette='Blues', legend=False)
-                            plt.title('Average Resolution Time by Implementation Phase')
-                            plt.xlabel('Implementation Phase')
-                            plt.ylabel('Resolution Time (Days)')
-                            plt.xticks(rotation=45)
-                            plt.tight_layout()
-                            st.pyplot(plt)
-                            plt.close()
-                        else:
-                            st.info("No cases with valid creation and closure dates to calculate resolution time by implementation phase.")
-                    else:
-                        st.info("Cannot calculate resolution time: date fields are not in the expected datetime format.")
-                except Exception as e:
-                    st.error(f"Error calculating resolution time by implementation phase: {str(e)}")
-                    debug(f"Resolution time calculation error: {str(e)}")
-        
-        progress_bar.progress(40, text="Preparing ticket details...")
-    
-    # Ticket details
-    with st.expander("Ticket Details", expanded=False):
-        display_columns = ['CaseNumber', 'Subject', 'Status', 'Internal_Priority__c', 
-                          'Product_Area__c', 'Product_Feature__c', 'CreatedDate', 'ClosedDate']
-        
-        # Add IMPL_Phase__c if available and not skipping implementation phase
-        if 'IMPL_Phase__c' in cases_df.columns and not skip_impl_phase_analysis:
-            display_columns.append('IMPL_Phase__c')
-            
-        st.dataframe(cases_df[display_columns])
-    
-    # Update progress - adjust based on whether we're skipping implementation phase analysis
-    if skip_impl_phase_analysis:
-        progress_bar.progress(40, text="Analyzing comments...")
-    else:
-        progress_bar.progress(50, text="Analyzing comments...")
-    
-    # Comments analysis
-    if not comments_df.empty:
-        st.subheader("Comments Analysis")
-        
-        # Group comments by case
-        comments_by_case = comments_df.groupby('ParentId').size().reset_index(name='comment_count')
-        cases_with_comments = pd.merge(
-            cases_df[['Id', 'CaseNumber', 'Subject']], 
-            comments_by_case, 
-            left_on='Id', 
-            right_on='ParentId', 
-            how='left'
-        )
-        cases_with_comments['comment_count'] = cases_with_comments['comment_count'].fillna(0).astype(int)
-        
-        # Visualize comment distribution
-        plt.figure(figsize=(10, 6))
-        sns.histplot(data=cases_with_comments, x='comment_count', bins=10, kde=True)
-        plt.title('Distribution of Comments per Ticket')
-        plt.xlabel('Number of Comments')
-        plt.ylabel('Number of Tickets')
-        st.pyplot(plt)
-        plt.close()
-        
-        # Show cases with most comments
-        st.subheader("Tickets with Most Comments")
-        top_commented = cases_with_comments.sort_values('comment_count', ascending=False).head(5)
-        st.dataframe(top_commented[['CaseNumber', 'Subject', 'comment_count']])
-    
-    # Update progress - adjust based on whether we're skipping implementation phase analysis
-    if skip_impl_phase_analysis:
-        progress_bar.progress(55, text="Analyzing email communications...")
-    else:
-        progress_bar.progress(60, text="Analyzing email communications...")
-    
-    # Email analysis
-    if not emails_df.empty:
-        st.subheader("Email Communication Analysis")
-        
-        # Group emails by case
-        emails_by_case = emails_df.groupby('ParentId').size().reset_index(name='email_count')
-        cases_with_emails = pd.merge(
-            cases_df[['Id', 'CaseNumber', 'Subject']], 
-            emails_by_case, 
-            left_on='Id', 
-            right_on='ParentId', 
-            how='left'
-        )
-        cases_with_emails['email_count'] = cases_with_emails['email_count'].fillna(0).astype(int)
-        
-        # Visualize email distribution
-        plt.figure(figsize=(10, 6))
-        sns.histplot(data=cases_with_emails, x='email_count', bins=10, kde=True)
-        plt.title('Distribution of Emails per Ticket')
-        plt.xlabel('Number of Emails')
-        plt.ylabel('Number of Tickets')
-        st.pyplot(plt)
-        plt.close()
-    
-    # Update progress - adjust based on whether we're skipping implementation phase analysis
-    if skip_impl_phase_analysis:
-        progress_bar.progress(70, text="Analyzing status changes...")
-    else:
-        progress_bar.progress(70, text="Analyzing status changes...")
-    
-    # Status change analysis
-    if not history_df.empty:
-        st.subheader("Status Change Analysis")
-        
-        # Filter for status changes
-        status_changes = history_df[history_df['Field'] == 'Status']
-        
-        if not status_changes.empty:
-            # Count status transitions
-            status_transitions = status_changes.groupby(['OldValue', 'NewValue']).size().reset_index(name='count')
-            
-            # Create a heatmap of status transitions
-            pivot_table = status_transitions.pivot_table(
-                values='count', 
-                index='OldValue', 
-                columns='NewValue', 
-                fill_value=0
-            )
-            
-            plt.figure(figsize=(12, 8))
-            sns.heatmap(pivot_table, annot=True, cmap='YlGnBu', fmt='g')
-            plt.title('Status Transition Heatmap')
-            plt.tight_layout()
-            st.pyplot(plt)
-            plt.close()
-    
-    # AI Analysis
-    if enable_ai_analysis:
-        # Update progress - adjust based on whether we're skipping implementation phase analysis
-        if skip_impl_phase_analysis:
-            progress_bar.progress(85, text="Generating AI-powered insights...")
-        else:
-            progress_bar.progress(80, text="Generating AI-powered insights...")
-        
-        # Create a separate section for AI insights with a clear header
-        st.markdown("---")
-        st.header("AI-Powered Insights", help="Insights generated using OpenAI's GPT-4 model")
-        debug("AI analysis enabled in display_detailed_analysis")
-        
-        # Use a spinner to indicate that AI analysis is in progress
-        with st.spinner("🧠 Analyzing ticket data with AI... This may take a moment."):
-            debug("Calling generate_ai_insights")
-            
-            # Force display of the spinner by adding a small delay
-            time.sleep(1)
-            
-            # Call the AI insights function
-            ai_insights = generate_ai_insights(data)
-            debug("generate_ai_insights returned", ai_insights is not None)
-            
-            if ai_insights and isinstance(ai_insights, dict):
-                # Display AI insights
-                st.success("AI analysis completed successfully!")
-                
-                st.subheader("Key Insights")
-                st.markdown(ai_insights.get('summary', 'No summary available'))
-                
-                # Display patterns
-                if 'patterns' in ai_insights and ai_insights['patterns']:
-                    st.subheader("Identified Patterns")
-                    for pattern in ai_insights['patterns']:
-                        if isinstance(pattern, dict) and 'title' in pattern and 'description' in pattern:
-                            st.markdown(f"- **{pattern['title']}**: {pattern['description']}")
-                
-                # Display recommendations
-                if 'recommendations' in ai_insights and ai_insights['recommendations']:
-                    st.subheader("Recommendations")
-                    for rec in ai_insights['recommendations']:
-                        st.markdown(f"- {rec}")
-                
-                # Add a download button for the HTML file
-                if hasattr(st.session_state, 'latest_ai_html_file') and st.session_state.latest_ai_html_file:
-                    try:
-                        with open(st.session_state.latest_ai_html_file, 'r') as f:
-                            html_content = f.read()
-                        st.download_button(
-                            label="Download AI Analysis as HTML",
-                            data=html_content,
-                            file_name=os.path.basename(st.session_state.latest_ai_html_file),
-                            mime="text/html"
-                        )
-                    except Exception as e:
-                        debug(f"Error creating download button: {str(e)}")
+        # Handle whether data is a DataFrame or a dictionary
+        if isinstance(data, dict):
+            # Extract the cases DataFrame from the dictionary
+            if 'cases' in data:
+                cases_df = data['cases']
+                if cases_df is None or cases_df.empty:
+                    st.warning("No ticket data available for analysis.")
+                    return
             else:
-                st.warning("No AI insights were generated. Please check the debug output for more information.")
-                debug("No AI insights were generated or invalid format returned")
+                st.warning("No ticket data found in the provided data.")
+                return
                 
-                # Provide a fallback sample response for demonstration purposes
-                st.info("Showing sample AI insights for demonstration purposes.")
+            # Get references to other data elements
+            comments_df = data.get('comments', pd.DataFrame())
+            history_df = data.get('history', pd.DataFrame())
+            emails_df = data.get('emails', pd.DataFrame())
+        else:
+            # Data is already a DataFrame (direct tickets)
+            if data.empty:
+                st.warning("No data available for analysis.")
+                return
+            cases_df = data
+            # Set others to empty DataFrames since they're not provided
+            comments_df = pd.DataFrame()
+            history_df = pd.DataFrame()
+            emails_df = pd.DataFrame()
+
+        # Safety - Create a defensive copy and ensure all NA values are handled
+        cases_df = cases_df.copy()
+        
+        # Pre-emptively handle NA values in each column to avoid boolean ambiguity issues
+        for col in cases_df.columns:
+            # For object (string) columns, fill NAs with empty string
+            if cases_df[col].dtype == 'object' or pd.api.types.is_string_dtype(cases_df[col]):
+                cases_df[col] = cases_df[col].fillna('')
+            # For numeric columns, fill NAs with 0
+            elif pd.api.types.is_numeric_dtype(cases_df[col]):
+                cases_df[col] = cases_df[col].fillna(0)
+            # For boolean columns, fill NAs with False
+            elif pd.api.types.is_bool_dtype(cases_df[col]):
+                cases_df[col] = cases_df[col].fillna(False)
+        
+        # Set up progress tracking
+        progress_bar = st.progress(0)
+        st.write("## Support Ticket Analysis")
+        
+        # Display key metrics and statistics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # 1. Total tickets
+        with col1:
+            st.metric("Total Tickets", len(cases_df))
+            
+        # 2. Open tickets
+        open_tickets = len(cases_df[cases_df['Status'].isin(['New', 'Open', 'In Progress', 'Reopened'])])
+        with col2:
+            st.metric("Open Tickets", open_tickets)
+            
+        # 3. Closed tickets
+        closed_tickets = len(cases_df[cases_df['Status'].isin(['Closed', 'Solved', 'Resolved'])])
+        with col3:
+            st.metric("Closed Tickets", closed_tickets)
+            
+        # 4. Escalated tickets
+        escalated_tickets = len(cases_df[cases_df['IsEscalated'] == True])
+        with col4:
+            st.metric("Escalated Tickets", escalated_tickets)
+            
+        progress_bar.progress(20)
+        
+        # Ticket breakdown by Product Area
+        st.write("### Ticket Distribution by Product Area")
+        
+        # Use enhanced field if available
+        area_field = 'Product_Area__c_enhanced' if 'Product_Area__c_enhanced' in cases_df.columns else 'Product_Area__c'
+        
+        # Distribution of tickets by product area
+        if area_field in cases_df.columns:
+            # Make sure we handle empty values
+            cases_df[area_field] = cases_df[area_field].fillna('Unspecified')
+            # Create a countplot
+            fig, ax = plt.subplots(figsize=(10, 6))
+            area_counts = cases_df[area_field].value_counts()
+            sns.barplot(x=area_counts.index, y=area_counts.values)
+            plt.title('Tickets by Product Area')
+            plt.xlabel('Product Area')
+            plt.ylabel('Count')
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close()
+            
+        progress_bar.progress(40)
+        
+        # Ticket status distribution
+        st.write("### Ticket Status Distribution")
+        if 'Status' in cases_df.columns:
+            # Make sure we handle empty values
+            cases_df['Status'] = cases_df['Status'].fillna('Unknown')
+            # Create a countplot
+            fig, ax = plt.subplots(figsize=(10, 6))
+            status_counts = cases_df['Status'].value_counts()
+            sns.barplot(x=status_counts.index, y=status_counts.values)
+            plt.title('Tickets by Status')
+            plt.xlabel('Status')
+            plt.ylabel('Count')
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close()
+        
+        progress_bar.progress(60)
+        
+        # Skip Implementation Phase Analysis if requested
+        if not skip_impl_phase_analysis and 'Implementation_Phase__c' in cases_df.columns:
+            st.write("### Implementation Phase Analysis")
+            
+            # Make sure we handle empty values
+            cases_df['Implementation_Phase__c'] = cases_df['Implementation_Phase__c'].fillna('Not Specified')
+            
+            # Create a countplot
+            fig, ax = plt.subplots(figsize=(10, 6))
+            impl_counts = cases_df['Implementation_Phase__c'].value_counts()
+            sns.barplot(x=impl_counts.index, y=impl_counts.values)
+            plt.title('Tickets by Implementation Phase')
+            plt.xlabel('Implementation Phase')
+            plt.ylabel('Count')
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close()
+            
+            # Ticket status by implementation phase
+            ct = pd.crosstab(cases_df['Implementation_Phase__c'], cases_df['Status'])
+            fig, ax = plt.subplots(figsize=(12, 8))
+            ct.plot(kind='bar', stacked=True, ax=ax)
+            plt.title('Status by Implementation Phase')
+            plt.xlabel('Implementation Phase')
+            plt.ylabel('Count')
+            plt.xticks(rotation=45, ha='right')
+            plt.legend(title='Status')
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close()
+        
+        progress_bar.progress(80)
+        
+        # AI-powered analysis if enabled
+        if enable_ai_analysis:
+            st.write("### AI-Powered Insights")
+            with st.spinner("Generating AI insights from ticket data..."):
+                debug("Generating AI insights")
                 
-                sample_insights = {
-                    "summary": "This is a sample AI analysis. To get real insights, please ensure the OpenAI API is properly configured.",
-                    "patterns": [
-                        {"title": "Sample Pattern", "description": "This is an example pattern that would be identified by the AI."},
-                        {"title": "Demo Insight", "description": "In a real analysis, the AI would identify trends and patterns in your ticket data."}
-                    ],
-                    "recommendations": [
-                        "This is a sample recommendation. Configure your OpenAI API key to get actual insights.",
-                        "Another example recommendation that would be tailored to your specific data."
-                    ]
+                # Create a combined data dictionary with cases_df as the main dataframe
+                analysis_data = {
+                    'cases': cases_df,
+                    'comments': comments_df,
+                    'history': history_df,
+                    'emails': emails_df
                 }
                 
-                # Display sample insights
-                st.subheader("Sample Key Insights")
-                st.markdown(sample_insights['summary'])
+                insights = generate_ai_insights(analysis_data)
                 
-                st.subheader("Sample Identified Patterns")
-                for pattern in sample_insights['patterns']:
-                    st.markdown(f"- **{pattern['title']}**: {pattern['description']}")
+                if insights:
+                    # Create tabs for different insight categories
+                    insights_tab, patterns_tab, recommendations_tab = st.tabs(["Summary", "Patterns", "Recommendations"])
+                    
+                    with insights_tab:
+                        st.markdown(insights.get('summary', 'No summary insights available.'))
+                        
+                    with patterns_tab:
+                        patterns = insights.get('patterns', [])
+                        if patterns:
+                            for i, pattern in enumerate(patterns):
+                                st.markdown(f"**Pattern {i+1}:** {pattern}")
+                        else:
+                            st.write("No patterns identified.")
+                            
+                    with recommendations_tab:
+                        recommendations = insights.get('recommendations', [])
+                        if recommendations:
+                            for i, rec in enumerate(recommendations):
+                                st.markdown(f"**Recommendation {i+1}:** {rec}")
+                        else:
+                            st.write("No recommendations available.")
+                    
+                    # Add download button for the full HTML report
+                    if 'html' in insights:
+                        st.download_button(
+                            label="Download AI Analysis Report",
+                            data=insights['html'],
+                            file_name="ai_support_ticket_analysis.html",
+                            mime="text/html"
+                        )
+                else:
+                    # Fallback with sample insights when generation fails
+                    st.info("AI analysis is enabled but no insights were generated. Here's a sample of what insights might look like:")
+                    
+                    # Sample data
+                    st.markdown("""
+                    #### Sample Insights Summary
+                    
+                    The support ticket analysis reveals several key trends and areas for attention. Most tickets are related to 
+                    authentication issues and API integration problems. Response times are generally within SLA, but escalation 
+                    rates are higher for enterprise customers. A significant portion of tickets are reopened after closure, 
+                    suggesting potential issues with solution quality or completeness.
+                    
+                    #### Sample Identified Patterns
+                    
+                    * Authentication-related issues spike after system updates
+                    * Enterprise customers experience more integration challenges
+                    * Documentation questions frequently lead to feature requests
+                    
+                    #### Sample Recommendations
+                    
+                    * Expand authentication troubleshooting documentation
+                    * Create dedicated integration solutions for enterprise customers
+                    * Develop proactive notifications for system updates
+                    """)
+        else:
+            debug("AI analysis is disabled")
+            
+        # Complete progress bar and remove it
+        progress_bar.progress(100)
+        time.sleep(0.5)  # Slight delay to show completion
+        progress_bar.empty()
+            
+        # Text and Sentiment Analysis Section
+        st.write("### Text and Sentiment Analysis")
+        
+        # Define additional stopwords for technical terms
+        additional_stopwords = {
+            'eightfold', 'mailto', 'chrome', 'firefox', 'safari', 'edge', 'opera',
+            'webkit', 'mozilla', 'browser', 'agent', 'http', 'https', 'www',
+            'com', 'net', 'org', 'html', 'htm', 'php', 'asp', 'aspx',
+            'user-agent', 'useragent', 'version', 'windows', 'macintosh', 'linux',
+            'unix', 'android', 'ios', 'mobile', 'desktop', 'platform',
+            'application', 'software', 'browser-agent', 'browseragent'
+        }
+        
+        # Combine text data from different sources
+        text_data = []
+        if not cases_df.empty:
+            # Clean and add text data
+            def clean_text(text):
+                if not isinstance(text, str):
+                    return ''
+                # Remove URLs
+                text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+                # Remove email addresses
+                text = re.sub(r'[\w\.-]+@[\w\.-]+', '', text)
+                # Remove browser agent strings
+                text = re.sub(r'Mozilla/[\d\.]+ \(.*?\)', '', text)
+                # Remove special characters and extra whitespace
+                text = re.sub(r'[^\w\s]', ' ', text)
+                text = ' '.join(text.split())
+                return text.lower()
+            
+            text_data.extend(cases_df['Subject'].apply(clean_text))
+            text_data.extend(cases_df['Description'].apply(clean_text))
+        
+        if not comments_df.empty:
+            text_data.extend(comments_df['CommentBody'].apply(clean_text))
+            
+        if not emails_df.empty:
+            text_data.extend(emails_df['TextBody'].apply(clean_text))
+            
+        combined_text = ' '.join(text_data)
+        
+        # Generate WordCloud with enhanced stopwords
+        if combined_text.strip():
+            st.write("#### Word Cloud Analysis")
+            wordcloud_fig = generate_wordcloud(combined_text, 'Common Terms in All Communications', additional_stopwords)
+            if wordcloud_fig:
+                st.pyplot(wordcloud_fig)
+                plt.close()
+        
+        # Sentiment Analysis with Enhanced Visualization
+        if len(cases_df) > 0:
+            st.write("#### Sentiment Analysis")
+            st.write("""
+            The sentiment analysis uses TextBlob's algorithm, which:
+            1. Performs part-of-speech tagging
+            2. Extracts sentiment-bearing phrases
+            3. Assigns polarity scores (-1 to +1) based on:
+               - Word sentiment from built-in lexicon
+               - Contextual modifiers (e.g., negations)
+               - Intensifiers and diminishers
+            4. Aggregates scores at phrase and text level
+            
+            Interpretation:
+            - 🟢 Positive (0.2 to 1.0): Indicates satisfaction, praise, or positive experiences
+            - 🟡 Neutral (-0.2 to 0.2): Factual or balanced content
+            - 🔴 Negative (-1.0 to -0.2): Indicates dissatisfaction, complaints, or issues
+            """)
+            
+            # Initialize TextBlob for sentiment analysis
+            from textblob import TextBlob
+            
+            # Enhanced sentiment function with subjectivity
+            def get_sentiment(text):
+                if not isinstance(text, str) or not text.strip():
+                    return {'polarity': 0, 'subjectivity': 0}
+                analysis = TextBlob(text).sentiment
+                return {
+                    'polarity': analysis.polarity,
+                    'subjectivity': analysis.subjectivity
+                }
+            
+            # Calculate sentiment for each text source
+            cases_df['subject_sentiment'] = cases_df['Subject'].apply(lambda x: get_sentiment(x)['polarity'])
+            cases_df['description_sentiment'] = cases_df['Description'].apply(lambda x: get_sentiment(x)['polarity'])
+            
+            if not comments_df.empty:
+                comments_df['sentiment'] = comments_df['CommentBody'].apply(lambda x: get_sentiment(x)['polarity'])
                 
-                st.subheader("Sample Recommendations")
-                for rec in sample_insights['recommendations']:
-                    st.markdown(f"- {rec}")
-    
-    # Complete the progress bar
-    progress_bar.progress(100, text="Analysis complete!")
-    time.sleep(0.5)  # Short delay to show the completed progress
-    progress_bar.empty()  # Remove the progress bar after completion
+            if not emails_df.empty:
+                emails_df['sentiment'] = emails_df['TextBody'].apply(lambda x: get_sentiment(x)['polarity'])
+            
+            # Calculate average sentiment per case
+            case_sentiments = pd.DataFrame()
+            case_sentiments['subject_sentiment'] = cases_df['subject_sentiment']
+            case_sentiments['description_sentiment'] = cases_df['description_sentiment']
+            
+            if not comments_df.empty:
+                comment_sentiments = comments_df.groupby('ParentId')['sentiment'].mean()
+                case_sentiments = case_sentiments.join(comment_sentiments.rename('comments_sentiment'), how='left')
+            
+            if not emails_df.empty:
+                email_sentiments = emails_df.groupby('ParentId')['sentiment'].mean()
+                case_sentiments = case_sentiments.join(email_sentiments.rename('email_sentiment'), how='left')
+            
+            # Calculate overall sentiment
+            case_sentiments['overall_sentiment'] = case_sentiments.mean(axis=1)
+            
+            # Create enhanced sentiment distribution plot with emojis
+            fig, ax = plt.subplots(figsize=(12, 6))
+            
+            # Create histogram with custom colors
+            n, bins, patches = plt.hist(case_sentiments['overall_sentiment'], bins=20, 
+                                      density=True, alpha=0.7)
+            
+            # Color the bars based on sentiment
+            for i in range(len(patches)):
+                if bins[i] < -0.2:
+                    patches[i].set_facecolor('#ff6b6b')  # Red for negative
+                elif bins[i] > 0.2:
+                    patches[i].set_facecolor('#4ecdc4')  # Green for positive
+                else:
+                    patches[i].set_facecolor('#ffd93d')  # Yellow for neutral
+            
+            # Add emoji annotations
+            plt.annotate('😊', xy=(0.5, plt.ylim()[1]), fontsize=20)
+            plt.annotate('😐', xy=(0, plt.ylim()[1]), fontsize=20)
+            plt.annotate('😠', xy=(-0.5, plt.ylim()[1]), fontsize=20)
+            
+            plt.title('Distribution of Overall Sentiment')
+            plt.xlabel('Sentiment Score (-1: Very Negative, 1: Very Positive)')
+            plt.ylabel('Density')
+            plt.grid(True, alpha=0.3)
+            st.pyplot(fig)
+            plt.close()
+            
+            # If we have enough tickets, show sentiment trend over time
+            if len(cases_df) >= 20:
+                st.write("#### Sentiment Trend Over Time")
+                
+                # Add timestamps and sort
+                sentiment_trend = pd.DataFrame({
+                    'timestamp': cases_df['CreatedDate'],
+                    'sentiment': case_sentiments['overall_sentiment']
+                })
+                sentiment_trend = sentiment_trend.sort_values('timestamp')
+                
+                # Create monthly averages
+                monthly_sentiment = sentiment_trend.set_index('timestamp').resample('ME')['sentiment'].mean()
+                
+                # Create enhanced trend plot with emojis
+                fig, ax = plt.subplots(figsize=(12, 6))
+                
+                # Plot line with gradient color based on sentiment
+                for i in range(len(monthly_sentiment)-1):
+                    sentiment_value = monthly_sentiment.iloc[i]
+                    color = '#4ecdc4' if sentiment_value > 0.2 else '#ff6b6b' if sentiment_value < -0.2 else '#ffd93d'
+                    plt.plot([monthly_sentiment.index[i], monthly_sentiment.index[i+1]], 
+                            [monthly_sentiment.iloc[i], monthly_sentiment.iloc[i+1]], 
+                            color=color, linewidth=2)
+                
+                # Add points with emojis
+                for i, (date, sentiment) in enumerate(monthly_sentiment.items()):
+                    if sentiment > 0.2:
+                        emoji = '😊'
+                    elif sentiment < -0.2:
+                        emoji = '😠'
+                    else:
+                        emoji = '😐'
+                    plt.annotate(emoji, (date, sentiment), fontsize=12)
+                
+                plt.title('Average Sentiment Trend by Month')
+                plt.xlabel('Month')
+                plt.ylabel('Average Sentiment')
+                plt.grid(True, alpha=0.3)
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
+                
+                # If CSAT scores are available, show correlation
+                if 'CSAT__c' in cases_df.columns:
+                    st.write("#### Sentiment vs CSAT Correlation")
+                    
+                    # Prepare data for correlation
+                    correlation_data = pd.DataFrame({
+                        'Sentiment': case_sentiments['overall_sentiment'],
+                        'CSAT': pd.to_numeric(cases_df['CSAT__c'], errors='coerce')
+                    })
+                    
+                    # Filter for valid CSAT values (0-5 range) and non-null values
+                    correlation_data = correlation_data[
+                        (correlation_data['CSAT'].notna()) & 
+                        (correlation_data['CSAT'] >= 0) & 
+                        (correlation_data['CSAT'] <= 5) &
+                        (correlation_data['Sentiment'].notna())
+                    ]
+                    
+                    if not correlation_data.empty:
+                        # Calculate correlation
+                        correlation = correlation_data['Sentiment'].corr(correlation_data['CSAT'])
+                        
+                        # Create enhanced scatter plot
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        
+                        # Plot points with custom colors
+                        for sentiment, csat in zip(correlation_data['Sentiment'], correlation_data['CSAT']):
+                            color = '#4ecdc4' if sentiment > 0.2 else '#ff6b6b' if sentiment < -0.2 else '#ffd93d'
+                            plt.scatter(sentiment, csat, c=color, alpha=0.6)
+                        
+                        # Add trend line
+                        z = np.polyfit(correlation_data['Sentiment'], correlation_data['CSAT'], 1)
+                        p = np.poly1d(z)
+                        plt.plot(correlation_data['Sentiment'], p(correlation_data['Sentiment']), 
+                                "r--", alpha=0.8)
+                        
+                        plt.title(f'Sentiment vs CSAT (Correlation: {correlation:.2f})')
+                        plt.xlabel('Sentiment Score')
+                        plt.ylabel('CSAT Score')
+                        plt.grid(True, alpha=0.3)
+                        
+                        # Add emoji annotations
+                        plt.annotate('😊', xy=(max(correlation_data['Sentiment']), plt.ylim()[1]), fontsize=20)
+                        plt.annotate('😠', xy=(min(correlation_data['Sentiment']), plt.ylim()[1]), fontsize=20)
+                        
+                        st.pyplot(fig)
+                        plt.close()
+                        
+                        # Add correlation interpretation with emojis
+                        if abs(correlation) > 0.5:
+                            st.write("🎯 Strong correlation between sentiment and CSAT scores")
+                        elif abs(correlation) > 0.3:
+                            st.write("🔄 Moderate correlation between sentiment and CSAT scores")
+                        else:
+                            st.write("↔️ Weak correlation between sentiment and CSAT scores")
+                            
+                        # Add detailed interpretation
+                        st.write(f"""
+                        Correlation Analysis:
+                        - Correlation Coefficient: {correlation:.2f}
+                        - Direction: {'Positive' if correlation > 0 else 'Negative'}
+                        - Strength: {'Strong' if abs(correlation) > 0.5 else 'Moderate' if abs(correlation) > 0.3 else 'Weak'}
+                        
+                        This means that {'higher sentiment scores tend to correspond with higher CSAT scores' if correlation > 0 else 'there is no strong relationship between sentiment and CSAT scores'}.
+                        """)
+                    else:
+                        st.info("No valid CSAT scores found for correlation analysis. Please ensure CSAT scores are within the valid range (0-5).")
+
+        progress_bar.progress(80)
+        
+        # Continue with AI-powered analysis if enabled
+        if enable_ai_analysis:
+            st.write("### AI-Powered Insights")
+            with st.spinner("Generating AI insights from ticket data..."):
+                debug("Generating AI insights")
+                
+                # Create a combined data dictionary with cases_df as the main dataframe
+                analysis_data = {
+                    'cases': cases_df,
+                    'comments': comments_df,
+                    'history': history_df,
+                    'emails': emails_df
+                }
+                
+                insights = generate_ai_insights(analysis_data)
+                
+                if insights:
+                    # Create tabs for different insight categories
+                    insights_tab, patterns_tab, recommendations_tab = st.tabs(["Summary", "Patterns", "Recommendations"])
+                    
+                    with insights_tab:
+                        st.markdown(insights.get('summary', 'No summary insights available.'))
+                        
+                    with patterns_tab:
+                        patterns = insights.get('patterns', [])
+                        if patterns:
+                            for i, pattern in enumerate(patterns):
+                                st.markdown(f"**Pattern {i+1}:** {pattern}")
+                        else:
+                            st.write("No patterns identified.")
+                            
+                    with recommendations_tab:
+                        recommendations = insights.get('recommendations', [])
+                        if recommendations:
+                            for i, rec in enumerate(recommendations):
+                                st.markdown(f"**Recommendation {i+1}:** {rec}")
+                        else:
+                            st.write("No recommendations available.")
+                    
+                    # Add download button for the full HTML report
+                    if 'html' in insights:
+                        st.download_button(
+                            label="Download AI Analysis Report",
+                            data=insights['html'],
+                            file_name="ai_support_ticket_analysis.html",
+                            mime="text/html"
+                        )
+                else:
+                    # Fallback with sample insights when generation fails
+                    st.info("AI analysis is enabled but no insights were generated. Here's a sample of what insights might look like:")
+                    
+                    # Sample data
+                    st.markdown("""
+                    #### Sample Insights Summary
+                    
+                    The support ticket analysis reveals several key trends and areas for attention. Most tickets are related to 
+                    authentication issues and API integration problems. Response times are generally within SLA, but escalation 
+                    rates are higher for enterprise customers. A significant portion of tickets are reopened after closure, 
+                    suggesting potential issues with solution quality or completeness.
+                    
+                    #### Sample Identified Patterns
+                    
+                    * Authentication-related issues spike after system updates
+                    * Enterprise customers experience more integration challenges
+                    * Documentation questions frequently lead to feature requests
+                    
+                    #### Sample Recommendations
+                    
+                    * Expand authentication troubleshooting documentation
+                    * Create dedicated integration solutions for enterprise customers
+                    * Develop proactive notifications for system updates
+                    """)
+        else:
+            debug("AI analysis is disabled")
+            
+        # Complete progress bar and remove it
+        progress_bar.progress(100)
+        time.sleep(0.5)  # Slight delay to show completion
+        progress_bar.empty()
+            
+    except Exception as e:
+        st.error(f"Error displaying detailed analysis: {str(e)}")
+        debug(f"Error in display_detailed_analysis: {str(e)}")
+        import traceback
+        debug(traceback.format_exc())
 
 if __name__ == "__main__":
     main() 
