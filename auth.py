@@ -26,6 +26,7 @@ CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET", "GOCSPX-f5SNtaJes-dK4-GR-
 
 # Determine if we're running on Streamlit Cloud or locally
 IS_CLOUD = os.environ.get('STREAMLIT_SHARING', '') == 'true' or os.environ.get('STREAMLIT_CLOUD', '') == 'true'
+print(f"Running on Streamlit Cloud: {IS_CLOUD}")
 
 # Set the redirect URI based on the environment
 if IS_CLOUD:
@@ -55,6 +56,13 @@ def init_auth_session_state():
         st.session_state.credentials = None
     if "auth_url" not in st.session_state:
         st.session_state.auth_url = None
+    
+    # Force authentication to be False when running on Streamlit Cloud
+    # This ensures the login page is always shown initially
+    if IS_CLOUD and "force_auth_check" not in st.session_state:
+        st.session_state.authenticated = False
+        st.session_state.force_auth_check = True
+        print("Forcing authentication check on Streamlit Cloud")
 
 def create_flow():
     """Create OAuth flow instance to manage the OAuth 2.0 Authorization Grant Flow"""
@@ -180,9 +188,14 @@ def handle_auth():
     # Initialize authentication session state
     init_auth_session_state()
     
+    # Print current authentication state for debugging
+    print(f"Current authentication state: {st.session_state.authenticated}")
+    
     # Check if we're on the callback page
     path_parts = st.query_params.get("_stcore_path_", "").split("/")
     is_callback = "callback" in path_parts
+    
+    print(f"Current path: {path_parts}, is_callback: {is_callback}")
     
     if is_callback:
         # We're on the callback page, look for the code parameter

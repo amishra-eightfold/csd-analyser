@@ -33,6 +33,17 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        #debug {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+            text-align: left;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -40,6 +51,7 @@
         <h2>Authentication in Progress</h2>
         <div class="loader"></div>
         <p>Redirecting back to the application...</p>
+        <div id="debug"></div>
     </div>
 
     <script>
@@ -49,7 +61,19 @@
             return urlParams.get(name);
         }
 
+        function logDebug(message) {
+            const debugElement = document.getElementById('debug');
+            const timestamp = new Date().toISOString();
+            debugElement.innerHTML += `${timestamp}: ${message}<br>`;
+            console.log(message);
+        }
+
         window.onload = function() {
+            // Enable debug display with a URL parameter
+            if (getQueryParam('debug') === 'true') {
+                document.getElementById('debug').style.display = 'block';
+            }
+            
             // Get the code and state parameters from the URL
             const code = getQueryParam('code');
             const state = getQueryParam('state');
@@ -60,12 +84,25 @@
             const baseUrl = window.location.origin;
             const isLocalhost = baseUrl.includes('localhost');
             
+            logDebug(`Base URL: ${baseUrl}`);
+            logDebug(`Is localhost: ${isLocalhost}`);
+            
             // Construct the redirect URL back to Streamlit
             let redirectUrl = baseUrl + '/callback?';
             
             // For Streamlit Cloud, we need to ensure we're using the correct path
-            if (!isLocalhost && !baseUrl.endsWith('streamlit.app')) {
-                redirectUrl = 'https://csd-analyser.streamlit.app/callback?';
+            if (!isLocalhost) {
+                if (baseUrl.includes('streamlit.app')) {
+                    // We're on Streamlit Cloud
+                    redirectUrl = baseUrl + '/callback?';
+                    logDebug(`Using Streamlit Cloud URL: ${redirectUrl}`);
+                } else {
+                    // Fallback to the specific app URL
+                    redirectUrl = 'https://csd-analyser.streamlit.app/callback?';
+                    logDebug(`Using fallback URL: ${redirectUrl}`);
+                }
+            } else {
+                logDebug(`Using localhost URL: ${redirectUrl}`);
             }
             
             if (code) {
@@ -73,13 +110,21 @@
                 if (state) {
                     redirectUrl += '&state=' + encodeURIComponent(state);
                 }
+                logDebug(`Auth code received: ${code.substring(0, 10)}...`);
             } else if (error) {
                 redirectUrl += 'error=' + encodeURIComponent(error);
+                logDebug(`Auth error received: ${error}`);
+            } else {
+                logDebug('No code or error parameter found');
             }
             
             // Redirect back to Streamlit with the authentication parameters
-            console.log("Redirecting to: " + redirectUrl);
-            window.location.href = redirectUrl;
+            logDebug(`Redirecting to: ${redirectUrl}`);
+            
+            // Add a slight delay to allow reading debug info if enabled
+            setTimeout(function() {
+                window.location.href = redirectUrl;
+            }, getQueryParam('debug') === 'true' ? 5000 : 1000);
         };
     </script>
 </body>

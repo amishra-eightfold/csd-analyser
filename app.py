@@ -18,6 +18,7 @@ import json
 import re
 import os
 import html
+from auth import handle_auth, logout, get_current_user
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -120,6 +121,30 @@ def debug(message, data=None):
             st.write(f"Debug - {message}")
 
 def main():
+    # Initialize session state for Salesforce connection if not already done
+    if "sf_connection" not in st.session_state:
+        st.session_state.sf_connection = None
+    
+    # Check authentication first
+    print("Checking authentication...")
+    auth_result = handle_auth()
+    print(f"Authentication result: {auth_result}")
+    
+    if not auth_result:
+        print("Authentication failed, showing login page")
+        return
+    
+    print("Authentication successful, showing main application")
+    
+    # Display user info in sidebar if authenticated
+    user = get_current_user()
+    if user:
+        with st.sidebar:
+            st.write(f"Logged in as: {user.get('email')}")
+            if st.button("Logout"):
+                logout()
+    
+    # Rest of the main application
     st.title("Support Ticket Analytics")
     
     # Initialize Salesforce connection if not already done
@@ -134,6 +159,8 @@ def main():
     st.sidebar.title("Controls")
     
     # Debug mode toggle
+    if "debug_mode" not in st.session_state:
+        st.session_state.debug_mode = False
     st.session_state.debug_mode = st.sidebar.checkbox("Debug Mode", value=st.session_state.debug_mode, 
                                                      help="Show detailed debug information")
     
