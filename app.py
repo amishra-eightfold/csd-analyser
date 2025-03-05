@@ -271,11 +271,16 @@ def main():
                 display_visualizations(df, selected_customers)
                 
                 # Detailed ticket analysis (only for single customer selection)
-                if len(selected_customers) == 1 and 'detailed_analysis' in locals() and detailed_analysis:
+                if len(selected_customers) == 1 and detailed_analysis:
                     with st.spinner("Fetching detailed ticket information..."):
                         detailed_data = fetch_detailed_data(selected_customers[0], start_date, end_date)
                         if detailed_data is not None:
-                            display_detailed_analysis(detailed_data, 'ai_analysis' in locals() and ai_analysis)
+                            # Add debug output to help troubleshoot
+                            debug("AI analysis enabled", ai_analysis)
+                            debug("Detailed data structure", {k: type(v) for k, v in detailed_data.items()})
+                            
+                            # Make sure ai_analysis is properly passed
+                            display_detailed_analysis(detailed_data, ai_analysis)
             else:
                 st.warning("No data available after applying filters.")
         except Exception as e:
@@ -1261,9 +1266,12 @@ def display_detailed_analysis(data, enable_ai_analysis):
     # AI Analysis
     if enable_ai_analysis:
         st.header("AI-Powered Insights")
+        debug("AI analysis enabled in display_detailed_analysis")
         
         with st.spinner("Analyzing ticket data with AI..."):
+            debug("Calling generate_ai_insights")
             ai_insights = generate_ai_insights(data)
+            debug("generate_ai_insights returned", ai_insights is not None)
             
             if ai_insights:
                 # Display AI insights
@@ -1279,6 +1287,36 @@ def display_detailed_analysis(data, enable_ai_analysis):
                 st.subheader("Recommendations")
                 for rec in ai_insights['recommendations']:
                     st.markdown(f"- {rec}")
+            else:
+                st.warning("No AI insights were generated. Please check the debug output for more information.")
+                debug("No AI insights were generated")
+                
+                # Provide a fallback sample response for demonstration purposes
+                st.info("Showing sample AI insights for demonstration purposes.")
+                
+                sample_insights = {
+                    "summary": "This is a sample AI analysis. To get real insights, please ensure the OpenAI API is properly configured.",
+                    "patterns": [
+                        {"title": "Sample Pattern", "description": "This is an example pattern that would be identified by the AI."},
+                        {"title": "Demo Insight", "description": "In a real analysis, the AI would identify trends and patterns in your ticket data."}
+                    ],
+                    "recommendations": [
+                        "This is a sample recommendation. Configure your OpenAI API key to get actual insights.",
+                        "Another example recommendation that would be tailored to your specific data."
+                    ]
+                }
+                
+                # Display sample insights
+                st.subheader("Sample Key Insights")
+                st.markdown(sample_insights['summary'])
+                
+                st.subheader("Sample Identified Patterns")
+                for pattern in sample_insights['patterns']:
+                    st.markdown(f"- **{pattern['title']}**: {pattern['description']}")
+                
+                st.subheader("Sample Recommendations")
+                for rec in sample_insights['recommendations']:
+                    st.markdown(f"- {rec}")
 
 def generate_ai_insights(data):
     """Generate AI insights from ticket data using OpenAI."""
@@ -1286,6 +1324,7 @@ def generate_ai_insights(data):
         # Check if OpenAI package is installed
         try:
             import openai
+            debug("OpenAI package imported successfully")
         except ImportError:
             st.error("OpenAI package is not installed. Please run 'pip install openai' to enable AI analysis.")
             return None
@@ -1294,6 +1333,7 @@ def generate_ai_insights(data):
         openai_api_key = os.getenv('OPENAI_API_KEY') or st.secrets.get("OPENAI_API_KEY", None)
         if not openai_api_key:
             st.warning("OpenAI API key not found. Please add it to your environment variables or Streamlit secrets.")
+            debug("OpenAI API key not found")
             
             # Provide a sample response for demonstration purposes
             return {
@@ -1308,8 +1348,16 @@ def generate_ai_insights(data):
                 ]
             }
         
+        debug("OpenAI API key found")
+        
         # Set up OpenAI client
-        client = openai.OpenAI(api_key=openai_api_key)
+        try:
+            client = openai.OpenAI(api_key=openai_api_key)
+            debug("OpenAI client initialized successfully")
+        except Exception as e:
+            st.error(f"Error initializing OpenAI client: {str(e)}")
+            debug("OpenAI client initialization error", str(e))
+            return None
         
         # Prepare data for analysis
         cases_df = data['cases']
@@ -1333,6 +1381,8 @@ def generate_ai_insights(data):
             sample_columns.append('IMPL_Phase__c')
             
         case_samples = cases_df.sample(min(20, len(cases_df)))[sample_columns].to_dict('records')
+        
+        debug("Data prepared for OpenAI", f"Summary contains {len(case_summary)} keys, {len(case_samples)} samples")
         
         # Prepare the prompt
         prompt = f"""
@@ -1364,31 +1414,47 @@ def generate_ai_insights(data):
         """
         
         # Call OpenAI API
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.5,
-            max_tokens=2000
-        )
+        try:
+            debug("Calling OpenAI API")
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.5,
+                max_tokens=2000
+            )
+            debug("OpenAI API call successful")
+        except Exception as e:
+            st.error(f"Error calling OpenAI API: {str(e)}")
+            debug("OpenAI API call error", str(e))
+            return None
         
         # Extract and parse the response
         ai_response = response.choices[0].message.content
+        debug("OpenAI response received", ai_response[:100] + "..." if len(ai_response) > 100 else ai_response)
         
         # Extract JSON from the response (in case there's additional text)
         json_match = re.search(r'({.*})', ai_response, re.DOTALL)
         if json_match:
             json_str = json_match.group(1)
-            insights = json.loads(json_str)
-            return insights
+            try:
+                insights = json.loads(json_str)
+                debug("JSON parsed successfully")
+                return insights
+            except json.JSONDecodeError as e:
+                st.error(f"Error parsing JSON response: {str(e)}")
+                debug("JSON parsing error", str(e))
+                return None
         else:
             st.warning("Could not parse AI response into the expected format.")
+            debug("No JSON found in response")
             return None
             
     except Exception as e:
         st.error(f"Error generating AI insights: {str(e)}")
+        debug("General error in generate_ai_insights", str(e))
         return None
 
 if __name__ == "__main__":
