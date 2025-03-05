@@ -197,3 +197,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+# Uncomment the line below if you want to include secrets.toml in version control
+# .streamlit/secrets.toml
