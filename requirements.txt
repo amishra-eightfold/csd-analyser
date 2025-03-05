@@ -11,3 +11,6 @@ simple-salesforce>=1.12.5
 python-dotenv>=1.0.0
 seaborn==0.13.2
 openai>=1.65.2
+google-auth>=2.27.0
+google-auth-oauthlib>=1.2.0
+requests>=2.31.0
