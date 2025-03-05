@@ -17,6 +17,7 @@ import time
 import json
 import re
 import os
+import html
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -502,7 +503,7 @@ def display_visualizations(df, customers):
         # Create FacetGrid for resolution time by priority analysis
         g = sns.FacetGrid(resolved_df, col='Account_Name', col_wrap=2, height=4, aspect=1.5)
         g.map_dataframe(sns.boxplot, x='Internal_Priority__c', y='Resolution_Time_Days', 
-                       palette=PRIORITY_PALETTE)
+                       hue='Internal_Priority__c', palette=PRIORITY_PALETTE, legend=False)
         g.fig.suptitle('Resolution Time by Priority', y=1.02)
         plt.tight_layout()
         st.pyplot(g.fig)
@@ -1110,10 +1111,16 @@ def display_detailed_analysis(data, enable_ai_analysis):
     """Display detailed analysis of ticket data."""
     st.header("Detailed Ticket Analysis")
     
+    # Create a progress bar for the entire analysis process
+    progress_bar = st.progress(0)
+    
     cases_df = data['cases']
     comments_df = data['comments']
     history_df = data['history']
     emails_df = data['emails']
+    
+    # Update progress
+    progress_bar.progress(10, text="Analyzing basic statistics...")
     
     # Basic statistics
     st.subheader("Ticket Overview")
@@ -1134,6 +1141,9 @@ def display_detailed_analysis(data, enable_ai_analysis):
         escalated_count = cases_df['IsEscalated'].sum()
         escalation_rate = (escalated_count / len(cases_df)) * 100 if len(cases_df) > 0 else 0
         st.metric("Escalation Rate", f"{escalation_rate:.1f}%")
+    
+    # Update progress
+    progress_bar.progress(20, text="Analyzing implementation phases...")
     
     # Implementation Phase Analysis (if available)
     if 'IMPL_Phase__c' in cases_df.columns:
@@ -1161,7 +1171,7 @@ def display_detailed_analysis(data, enable_ai_analysis):
             phase_resolution = closed_cases.groupby('IMPL_Phase__c')['Resolution_Time_Days'].mean().reset_index()
             phase_resolution = phase_resolution.sort_values('Resolution_Time_Days', ascending=False)
             
-            # Create bar chart
+            # Create bar chart - fix the palette warning by setting hue and legend=False
             plt.figure(figsize=(10, 6))
             sns.barplot(data=phase_resolution, x='IMPL_Phase__c', y='Resolution_Time_Days', 
                        hue='IMPL_Phase__c', palette='Blues', legend=False)
@@ -1173,6 +1183,9 @@ def display_detailed_analysis(data, enable_ai_analysis):
             st.pyplot(plt)
             plt.close()
     
+    # Update progress
+    progress_bar.progress(30, text="Preparing ticket details...")
+    
     # Ticket details
     with st.expander("Ticket Details", expanded=False):
         display_columns = ['CaseNumber', 'Subject', 'Status', 'Internal_Priority__c', 
@@ -1183,6 +1196,9 @@ def display_detailed_analysis(data, enable_ai_analysis):
             display_columns.append('IMPL_Phase__c')
             
         st.dataframe(cases_df[display_columns])
+    
+    # Update progress
+    progress_bar.progress(40, text="Analyzing comments...")
     
     # Comments analysis
     if not comments_df.empty:
@@ -1213,6 +1229,9 @@ def display_detailed_analysis(data, enable_ai_analysis):
         top_commented = cases_with_comments.sort_values('comment_count', ascending=False).head(5)
         st.dataframe(top_commented[['CaseNumber', 'Subject', 'comment_count']])
     
+    # Update progress
+    progress_bar.progress(60, text="Analyzing email communications...")
+    
     # Email analysis
     if not emails_df.empty:
         st.subheader("Email Communication Analysis")
@@ -1236,6 +1255,9 @@ def display_detailed_analysis(data, enable_ai_analysis):
         plt.ylabel('Number of Tickets')
         st.pyplot(plt)
         plt.close()
+    
+    # Update progress
+    progress_bar.progress(80, text="Analyzing status changes...")
     
     # Status change analysis
     if not history_df.empty:
@@ -1265,31 +1287,51 @@ def display_detailed_analysis(data, enable_ai_analysis):
     
     # AI Analysis
     if enable_ai_analysis:
-        st.header("AI-Powered Insights")
+        # Update progress
+        progress_bar.progress(90, text="Generating AI-powered insights...")
+        
+        # Create a separate section for AI insights with a clear header
+        st.markdown("---")
+        st.header("AI-Powered Insights", help="Insights generated using OpenAI's GPT-4 model")
         debug("AI analysis enabled in display_detailed_analysis")
         
-        with st.spinner("Analyzing ticket data with AI..."):
+        # Use a spinner to indicate that AI analysis is in progress
+        with st.spinner("🧠 Analyzing ticket data with AI... This may take a moment."):
             debug("Calling generate_ai_insights")
             ai_insights = generate_ai_insights(data)
             debug("generate_ai_insights returned", ai_insights is not None)
             
-            if ai_insights:
+            if ai_insights and isinstance(ai_insights, dict):
                 # Display AI insights
                 st.subheader("Key Insights")
-                st.markdown(ai_insights['summary'])
+                st.markdown(ai_insights.get('summary', 'No summary available'))
                 
                 # Display patterns
-                st.subheader("Identified Patterns")
-                for pattern in ai_insights['patterns']:
-                    st.markdown(f"- **{pattern['title']}**: {pattern['description']}")
+                if 'patterns' in ai_insights and ai_insights['patterns']:
+                    st.subheader("Identified Patterns")
+                    for pattern in ai_insights['patterns']:
+                        if isinstance(pattern, dict) and 'title' in pattern and 'description' in pattern:
+                            st.markdown(f"- **{pattern['title']}**: {pattern['description']}")
                 
                 # Display recommendations
-                st.subheader("Recommendations")
-                for rec in ai_insights['recommendations']:
-                    st.markdown(f"- {rec}")
+                if 'recommendations' in ai_insights and ai_insights['recommendations']:
+                    st.subheader("Recommendations")
+                    for rec in ai_insights['recommendations']:
+                        st.markdown(f"- {rec}")
+                
+                # Add a download button for the HTML file
+                if hasattr(st.session_state, 'latest_ai_html_file') and st.session_state.latest_ai_html_file:
+                    with open(st.session_state.latest_ai_html_file, 'r') as f:
+                        html_content = f.read()
+                    st.download_button(
+                        label="Download AI Analysis as HTML",
+                        data=html_content,
+                        file_name=os.path.basename(st.session_state.latest_ai_html_file),
+                        mime="text/html"
+                    )
             else:
                 st.warning("No AI insights were generated. Please check the debug output for more information.")
-                debug("No AI insights were generated")
+                debug("No AI insights were generated or invalid format returned")
                 
                 # Provide a fallback sample response for demonstration purposes
                 st.info("Showing sample AI insights for demonstration purposes.")
@@ -1317,6 +1359,11 @@ def display_detailed_analysis(data, enable_ai_analysis):
                 st.subheader("Sample Recommendations")
                 for rec in sample_insights['recommendations']:
                     st.markdown(f"- {rec}")
+    
+    # Complete the progress bar
+    progress_bar.progress(100, text="Analysis complete!")
+    time.sleep(0.5)  # Short delay to show the completed progress
+    progress_bar.empty()  # Remove the progress bar after completion
 
 def generate_ai_insights(data):
     """Generate AI insights from ticket data using OpenAI."""
@@ -1435,6 +1482,61 @@ def generate_ai_insights(data):
         ai_response = response.choices[0].message.content
         debug("OpenAI response received", ai_response[:100] + "..." if len(ai_response) > 100 else ai_response)
         
+        # Save the raw response to an HTML file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>OpenAI Response - {timestamp}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
+                pre {{ background-color: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }}
+                h1, h2 {{ color: #333; }}
+                .metadata {{ color: #666; font-size: 0.9em; }}
+                .json {{ color: #0066cc; }}
+            </style>
+        </head>
+        <body>
+            <h1>OpenAI Response</h1>
+            <div class="metadata">
+                <p>Generated on: {timestamp}</p>
+                <p>Model: gpt-4</p>
+            </div>
+            <h2>Raw Response:</h2>
+            <pre>{html.escape(ai_response)}</pre>
+            
+            <h2>Parsed JSON:</h2>
+            <pre class="json" id="parsed-json"></pre>
+            
+            <script>
+                try {{
+                    // Try to extract and parse JSON
+                    const jsonPattern = /({{\s*"summary".*}})/s;
+                    const jsonMatch = `{html.escape(ai_response)}`.match(jsonPattern);
+                    if (jsonMatch) {{
+                        const parsedJson = JSON.parse(jsonMatch[1]);
+                        document.getElementById('parsed-json').textContent = JSON.stringify(parsedJson, null, 2);
+                    }} else {{
+                        document.getElementById('parsed-json').textContent = "Could not extract JSON from response";
+                    }}
+                }} catch (e) {{
+                    document.getElementById('parsed-json').textContent = "Error parsing JSON: " + e.message;
+                }}
+            </script>
+        </body>
+        </html>
+        """
+        
+        # Save the HTML file
+        html_filename = f"openai_response_{timestamp}.html"
+        with open(html_filename, "w") as f:
+            f.write(html_content)
+        debug(f"Saved OpenAI response to {html_filename}")
+        
+        # Store the HTML file path in session state for download
+        st.session_state.latest_ai_html_file = html_filename
+        
         # Extract JSON from the response (in case there's additional text)
         json_match = re.search(r'({.*})', ai_response, re.DOTALL)
         if json_match:
@@ -1442,6 +1544,13 @@ def generate_ai_insights(data):
             try:
                 insights = json.loads(json_str)
                 debug("JSON parsed successfully")
+                
+                # Also save as JSON file for easier processing
+                json_filename = f"openai_response_{timestamp}.json"
+                with open(json_filename, "w") as f:
+                    json.dump(insights, f, indent=2)
+                debug(f"Saved parsed JSON to {json_filename}")
+                
                 return insights
             except json.JSONDecodeError as e:
                 st.error(f"Error parsing JSON response: {str(e)}")
