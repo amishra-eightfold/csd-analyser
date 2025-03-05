@@ -18,7 +18,6 @@ import json
 import re
 import os
 import html
-from auth import handle_auth, logout, get_current_user
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -99,6 +98,7 @@ st.markdown("""
         background-color: white;
         padding: 1rem;
         border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .stPlotlyChart {
         background-color: white;
@@ -110,26 +110,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# Helper function to conditionally display debug information
 def debug(message, data=None):
+    """Display debug information only if debug mode is enabled."""
     if st.session_state.debug_mode:
-        st.write(f"DEBUG: {message}")
         if data is not None:
-            st.write(data)
+            st.write(f"Debug - {message}:", data)
+        else:
+            st.write(f"Debug - {message}")
 
 def main():
-    # Check authentication first
-    if not handle_auth():
-        return
-    
-    # Display user info in sidebar if authenticated
-    user = get_current_user()
-    if user:
-        with st.sidebar:
-            st.write(f"Logged in as: {user.get('email')}")
-            if st.button("Logout"):
-                logout()
-    
-    # Rest of the main application
     st.title("Support Ticket Analytics")
     
     # Initialize Salesforce connection if not already done
