@@ -992,14 +992,13 @@ def fetch_detailed_data(customer, start_date, end_date):
         
         # Step 1: Get basic case information (25%)
         query = f"""
-            SELECT 
-                Id, CaseNumber, Subject, Description,
+            SELECT Id, CaseNumber, Subject, Description,
                 Account.Name, CreatedDate, ClosedDate, Status, Internal_Priority__c,
                 Product_Area__c, Product_Feature__c, RCA__c,
                 First_Response_Time__c, CSAT__c, IsEscalated,
                 ContactId, OwnerId, Origin, Type, Reason,
-                Group_Id__c, Environment__c, Browser__c, Browser_Version__c,
-                Implementation_Phase__c, Last_Escalated_Date__c
+                Group_Id__c, Environment__c,
+                IMPL_Phase__c
             FROM Case
             WHERE Account.Name = '{customer}'
             AND CreatedDate >= {start_date.strftime('%Y-%m-%d')}T00:00:00Z
@@ -1107,10 +1106,54 @@ def display_detailed_analysis(data, enable_ai_analysis):
         escalation_rate = (escalated_count / len(cases_df)) * 100 if len(cases_df) > 0 else 0
         st.metric("Escalation Rate", f"{escalation_rate:.1f}%")
     
+    # Implementation Phase Analysis (if available)
+    if 'IMPL_Phase__c' in cases_df.columns:
+        st.subheader("Implementation Phase Analysis")
+        
+        # Count cases by implementation phase
+        phase_counts = cases_df['IMPL_Phase__c'].fillna('Not Specified').value_counts()
+        
+        # Create a pie chart
+        plt.figure(figsize=(10, 6))
+        plt.pie(phase_counts, labels=phase_counts.index, autopct='%1.1f%%', 
+                startangle=90, colors=sns.color_palette('Blues', len(phase_counts)))
+        plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
+        plt.title('Cases by Implementation Phase')
+        st.pyplot(plt)
+        plt.close()
+        
+        # Create a bar chart showing resolution time by implementation phase
+        if not closed_cases.empty and 'IMPL_Phase__c' in closed_cases.columns:
+            # Calculate resolution time
+            closed_cases = closed_cases.copy()
+            closed_cases['Resolution_Time_Days'] = (closed_cases['ClosedDate'] - closed_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
+            
+            # Group by implementation phase
+            phase_resolution = closed_cases.groupby('IMPL_Phase__c')['Resolution_Time_Days'].mean().reset_index()
+            phase_resolution = phase_resolution.sort_values('Resolution_Time_Days', ascending=False)
+            
+            # Create bar chart
+            plt.figure(figsize=(10, 6))
+            sns.barplot(data=phase_resolution, x='IMPL_Phase__c', y='Resolution_Time_Days', 
+                       hue='IMPL_Phase__c', palette='Blues', legend=False)
+            plt.title('Average Resolution Time by Implementation Phase')
+            plt.xlabel('Implementation Phase')
+            plt.ylabel('Resolution Time (Days)')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(plt)
+            plt.close()
+    
     # Ticket details
     with st.expander("Ticket Details", expanded=False):
-        st.dataframe(cases_df[['CaseNumber', 'Subject', 'Status', 'Internal_Priority__c', 
-                              'Product_Area__c', 'Product_Feature__c', 'CreatedDate', 'ClosedDate']])
+        display_columns = ['CaseNumber', 'Subject', 'Status', 'Internal_Priority__c', 
+                          'Product_Area__c', 'Product_Feature__c', 'CreatedDate', 'ClosedDate']
+        
+        # Add IMPL_Phase__c if available
+        if 'IMPL_Phase__c' in cases_df.columns:
+            display_columns.append('IMPL_Phase__c')
+            
+        st.dataframe(cases_df[display_columns])
     
     # Comments analysis
     if not comments_df.empty:
@@ -1256,8 +1299,16 @@ def generate_ai_insights(data):
             "root_causes": cases_df['RCA__c'].value_counts().to_dict(),
         }
         
+        # Add implementation phase data if available
+        if 'IMPL_Phase__c' in cases_df.columns:
+            case_summary["implementation_phases"] = cases_df['IMPL_Phase__c'].fillna('Not Specified').value_counts().to_dict()
+        
         # Sample of case subjects and descriptions (limit to 20 for API constraints)
-        case_samples = cases_df.sample(min(20, len(cases_df)))[['Subject', 'Description', 'RCA__c', 'Status']].to_dict('records')
+        sample_columns = ['Subject', 'Description', 'RCA__c', 'Status']
+        if 'IMPL_Phase__c' in cases_df.columns:
+            sample_columns.append('IMPL_Phase__c')
+            
+        case_samples = cases_df.sample(min(20, len(cases_df)))[sample_columns].to_dict('records')
         
         # Prepare the prompt
         prompt = f"""
