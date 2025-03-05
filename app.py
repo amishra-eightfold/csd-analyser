@@ -966,6 +966,9 @@ def generate_ai_insights(data):
         }}
         
         IMPORTANT: Your entire response must be valid JSON that can be parsed with json.loads().
+        Do not include any text before or after the JSON object.
+        Do not include markdown formatting like ```json or ``` around the JSON.
+        Just return the raw JSON object.
         """
         
         # Call OpenAI API
@@ -983,8 +986,8 @@ def generate_ai_insights(data):
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.5,
-                max_tokens=2000,
-                response_format={"type": "json_object"}  # Request JSON format specifically
+                max_tokens=2000
+                # Removed response_format parameter which is not supported by the model
             )
             debug("OpenAI API call successful")
             st.session_state.ai_analysis_in_progress = False
@@ -1039,8 +1042,37 @@ def generate_ai_insights(data):
         
         # Parse the JSON response
         try:
-            insights = json.loads(ai_response)
-            debug("JSON parsed successfully")
+            # First try direct JSON parsing
+            try:
+                insights = json.loads(ai_response)
+                debug("JSON parsed successfully on first attempt")
+            except json.JSONDecodeError:
+                # If direct parsing fails, try to extract JSON using regex
+                debug("Direct JSON parsing failed, trying regex extraction")
+                json_match = re.search(r'({.*})', ai_response, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(1)
+                    try:
+                        insights = json.loads(json_str)
+                        debug("JSON extracted and parsed successfully using regex")
+                    except json.JSONDecodeError:
+                        # If regex extraction fails, try to clean the response
+                        debug("Regex extraction failed, trying to clean the response")
+                        # Remove markdown code block markers if present
+                        cleaned_response = re.sub(r'```json|```', '', ai_response).strip()
+                        try:
+                            insights = json.loads(cleaned_response)
+                            debug("JSON parsed successfully after cleaning")
+                        except json.JSONDecodeError as e:
+                            st.error(f"Error parsing JSON response: {str(e)}")
+                            debug("All JSON parsing attempts failed")
+                            debug("Raw response that failed to parse:", ai_response)
+                            return None
+                else:
+                    st.error("Could not extract JSON from the response")
+                    debug("No JSON-like structure found in the response")
+                    debug("Raw response:", ai_response)
+                    return None
             
             # Also save as JSON file for easier processing
             json_filename = f"openai_response_{timestamp}.json"
@@ -1049,22 +1081,10 @@ def generate_ai_insights(data):
             debug(f"Saved parsed JSON to {json_filename}")
             
             return insights
-        except json.JSONDecodeError as e:
-            st.error(f"Error parsing JSON response: {str(e)}")
-            debug("JSON parsing error", str(e))
-            debug("Raw response that failed to parse:", ai_response)
-            
-            # Try a more lenient approach to extract JSON
-            json_match = re.search(r'({.*})', ai_response, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(1)
-                try:
-                    insights = json.loads(json_str)
-                    debug("JSON extracted and parsed successfully using regex")
-                    return insights
-                except json.JSONDecodeError:
-                    debug("Failed to parse JSON even with regex extraction")
-            
+        except Exception as e:
+            st.error(f"Unexpected error processing AI response: {str(e)}")
+            debug("Unexpected error in JSON processing", str(e))
+            debug("Raw response:", ai_response)
             return None
             
     except Exception as e:
@@ -1286,7 +1306,7 @@ def fetch_detailed_data(customer, start_date, end_date):
                 Account.Name, CreatedDate, ClosedDate, Status, Internal_Priority__c,
                 Product_Area__c, Product_Feature__c, RCA__c,
                 First_Response_Time__c, CSAT__c, IsEscalated,
-                ContactId, OwnerId, Origin, Type, Reason,
+                OwnerId, Origin, Type, Reason,
                 Group_Id__c, Environment__c,
                 IMPL_Phase__c
             FROM Case
@@ -1307,6 +1327,15 @@ def fetch_detailed_data(customer, start_date, end_date):
             cases_df['Account_Name'] = cases_df['Account'].apply(lambda x: x.get('Name') if isinstance(x, dict) else None)
             cases_df = cases_df.drop('Account', axis=1)
         
+        # Convert date fields to datetime objects
+        date_columns = ['CreatedDate', 'ClosedDate']
+        for col in date_columns:
+            if col in cases_df.columns:
+                try:
+                    cases_df[col] = pd.to_datetime(cases_df[col], errors='coerce')
+                except Exception as e:
+                    debug(f"Error converting {col} to datetime: {str(e)}")
+        
         progress_bar.progress(25)
         
         # Step 2: Get case comments (50%)
@@ -1322,6 +1351,13 @@ def fetch_detailed_data(customer, start_date, end_date):
         comments = execute_soql_query(st.session_state.sf_connection, comments_query)
         comments_df = pd.DataFrame(comments) if comments else pd.DataFrame()
         
+        # Convert date fields in comments
+        if not comments_df.empty and 'CreatedDate' in comments_df.columns:
+            try:
+                comments_df['CreatedDate'] = pd.to_datetime(comments_df['CreatedDate'], errors='coerce')
+            except Exception as e:
+                debug(f"Error converting comments CreatedDate to datetime: {str(e)}")
+        
         progress_bar.progress(50)
         
         # Step 3: Get case history (75%)
@@ -1335,6 +1371,13 @@ def fetch_detailed_data(customer, start_date, end_date):
         
         history = execute_soql_query(st.session_state.sf_connection, history_query)
         history_df = pd.DataFrame(history) if history else pd.DataFrame()
+        
+        # Convert date fields in history
+        if not history_df.empty and 'CreatedDate' in history_df.columns:
+            try:
+                history_df['CreatedDate'] = pd.to_datetime(history_df['CreatedDate'], errors='coerce')
+            except Exception as e:
+                debug(f"Error converting history CreatedDate to datetime: {str(e)}")
         
         progress_bar.progress(75)
         
@@ -1350,6 +1393,13 @@ def fetch_detailed_data(customer, start_date, end_date):
         
         emails = execute_soql_query(st.session_state.sf_connection, email_query)
         emails_df = pd.DataFrame(emails) if emails else pd.DataFrame()
+        
+        # Convert date fields in emails
+        if not emails_df.empty and 'MessageDate' in emails_df.columns:
+            try:
+                emails_df['MessageDate'] = pd.to_datetime(emails_df['MessageDate'], errors='coerce')
+            except Exception as e:
+                debug(f"Error converting emails MessageDate to datetime: {str(e)}")
         
         progress_bar.progress(100)
         
@@ -1397,8 +1447,27 @@ def display_detailed_analysis(data, enable_ai_analysis):
     with col3:
         avg_resolution_time = None
         if not closed_cases.empty:
-            resolution_times = (closed_cases['ClosedDate'] - closed_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
-            avg_resolution_time = resolution_times.mean()
+            try:
+                # Ensure both date columns are datetime objects and not null
+                valid_cases = closed_cases[closed_cases['ClosedDate'].notna() & closed_cases['CreatedDate'].notna()].copy()
+                
+                if not valid_cases.empty:
+                    # Convert to datetime if not already
+                    if not pd.api.types.is_datetime64_any_dtype(valid_cases['CreatedDate']):
+                        valid_cases['CreatedDate'] = pd.to_datetime(valid_cases['CreatedDate'], errors='coerce')
+                    if not pd.api.types.is_datetime64_any_dtype(valid_cases['ClosedDate']):
+                        valid_cases['ClosedDate'] = pd.to_datetime(valid_cases['ClosedDate'], errors='coerce')
+                    
+                    # Recalculate with valid datetime objects only
+                    valid_cases = valid_cases[valid_cases['ClosedDate'].notna() & valid_cases['CreatedDate'].notna()]
+                    
+                    if not valid_cases.empty:
+                        resolution_times = (valid_cases['ClosedDate'] - valid_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
+                        avg_resolution_time = resolution_times.mean()
+            except Exception as e:
+                debug(f"Error calculating average resolution time: {str(e)}")
+                avg_resolution_time = None
+        
         st.metric("Avg Resolution Time", f"{avg_resolution_time:.1f} days" if avg_resolution_time else "N/A")
     with col4:
         escalated_count = cases_df['IsEscalated'].sum()
@@ -1426,28 +1495,44 @@ def display_detailed_analysis(data, enable_ai_analysis):
         
         # Create a bar chart showing resolution time by implementation phase
         if not closed_cases.empty and 'IMPL_Phase__c' in closed_cases.columns:
-            # Calculate resolution time
-            closed_cases = closed_cases.copy()
-            closed_cases['Resolution_Time_Days'] = (closed_cases['ClosedDate'] - closed_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
-            
-            # Group by implementation phase
-            phase_resolution = closed_cases.groupby('IMPL_Phase__c')['Resolution_Time_Days'].mean().reset_index()
-            phase_resolution = phase_resolution.sort_values('Resolution_Time_Days', ascending=False)
-            
-            # Create bar chart - fix the palette warning by setting hue and legend=False
-            plt.figure(figsize=(10, 6))
-            sns.barplot(data=phase_resolution, x='IMPL_Phase__c', y='Resolution_Time_Days', 
-                       hue='IMPL_Phase__c', palette='Blues', legend=False)
-            plt.title('Average Resolution Time by Implementation Phase')
-            plt.xlabel('Implementation Phase')
-            plt.ylabel('Resolution Time (Days)')
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-            st.pyplot(plt)
-            plt.close()
+            try:
+                # Calculate resolution time
+                closed_cases = closed_cases.copy()
+                
+                # Ensure CreatedDate and ClosedDate are datetime objects
+                if pd.api.types.is_datetime64_any_dtype(closed_cases['CreatedDate']) and pd.api.types.is_datetime64_any_dtype(closed_cases['ClosedDate']):
+                    # Calculate resolution time only for rows where both dates are valid
+                    mask = closed_cases['ClosedDate'].notna() & closed_cases['CreatedDate'].notna()
+                    valid_cases = closed_cases[mask].copy()
+                    
+                    if not valid_cases.empty:
+                        valid_cases['Resolution_Time_Days'] = (valid_cases['ClosedDate'] - valid_cases['CreatedDate']).dt.total_seconds() / (24 * 3600)
+                        
+                        # Group by implementation phase
+                        phase_resolution = valid_cases.groupby('IMPL_Phase__c')['Resolution_Time_Days'].mean().reset_index()
+                        phase_resolution = phase_resolution.sort_values('Resolution_Time_Days', ascending=False)
+                        
+                        # Create bar chart - fix the palette warning by setting hue and legend=False
+                        plt.figure(figsize=(10, 6))
+                        sns.barplot(data=phase_resolution, x='IMPL_Phase__c', y='Resolution_Time_Days', 
+                                   hue='IMPL_Phase__c', palette='Blues', legend=False)
+                        plt.title('Average Resolution Time by Implementation Phase')
+                        plt.xlabel('Implementation Phase')
+                        plt.ylabel('Resolution Time (Days)')
+                        plt.xticks(rotation=45)
+                        plt.tight_layout()
+                        st.pyplot(plt)
+                        plt.close()
+                    else:
+                        st.info("No cases with valid creation and closure dates to calculate resolution time by implementation phase.")
+                else:
+                    st.info("Cannot calculate resolution time: date fields are not in the expected datetime format.")
+            except Exception as e:
+                st.error(f"Error calculating resolution time by implementation phase: {str(e)}")
+                debug(f"Resolution time calculation error: {str(e)}")
     
     # Update progress
-    progress_bar.progress(30, text="Preparing ticket details...")
+    progress_bar.progress(40, text="Preparing ticket details...")
     
     # Ticket details
     with st.expander("Ticket Details", expanded=False):
@@ -1461,7 +1546,7 @@ def display_detailed_analysis(data, enable_ai_analysis):
         st.dataframe(cases_df[display_columns])
     
     # Update progress
-    progress_bar.progress(40, text="Analyzing comments...")
+    progress_bar.progress(50, text="Analyzing comments...")
     
     # Comments analysis
     if not comments_df.empty:
@@ -1520,7 +1605,7 @@ def display_detailed_analysis(data, enable_ai_analysis):
         plt.close()
     
     # Update progress
-    progress_bar.progress(80, text="Analyzing status changes...")
+    progress_bar.progress(70, text="Analyzing status changes...")
     
     # Status change analysis
     if not history_df.empty:
@@ -1551,7 +1636,7 @@ def display_detailed_analysis(data, enable_ai_analysis):
     # AI Analysis
     if enable_ai_analysis:
         # Update progress
-        progress_bar.progress(90, text="Generating AI-powered insights...")
+        progress_bar.progress(80, text="Generating AI-powered insights...")
         
         # Create a separate section for AI insights with a clear header
         st.markdown("---")
