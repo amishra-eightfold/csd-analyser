@@ -106,3 +106,42 @@ api_key = "your_openai_api_key"
 The application will use these variables for authentication with external services.
 
 # Checking if secrets are properly handled
+
+## Privacy and PII Protection
+
+The application includes robust privacy protection features to ensure sensitive information is handled securely:
+
+### PII Detection and Removal
+
+The system automatically detects and removes the following types of Personally Identifiable Information (PII):
+- Email addresses
+- Phone numbers (multiple formats including international)
+- URLs and IP addresses
+- Credit card numbers
+- Social security numbers
+- Names (with common patterns and titles)
+- Passwords
+- Dates of birth
+
+### Privacy Features
+
+1. **Pre-processing Pipeline**: All text data is processed through a PII removal pipeline before any analysis or storage.
+2. **AI Analysis Protection**: Data is automatically sanitized before being sent to external AI services (e.g., OpenAI).
+3. **Standardized Placeholders**: PII is replaced with standardized placeholders (e.g., [EMAIL], [PHONE]) to maintain context while protecting privacy.
+4. **Multi-format Support**: PII removal works across various data formats:
+   - String data
+   - Structured data (DataFrames)
+   - Nested data structures (dictionaries, lists)
+
+### Implementation
+
+The PII protection is implemented through two main components:
+1. `remove_pii(text)`: Core function for detecting and removing PII from text data
+2. `prepare_text_for_ai(data)`: High-level function that handles different data types and structures
+
+### Best Practices
+
+- Always use the PII removal functions before sharing or analyzing sensitive data
+- Regularly audit and update PII detection patterns
+- Monitor and log PII removal statistics (without logging the PII itself)
+- Review and validate PII removal effectiveness periodically

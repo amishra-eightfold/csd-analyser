@@ -201,3 +201,30 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Environment and secrets
+.env
+.streamlit/secrets.toml
+*.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Temporary and generated files
+openai_response*
+raw_data_*
+*.log
+*.csv
+*.xlsx
+*.pptx
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Model files
+models/
+*.pkl

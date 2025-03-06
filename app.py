@@ -25,6 +25,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 import joblib
 import os.path
+import tiktoken
+from openai import OpenAI
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -1233,12 +1235,416 @@ def display_visualizations(df, customers):
         if st.session_state.debug_mode:
             st.error(f"Debug - Visualization error details: {str(e)}")
 
+def remove_pii(text):
+    """Remove personally identifiable information (PII) from text."""
+    if not isinstance(text, str):
+        return ''
+        
+    # Initialize cleaned text
+    cleaned_text = text
+    
+    # Remove email addresses
+    cleaned_text = re.sub(r'[\w\.-]+@[\w\.-]+\.\w+', '[EMAIL]', cleaned_text)
+    
+    # Remove phone numbers (various formats)
+    phone_patterns = [
+        r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # Standard US format
+        r'\+\d{1,3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}\b',  # International format
+        r'\(\d{3}\)\s*\d{3}[-\s]?\d{4}\b',  # (123) 456-7890
+        r'\b\d{10}\b'  # Plain 10 digits
+    ]
+    for pattern in phone_patterns:
+        cleaned_text = re.sub(pattern, '[PHONE]', cleaned_text)
+    
+    # Remove URLs
+    cleaned_text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '[URL]', cleaned_text)
+    
+    # Remove IP addresses
+    cleaned_text = re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '[IP_ADDRESS]', cleaned_text)
+    
+    # Remove credit card numbers
+    cleaned_text = re.sub(r'\b(?:\d[ -]*?){13,16}\b', '[CREDIT_CARD]', cleaned_text)
+    
+    # Remove social security numbers
+    cleaned_text = re.sub(r'\b\d{3}[-]?\d{2}[-]?\d{4}\b', '[SSN]', cleaned_text)
+    
+    # Remove names (common name patterns)
+    name_patterns = [
+        r'(?i)(?:mr\.|mrs\.|ms\.|dr\.|prof\.)\s+[a-z]+',  # Titles with names
+        r'(?i)(?:first|last|full)\s+name\s*(?::|is|=)\s*[a-z\s]+',  # Name declarations
+        r'(?i)sincerely,\s+[a-z\s]+',  # Email signatures
+        r'(?i)regards,\s+[a-z\s]+',  # Email signatures
+        r'(?i)best,\s+[a-z\s]+'  # Email signatures
+    ]
+    for pattern in name_patterns:
+        cleaned_text = re.sub(pattern, '[NAME]', cleaned_text)
+    
+    # Remove common password patterns
+    cleaned_text = re.sub(r'(?i)password\s*(?::|is|=)\s*\S+', '[PASSWORD]', cleaned_text)
+    
+    # Remove dates of birth
+    dob_patterns = [
+        r'\b\d{2}[-/]\d{2}[-/]\d{4}\b',  # MM/DD/YYYY or DD/MM/YYYY
+        r'\b\d{4}[-/]\d{2}[-/]\d{2}\b',  # YYYY/MM/DD
+        r'(?i)(?:date\s+of\s+birth|dob|birth\s+date)\s*(?::|is|=)\s*[a-z0-9\s,]+' # DOB declarations
+    ]
+    for pattern in dob_patterns:
+        cleaned_text = re.sub(pattern, '[DOB]', cleaned_text)
+    
+    return cleaned_text
+
+def prepare_text_for_ai(data):
+    """Prepare text data for AI analysis by removing PII."""
+    if isinstance(data, dict):
+        # Handle dictionary input
+        cleaned_data = {}
+        for key, value in data.items():
+            if isinstance(value, (str, list, dict)):
+                cleaned_data[key] = prepare_text_for_ai(value)
+            else:
+                cleaned_data[key] = value
+        return cleaned_data
+    elif isinstance(data, list):
+        # Handle list input
+        return [prepare_text_for_ai(item) for item in data]
+    elif isinstance(data, str):
+        # Handle string input
+        return remove_pii(data)
+    elif isinstance(data, pd.DataFrame):
+        # Handle DataFrame input
+        cleaned_df = data.copy()
+        text_columns = cleaned_df.select_dtypes(include=['object']).columns
+        for col in text_columns:
+            cleaned_df[col] = cleaned_df[col].apply(remove_pii)
+        return cleaned_df
+    else:
+        # Return as is for other types
+        return data
+
+def calculate_tokens(text):
+    """Calculate the number of tokens in a text string using tiktoken."""
+    try:
+        encoding = tiktoken.encoding_for_model("gpt-4")
+        return len(encoding.encode(text))
+    except Exception as e:
+        debug(f"Error calculating tokens: {str(e)}")
+        # Fallback to approximate calculation (avg 4 chars per token)
+        return len(text) // 4
+
+def chunk_data(data, max_tokens=4000):
+    """
+    Intelligently chunk data to fit within token limits while preserving context.
+    Returns a list of chunks and their token counts.
+    """
+    chunks = []
+    current_chunk = []
+    current_tokens = 0
+    
+    # Helper function to get essential context
+    def get_context(item):
+        return {
+            'id': item.get('Id', 'Unknown'),
+            'case_number': item.get('CaseNumber', 'Unknown'),
+            'account': item.get('Account_Name', 'Unknown'),
+            'created_date': str(item.get('CreatedDate', 'Unknown'))
+        }
+    
+    # Process each item
+    for item in data:
+        # Calculate tokens for this item
+        item_text = json.dumps(item)
+        item_tokens = calculate_tokens(item_text)
+        
+        # If single item exceeds max tokens, truncate it
+        if item_tokens > max_tokens:
+            debug(f"Truncating large item: {item.get('Id', 'Unknown')}")
+            # Keep essential fields and truncate description/comments
+            truncated_item = {
+                **get_context(item),
+                'Subject': item.get('Subject', '')[:200],
+                'Description': item.get('Description', '')[:500],
+                'truncated': True
+            }
+            item_text = json.dumps(truncated_item)
+            item_tokens = calculate_tokens(item_text)
+            item = truncated_item  # Replace the original item with truncated version
+        
+        # If adding this item would exceed limit, start new chunk
+        if current_tokens + item_tokens > max_tokens and current_chunk:
+            chunks.append(current_chunk)
+            current_chunk = []
+            current_tokens = 0
+        
+        # Add item to current chunk
+        current_chunk.append(item)
+        current_tokens += item_tokens
+    
+    # Add final chunk
+    if current_chunk:
+        chunks.append(current_chunk)
+    
+    debug(f"Created {len(chunks)} chunks from {len(data)} items")
+    return chunks
+
+def process_chunks_with_retry(chunks, process_func, max_retries=3, backoff_factor=2):
+    """
+    Process chunks with retry mechanism and detailed progress tracking.
+    Returns tuple of (results, processing_stats).
+    """
+    results = []
+    processing_stats = {
+        'total_chunks': len(chunks),
+        'processed_chunks': 0,
+        'successful_chunks': 0,
+        'failed_chunks': 0,
+        'retry_count': 0,
+        'total_tokens': 0,
+        'errors': [],
+        'processing_times': [],
+        'chunk_sizes': []
+    }
+    
+    # Create progress bar
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    error_placeholder = st.empty()
+    stats_placeholder = st.empty()
+    
+    try:
+        for i, chunk_data in enumerate(chunks):
+            chunk_size = len(chunk_data)
+            processing_stats['chunk_sizes'].append(chunk_size)
+            
+            retry_count = 0
+            success = False
+            last_error = None
+            chunk_start_time = time.time()
+            
+            # Update progress message
+            status_text.text(f"Processing chunk {i+1}/{len(chunks)} (size: {chunk_size} records)")
+            
+            while retry_count < max_retries and not success:
+                try:
+                    if retry_count > 0:
+                        # Calculate backoff time
+                        wait_time = backoff_factor ** retry_count
+                        status_text.text(f"Retrying chunk {i+1} (attempt {retry_count + 1}/{max_retries}) in {wait_time} seconds...")
+                        time.sleep(wait_time)
+                    
+                    # Process the chunk
+                    result = process_func(chunk_data)
+                    results.append(result)
+                    success = True
+                    
+                    # Update successful stats
+                    processing_stats['successful_chunks'] += 1
+                    
+                except Exception as e:
+                    last_error = str(e)
+                    retry_count += 1
+                    processing_stats['retry_count'] += 1
+                    debug(f"Error processing chunk {i+1}: {str(e)}")
+                    
+                    if retry_count == max_retries:
+                        error_msg = f"Failed to process chunk {i+1} after {max_retries} attempts: {last_error}"
+                        processing_stats['errors'].append(error_msg)
+                        processing_stats['failed_chunks'] += 1
+                        error_placeholder.error(error_msg)
+            
+            # Record processing time
+            chunk_time = time.time() - chunk_start_time
+            processing_stats['processing_times'].append(chunk_time)
+            
+            # Update progress
+            processing_stats['processed_chunks'] += 1
+            progress = (i + 1) / len(chunks)
+            progress_bar.progress(progress)
+            
+            # Update running statistics
+            avg_time = sum(processing_stats['processing_times']) / len(processing_stats['processing_times'])
+            success_rate = (processing_stats['successful_chunks'] / processing_stats['processed_chunks']) * 100
+            
+            stats_placeholder.info(f"""
+            Processing Statistics:
+            - Progress: {progress * 100:.1f}% ({processing_stats['processed_chunks']}/{processing_stats['total_chunks']} chunks)
+            - Success Rate: {success_rate:.1f}%
+            - Average Processing Time: {avg_time:.1f}s per chunk
+            - Total Retries: {processing_stats['retry_count']}
+            - Failed Chunks: {processing_stats['failed_chunks']}
+            """)
+    
+    except Exception as e:
+        error_msg = f"Critical error during chunk processing: {str(e)}"
+        processing_stats['errors'].append(error_msg)
+        error_placeholder.error(error_msg)
+        debug(f"Error in process_chunks_with_retry: {str(e)}")
+        debug(traceback.format_exc())
+    
+    finally:
+        # Calculate final statistics
+        if processing_stats['processing_times']:
+            processing_stats['avg_processing_time'] = sum(processing_stats['processing_times']) / len(processing_stats['processing_times'])
+            processing_stats['max_processing_time'] = max(processing_stats['processing_times'])
+            processing_stats['min_processing_time'] = min(processing_stats['processing_times'])
+        
+        if processing_stats['chunk_sizes']:
+            processing_stats['avg_chunk_size'] = sum(processing_stats['chunk_sizes']) / len(processing_stats['chunk_sizes'])
+        
+        # Clean up progress indicators
+        progress_bar.empty()
+        status_text.empty()
+        
+        # Show final summary
+        if processing_stats['failed_chunks'] > 0:
+            error_placeholder.error(f"Processing completed with {processing_stats['failed_chunks']} failed chunks")
+        else:
+            error_placeholder.success("Processing completed successfully")
+        
+        stats_placeholder.info(f"""
+        Final Processing Statistics:
+        - Total Chunks Processed: {processing_stats['processed_chunks']}/{processing_stats['total_chunks']}
+        - Successful Chunks: {processing_stats['successful_chunks']} ({(processing_stats['successful_chunks']/processing_stats['total_chunks'])*100:.1f}%)
+        - Failed Chunks: {processing_stats['failed_chunks']}
+        - Total Retries: {processing_stats['retry_count']}
+        - Average Processing Time: {processing_stats.get('avg_processing_time', 0):.1f}s per chunk
+        - Average Chunk Size: {processing_stats.get('avg_chunk_size', 0):.1f} records
+        """)
+    
+    return results, processing_stats
+
+def validate_analysis_data(data):
+    """Validate the analysis data structure and content."""
+    try:
+        validation_results = {
+            'is_valid': True,
+            'errors': [],
+            'warnings': [],
+            'stats': {}
+        }
+
+        # Check if data is a DataFrame
+        if not isinstance(data, pd.DataFrame):
+            validation_results['is_valid'] = False
+            validation_results['errors'].append(f"Expected DataFrame, got {type(data)}")
+            return validation_results
+
+        # Required columns
+        required_columns = ['Subject', 'Description', 'CreatedDate', 'Status']
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        if missing_columns:
+            validation_results['is_valid'] = False
+            validation_results['errors'].append(f"Missing required columns: {missing_columns}")
+            return validation_results
+
+        # Check data types
+        try:
+            # Ensure CreatedDate is datetime
+            if not pd.api.types.is_datetime64_any_dtype(data['CreatedDate']):
+                data['CreatedDate'] = pd.to_datetime(data['CreatedDate'], errors='coerce')
+            
+            # Remove timezone information if present
+            if data['CreatedDate'].dt.tz is not None:
+                data['CreatedDate'] = data['CreatedDate'].dt.tz_localize(None)
+        except Exception as e:
+            validation_results['is_valid'] = False
+            validation_results['errors'].append(f"Error processing dates: {str(e)}")
+            return validation_results
+
+        # Check for empty DataFrame
+        if len(data) == 0:
+            validation_results['is_valid'] = False
+            validation_results['errors'].append("Empty DataFrame")
+            return validation_results
+
+        # Calculate statistics
+        validation_results['stats'] = {
+            'total_records': len(data),
+            'null_counts': data[required_columns].isnull().sum().to_dict(),
+            'status_distribution': data['Status'].value_counts().to_dict(),
+            'date_range': {
+                'start': data['CreatedDate'].min().strftime('%Y-%m-%d') if not pd.isna(data['CreatedDate'].min()) else None,
+                'end': data['CreatedDate'].max().strftime('%Y-%m-%d') if not pd.isna(data['CreatedDate'].max()) else None
+            }
+        }
+
+        # Add warnings for potential data quality issues
+        if data['Subject'].isnull().any():
+            validation_results['warnings'].append(f"Found {data['Subject'].isnull().sum()} records with missing Subject")
+        if data['Description'].isnull().any():
+            validation_results['warnings'].append(f"Found {data['Description'].isnull().sum()} records with missing Description")
+        if data['CreatedDate'].isnull().any():
+            validation_results['warnings'].append(f"Found {data['CreatedDate'].isnull().sum()} records with missing CreatedDate")
+
+        return validation_results
+
+    except Exception as e:
+        return {
+            'is_valid': False,
+            'errors': [f"Validation error: {str(e)}"],
+            'warnings': [],
+            'stats': {}
+        }
+
+def merge_analysis_results(results):
+    """
+    Merge results from multiple chunks while handling duplicates and conflicts.
+    Returns consolidated analysis and quality metrics.
+    """
+    merged = {
+        'summary': '',
+        'trends': [],
+        'recommendations': [],
+        'csat_analysis': [],
+        'quality_metrics': {
+            'chunk_count': len(results),
+            'consistency_score': 0,
+            'coverage_metrics': {}
+        }
+    }
+    
+    # Helper function to deduplicate insights while preserving unique information
+    def deduplicate_insights(items):
+        seen = set()
+        unique_items = []
+        for item in items:
+            item_hash = hash(str(item).lower())
+            if item_hash not in seen:
+                seen.add(item_hash)
+                unique_items.append(item)
+        return unique_items
+    
+    # Combine summaries intelligently
+    summaries = [r.get('summary', '') for r in results if r.get('summary')]
+    if summaries:
+        # Use the most comprehensive summary (usually the longest that's not excessive)
+        merged['summary'] = max(summaries, key=len)
+    
+    # Combine and deduplicate trends and recommendations
+    all_trends = [trend for r in results for trend in r.get('trends', [])]
+    all_recommendations = [rec for r in results for rec in r.get('recommendations', [])]
+    
+    merged['trends'] = deduplicate_insights(all_trends)
+    merged['recommendations'] = deduplicate_insights(all_recommendations)
+    
+    # Combine CSAT analysis while preserving temporal information
+    all_csat = [csat for r in results for csat in r.get('csat_analysis', [])]
+    merged['csat_analysis'] = deduplicate_insights(all_csat)
+    
+    # Calculate quality metrics
+    merged['quality_metrics']['consistency_score'] = len(merged['trends']) / len(all_trends) if all_trends else 1
+    merged['quality_metrics']['coverage_metrics'] = {
+        'trends_coverage': len(merged['trends']) / len(results) if results else 0,
+        'recommendations_coverage': len(merged['recommendations']) / len(results) if results else 0
+    }
+    
+    return merged
+
 def generate_ai_insights(data):
     """Generate AI insights from ticket data using OpenAI."""
     try:
         # Check if OpenAI package is installed
         try:
-            import openai
+            from openai import OpenAI
             debug("OpenAI package imported successfully")
         except ImportError:
             st.error("OpenAI package is not installed. Please run 'pip install openai' to enable AI analysis.")
@@ -1250,180 +1656,135 @@ def generate_ai_insights(data):
         if not openai_api_key:
             st.warning("OpenAI API key not found. Please add it to your environment variables or Streamlit secrets.")
             debug("OpenAI API key not found")
-            
-            # Provide a sample response for demonstration purposes
-            sample_response = {
-                "summary": "Sample AI Analysis (OpenAI API key not configured)",
-                "trends": [],
-                "recommendations": [],
-                "csat_analysis": ["CSAT analysis not available - OpenAI API key not configured"]
-            }
-            return sample_response
+            return None
 
-        # Prepare CSAT data for analysis
-        csat_data = data.copy()
-        
-        # Convert CSAT to numeric, keeping only valid values (0-5)
-        csat_data['CSAT__c'] = pd.to_numeric(csat_data['CSAT__c'], errors='coerce')
-        valid_csat = csat_data[
-            (csat_data['CSAT__c'].notna()) & 
-            (csat_data['CSAT__c'] >= 0) & 
-            (csat_data['CSAT__c'] <= 5)
-        ]
-        
-        # Calculate CSAT metrics
-        total_tickets = len(data)
-        total_csat_responses = len(valid_csat)
-        response_rate = (total_csat_responses / total_tickets * 100) if total_tickets > 0 else 0
-        
-        csat_insights = []
-        if not valid_csat.empty:
-            avg_csat = valid_csat['CSAT__c'].mean()
-            median_csat = valid_csat['CSAT__c'].median()
-            
-            # Group by month for trend analysis
-            valid_csat['Month'] = pd.to_datetime(valid_csat['CreatedDate']).dt.to_period('M')
-            monthly_csat = valid_csat.groupby('Month')['CSAT__c'].agg(['mean', 'count']).reset_index()
-            monthly_csat['Month'] = monthly_csat['Month'].astype(str)
-            
-            # Identify trends
-            if len(monthly_csat) > 1:
-                latest_month = monthly_csat.iloc[-1]
-                previous_month = monthly_csat.iloc[-2]
-                csat_change = latest_month['mean'] - previous_month['mean']
-                response_change = latest_month['count'] - previous_month['count']
-                
-                if abs(csat_change) >= 0.5:  # Significant change threshold
-                    trend = "increased" if csat_change > 0 else "decreased"
-                    csat_insights.append(
-                        f"CSAT scores have {trend} by {abs(csat_change):.1f} points "
-                        f"from {previous_month['Month']} to {latest_month['Month']}"
-                    )
-                
-                if abs(response_change) >= 2:  # Significant change threshold
-                    trend = "increased" if response_change > 0 else "decreased"
-                    csat_insights.append(
-                        f"CSAT response count has {trend} by {abs(response_change)} "
-                        f"from {previous_month['Month']} to {latest_month['Month']}"
-                    )
-            
-            # Analyze CSAT by status
-            status_csat = valid_csat.groupby('Status')['CSAT__c'].agg(['mean', 'count']).round(2)
-            status_csat = status_csat[status_csat['count'] >= 3]  # Only include statuses with sufficient data
-            
-            if not status_csat.empty:
-                best_status = status_csat.nlargest(1, 'mean').index[0]
-                worst_status = status_csat.nsmallest(1, 'mean').index[0]
-                csat_insights.append(
-                    f"Tickets with status '{best_status}' have the highest average CSAT ({status_csat.loc[best_status, 'mean']:.1f}), "
-                    f"while '{worst_status}' have the lowest ({status_csat.loc[worst_status, 'mean']:.1f})"
-                )
-            
-            # Analyze CSAT by priority
-            if 'Priority' in valid_csat.columns:
-                priority_csat = valid_csat.groupby('Priority')['CSAT__c'].agg(['mean', 'count']).round(2)
-                priority_csat = priority_csat[priority_csat['count'] >= 3]
-                
-                if not priority_csat.empty:
-                    best_priority = priority_csat.nlargest(1, 'mean').index[0]
-                    worst_priority = priority_csat.nsmallest(1, 'mean').index[0]
-                    csat_insights.append(
-                        f"{best_priority} priority tickets have the highest average CSAT ({priority_csat.loc[best_priority, 'mean']:.1f}), "
-                        f"while {worst_priority} priority have the lowest ({priority_csat.loc[worst_priority, 'mean']:.1f})"
-                    )
-            
-            # Add overall CSAT metrics
-            csat_insights.insert(0, 
-                f"Overall CSAT metrics: Average: {avg_csat:.1f}, Median: {median_csat:.1f}, "
-                f"Response rate: {response_rate:.1f}% ({total_csat_responses} out of {total_tickets} tickets)"
-            )
-        else:
-            csat_insights.append("No valid CSAT responses found in the selected date range")
-        
-        # Initialize OpenAI client and continue with existing analysis
-        debug("Initializing OpenAI client")
-        from openai import OpenAI
+        # Initialize OpenAI client
         client = OpenAI(api_key=openai_api_key)
-        
-        # Prepare data for OpenAI analysis
-        analysis_data = data.copy()
-        
-        # Create a summary for the OpenAI prompt
-        summary = {
-            "total_tickets": len(analysis_data),
-            "customers": analysis_data['Account_Name'].unique().tolist() if 'Account_Name' in analysis_data.columns else [],
-            "ticket_statuses": analysis_data['Status'].value_counts().to_dict() if 'Status' in analysis_data.columns else {},
-            "csat_summary": {
-                "total_responses": total_csat_responses,
-                "response_rate": response_rate,
-                "average_csat": float(avg_csat) if 'avg_csat' in locals() else None,
-                "median_csat": float(median_csat) if 'median_csat' in locals() else None
-            }
-        }
-        
-        # Construct a prompt for OpenAI
-        prompt = f"""
-        Analyze this support ticket data summary:
-        
-        {json.dumps(summary, indent=2)}
-        
-        CSAT Insights:
-        {json.dumps(csat_insights, indent=2)}
-        
-        Please generate a comprehensive analysis focusing on:
-        1. Overall summary of the ticket data and CSAT metrics
-        2. Identified patterns and trends in CSAT scores
-        3. Specific recommendations for improving customer satisfaction
-        
-        Respond with valid JSON in this format:
-        {{
-            "summary": "General overview and key insights",
-            "trends": ["Trend 1", "Trend 2", ...],
-            "recommendations": ["Recommendation 1", "Recommendation 2", ...],
-            "csat_analysis": {json.dumps(csat_insights)}
-        }}
-        """
-        
-        # Call OpenAI API
+
+        # Ensure data is properly structured
+        if not isinstance(data, dict):
+            debug(f"Input data is not a dictionary, type: {type(data)}")
+            return None
+
+        debug(f"Input data keys: {list(data.keys())}")
+
+        # Extract and normalize cases data
+        if 'cases' not in data:
+            debug("No cases data found in input")
+            return None
+
         try:
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights about customer satisfaction and support performance."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=2000,
-                response_format={"type": "json_object"}
-            )
+            # Handle both DataFrame and list/dict cases
+            if isinstance(data['cases'], pd.DataFrame):
+                cases_df = data['cases']
+            else:
+                cases_df = pd.json_normalize(data['cases'])
             
-            # Parse the response
-            ai_response = json.loads(response.choices[0].message.content)
+            debug(f"Cases DataFrame columns: {cases_df.columns.tolist()}")
             
-            # Ensure CSAT insights are included
-            if 'csat_analysis' not in ai_response:
-                ai_response['csat_analysis'] = csat_insights
-                
-            return ai_response
-            
-        except Exception as api_error:
-            debug(f"OpenAI API error: {str(api_error)}")
-            # Return basic insights without AI analysis
-            return {
-                "summary": "AI analysis unavailable - using basic statistical analysis",
-                "trends": [],
-                "recommendations": [
-                    "Monitor CSAT response rate and work on improving it",
-                    "Focus on addressing issues in statuses with lower CSAT scores",
-                    "Consider priority-based routing for better customer satisfaction"
-                ],
-                "csat_analysis": csat_insights
+            # Extract required fields, handling nested structures
+            required_fields = {
+                'Subject': cases_df['Subject'] if 'Subject' in cases_df.columns else cases_df.get('attributes.Subject', ''),
+                'Description': cases_df['Description'] if 'Description' in cases_df.columns else cases_df.get('attributes.Description', ''),
+                'Status': cases_df['Status'] if 'Status' in cases_df.columns else cases_df.get('attributes.Status', ''),
+                'Priority': cases_df.get('Internal_Priority__c', None),
+                'Account': cases_df.get('Account.Name', None),
+                'Product_Area__c': cases_df.get('Product_Area__c', None),
+                'Product_Feature__c': cases_df.get('Product_Feature__c', None)
             }
+
+            # Handle dates separately with timezone normalization
+            created_date = cases_df['CreatedDate'] if 'CreatedDate' in cases_df.columns else cases_df.get('attributes.CreatedDate')
+            if created_date is not None:
+                try:
+                    # Convert to datetime and normalize timezone to UTC
+                    created_date = pd.to_datetime(created_date).dt.tz_localize(None)
+                    required_fields['CreatedDate'] = created_date
+                except Exception as e:
+                    debug(f"Error processing CreatedDate: {str(e)}")
+                    required_fields['CreatedDate'] = pd.NaT
+
+            # Create analysis DataFrame
+            analysis_df = pd.DataFrame(required_fields)
             
+            # Add comments if available
+            if 'comments' in data and data['comments'] is not None:
+                comments_df = pd.json_normalize(data['comments'])
+                if not comments_df.empty:
+                    analysis_df['Comments'] = comments_df.groupby('ParentId')['CommentBody'].apply(list)
+
+            # Fill missing values
+            analysis_df['Subject'] = analysis_df['Subject'].fillna('')
+            analysis_df['Description'] = analysis_df['Description'].fillna('')
+            analysis_df['Status'] = analysis_df['Status'].fillna('Unknown')
+            analysis_df['Priority'] = analysis_df['Priority'].fillna('Not Set')
+            analysis_df['Product_Area__c'] = analysis_df['Product_Area__c'].fillna('Unspecified')
+            analysis_df['Product_Feature__c'] = analysis_df['Product_Feature__c'].fillna('Unspecified')
+
+            # Prepare summary statistics
+            summary_stats = {
+                'total_tickets': len(analysis_df),
+                'status_distribution': analysis_df['Status'].value_counts().to_dict(),
+                'priority_distribution': analysis_df['Priority'].value_counts().to_dict(),
+                'product_areas': analysis_df['Product_Area__c'].value_counts().to_dict(),
+                'avg_description_length': int(analysis_df['Description'].str.len().mean()),
+                'date_range': {
+                    'start': analysis_df['CreatedDate'].min().strftime('%Y-%m-%d'),
+                    'end': analysis_df['CreatedDate'].max().strftime('%Y-%m-%d')
+                }
+            }
+
+            # Prepare the prompt
+            prompt = f"""
+            Analyze the following support ticket data and provide insights:
+
+            Summary Statistics:
+            {json.dumps(summary_stats, indent=2)}
+
+            Please provide a comprehensive analysis with:
+            1. A summary of key insights and trends
+            2. Notable patterns in ticket distribution and customer issues
+            3. Actionable recommendations for improving customer support
+
+            Format your response as a JSON object with these keys:
+            - summary: Overall analysis and key findings
+            - patterns: List of identified patterns and trends
+            - recommendations: List of specific, actionable recommendations
+
+            Focus on practical insights that can help improve customer support operations.
+            """
+
+            # Call OpenAI API
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=2000
+                )
+                
+                # Extract and parse the response
+                ai_response = response.choices[0].message.content
+                insights = json.loads(ai_response)
+                
+                return insights
+
+            except Exception as e:
+                st.error(f"Error calling OpenAI API: {str(e)}")
+                debug(f"OpenAI API error: {str(e)}")
+                return None
+
+        except Exception as e:
+            st.error(f"Error preparing data for analysis: {str(e)}")
+            debug(f"Data preparation error: {str(e)}")
+            return None
+
     except Exception as e:
-        st.error(f"Error generating AI insights: {str(e)}")
-        debug(f"Error in generate_ai_insights: {str(e)}")
-        debug(traceback.format_exc())
+        st.error(f"Error in generate_ai_insights: {str(e)}")
+        debug(f"General error in generate_ai_insights: {str(e)}")
         return None
 
 def generate_wordcloud(text_data, title, additional_stopwords=None):
@@ -1817,16 +2178,12 @@ def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis
             st.warning("No data available for analysis.")
             return
             
-        # Handle whether data is a DataFrame or a dictionary
+        # Handle whether data is a dictionary or DataFrame
         if isinstance(data, dict):
             # Extract the cases DataFrame from the dictionary
-            if 'cases' in data:
-                cases_df = data['cases']
-                if cases_df is None or cases_df.empty:
-                    st.warning("No ticket data available for analysis.")
-                    return
-            else:
-                st.warning("No ticket data found in the provided data.")
+            cases_df = data.get('cases')
+            if cases_df is None or cases_df.empty:
+                st.warning("No ticket data available for analysis.")
                 return
                 
             # Get references to other data elements
@@ -1835,10 +2192,10 @@ def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis
             emails_df = data.get('emails', pd.DataFrame())
         else:
             # Data is already a DataFrame (direct tickets)
-            if data.empty:
+            cases_df = data
+            if cases_df.empty:
                 st.warning("No data available for analysis.")
                 return
-            cases_df = data
             # Set others to empty DataFrames since they're not provided
             comments_df = pd.DataFrame()
             history_df = pd.DataFrame()
@@ -1871,17 +2228,17 @@ def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis
             st.metric("Total Tickets", len(cases_df))
             
         # 2. Open tickets
-        open_tickets = len(cases_df[cases_df['Status'].isin(['New', 'Open', 'In Progress', 'Reopened'])])
+        open_tickets = cases_df['Status'].isin(['New', 'Open', 'In Progress', 'Reopened']).sum()
         with col2:
             st.metric("Open Tickets", open_tickets)
             
         # 3. Closed tickets
-        closed_tickets = len(cases_df[cases_df['Status'].isin(['Closed', 'Solved', 'Resolved'])])
+        closed_tickets = cases_df['Status'].isin(['Closed', 'Solved', 'Resolved']).sum()
         with col3:
             st.metric("Closed Tickets", closed_tickets)
             
         # 4. Escalated tickets
-        escalated_tickets = len(cases_df[cases_df['IsEscalated'] == True])
+        escalated_tickets = cases_df['IsEscalated'].sum()
         with col4:
             st.metric("Escalated Tickets", escalated_tickets)
             
@@ -1964,102 +2321,23 @@ def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis
         
         progress_bar.progress(80)
         
-        # AI-powered analysis if enabled
-        if enable_ai_analysis:
-            st.write("### AI-Powered Insights")
-            with st.spinner("Generating AI insights from ticket data..."):
-                debug("Generating AI insights")
-                
-                # Create a combined data dictionary with cases_df as the main dataframe
-                analysis_data = {
-                    'cases': cases_df,
-                    'comments': comments_df,
-                    'history': history_df,
-                    'emails': emails_df
-                }
-                
-                insights = generate_ai_insights(analysis_data)
-                
-                if insights:
-                    # Create tabs for different insight categories
-                    insights_tab, patterns_tab, recommendations_tab = st.tabs(["Summary", "Patterns", "Recommendations"])
-                    
-                    with insights_tab:
-                        st.markdown(insights.get('summary', 'No summary insights available.'))
-                        
-                    with patterns_tab:
-                        patterns = insights.get('patterns', [])
-                        if patterns:
-                            for i, pattern in enumerate(patterns):
-                                st.markdown(f"**Pattern {i+1}:** {pattern}")
-                        else:
-                            st.write("No patterns identified.")
-                            
-                    with recommendations_tab:
-                        recommendations = insights.get('recommendations', [])
-                        if recommendations:
-                            for i, rec in enumerate(recommendations):
-                                st.markdown(f"**Recommendation {i+1}:** {rec}")
-                        else:
-                            st.write("No recommendations available.")
-                    
-                    # Add download button for the full HTML report
-                    if 'html' in insights:
-                        st.download_button(
-                            label="Download AI Analysis Report",
-                            data=insights['html'],
-                            file_name="ai_support_ticket_analysis.html",
-                            mime="text/html"
-                        )
-                else:
-                    # Fallback with sample insights when generation fails
-                    st.info("AI analysis is enabled but no insights were generated. Here's a sample of what insights might look like:")
-                    
-                    # Sample data
-                    st.markdown("""
-                    #### Sample Insights Summary
-                    
-                    The support ticket analysis reveals several key trends and areas for attention. Most tickets are related to 
-                    authentication issues and API integration problems. Response times are generally within SLA, but escalation 
-                    rates are higher for enterprise customers. A significant portion of tickets are reopened after closure, 
-                    suggesting potential issues with solution quality or completeness.
-                    
-                    #### Sample Identified Patterns
-                    
-                    * Authentication-related issues spike after system updates
-                    * Enterprise customers experience more integration challenges
-                    * Documentation questions frequently lead to feature requests
-                    
-                    #### Sample Recommendations
-                    
-                    * Expand authentication troubleshooting documentation
-                    * Create dedicated integration solutions for enterprise customers
-                    * Develop proactive notifications for system updates
-                    """)
-        else:
-            debug("AI analysis is disabled")
-            
-        # Complete progress bar and remove it
-        progress_bar.progress(100)
-        time.sleep(0.5)  # Slight delay to show completion
-        progress_bar.empty()
-            
         # Text and Sentiment Analysis Section
-        st.write("### Text and Sentiment Analysis")
-        
-        # Define additional stopwords for technical terms
-        additional_stopwords = {
-            'eightfold', 'mailto', 'chrome', 'firefox', 'safari', 'edge', 'opera',
-            'webkit', 'mozilla', 'browser', 'agent', 'http', 'https', 'www',
-            'com', 'net', 'org', 'html', 'htm', 'php', 'asp', 'aspx',
-            'user-agent', 'useragent', 'version', 'windows', 'macintosh', 'linux',
-            'unix', 'android', 'ios', 'mobile', 'desktop', 'platform',
-            'application', 'software', 'browser-agent', 'browseragent'
-        }
-        
-        # Combine text data from different sources
-        text_data = []
         if not cases_df.empty:
+            st.write("### Text and Sentiment Analysis")
+            
+            # Define additional stopwords for technical terms
+            additional_stopwords = {
+                'eightfold', 'mailto', 'chrome', 'firefox', 'safari', 'edge', 'opera',
+                'webkit', 'mozilla', 'browser', 'agent', 'http', 'https', 'www',
+                'com', 'net', 'org', 'html', 'htm', 'php', 'asp', 'aspx',
+                'user-agent', 'useragent', 'version', 'windows', 'macintosh', 'linux',
+                'unix', 'android', 'ios', 'mobile', 'desktop', 'platform',
+                'application', 'software', 'browser-agent', 'browseragent'
+            }
+            
+            # Combine text data from different sources
+            text_data = []
+            
             # Clean and add text data
             def clean_text(text):
                 if not isinstance(text, str):
@@ -2077,25 +2355,24 @@ def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis
             
             text_data.extend(cases_df['Subject'].apply(clean_text))
             text_data.extend(cases_df['Description'].apply(clean_text))
-        
-        if not comments_df.empty:
-            text_data.extend(comments_df['CommentBody'].apply(clean_text))
             
-        if not emails_df.empty:
-            text_data.extend(emails_df['TextBody'].apply(clean_text))
+            if not comments_df.empty:
+                text_data.extend(comments_df['CommentBody'].apply(clean_text))
+                
+            if not emails_df.empty:
+                text_data.extend(emails_df['TextBody'].apply(clean_text))
+                
+            combined_text = ' '.join(text_data)
             
-        combined_text = ' '.join(text_data)
-        
-        # Generate WordCloud with enhanced stopwords
-        if combined_text.strip():
-            st.write("#### Word Cloud Analysis")
-            wordcloud_fig = generate_wordcloud(combined_text, 'Common Terms in All Communications', additional_stopwords)
-            if wordcloud_fig:
-                st.pyplot(wordcloud_fig)
-                plt.close()
-        
-        # Sentiment Analysis with Enhanced Visualization
-        if len(cases_df) > 0:
+            # Generate WordCloud with enhanced stopwords
+            if combined_text.strip():
+                st.write("#### Word Cloud Analysis")
+                wordcloud_fig = generate_wordcloud(combined_text, 'Common Terms in All Communications', additional_stopwords)
+                if wordcloud_fig:
+                    st.pyplot(wordcloud_fig)
+                    plt.close()
+            
+            # Sentiment Analysis with Enhanced Visualization
             st.write("#### Sentiment Analysis")
             st.write("""
             The sentiment analysis uses TextBlob's algorithm, which:
@@ -2291,11 +2568,62 @@ def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis
                         """)
                     else:
                         st.info("No valid CSAT scores found for correlation analysis. Please ensure CSAT scores are within the valid range (0-5).")
-
-        progress_bar.progress(80)
         
-        # Continue with AI-powered analysis if enabled
+        # Complete progress bar and remove it
+        progress_bar.progress(90)
+
+        # AI Analysis Section
         if enable_ai_analysis:
+            st.markdown("---")
+            st.header("🤖 AI-Powered Insights")
+            
+            with st.spinner("Generating AI insights from ticket data..."):
+                # Process data for AI analysis
+                ai_data = {
+                    'cases': cases_df,
+                    'comments': comments_df,
+                    'history': history_df,
+                    'emails': emails_df
+                }
+                
+                ai_insights = generate_ai_insights(ai_data)
+                
+                if ai_insights is not None:
+                    st.success("AI analysis completed successfully!")
+                    
+                    # Display insights in an organized manner
+                    st.subheader("📊 Key Insights")
+                    if isinstance(ai_insights, pd.DataFrame):
+                        # If the result is a DataFrame, display relevant statistics
+                        st.write("Ticket Analysis Summary:")
+                        st.dataframe(ai_insights.describe())
+                    elif isinstance(ai_insights, dict):
+                        # If the result is a dictionary, display structured insights
+                        for key, value in ai_insights.items():
+                            if key == 'summary':
+                                st.write("### Summary")
+                                st.write(value)
+                            elif key == 'patterns':
+                                st.write("### Identified Patterns")
+                                for pattern in value:
+                                    st.write(f"- {pattern}")
+                            elif key == 'recommendations':
+                                st.write("### Recommendations")
+                                for rec in value:
+                                    st.write(f"- {rec}")
+                    else:
+                        st.write(ai_insights)
+                else:
+                    st.warning("Unable to generate AI insights. This could be due to missing OpenAI API key or insufficient data.")
+                    st.info("To enable AI insights, please ensure you have:")
+                    st.markdown("""
+                    1. Set up your OpenAI API key in your environment variables or Streamlit secrets
+                    2. Have sufficient ticket data for analysis
+                    3. Properly configured the AI analysis settings
+                    """)
+
+        # After sentiment analysis section but before final progress bar
+        if not cases_df.empty and enable_ai_analysis:
             st.write("### AI-Powered Insights")
             with st.spinner("Generating AI insights from ticket data..."):
                 debug("Generating AI insights")
@@ -2310,7 +2638,7 @@ def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis
                 
                 insights = generate_ai_insights(analysis_data)
                 
-                if insights:
+                if insights is not None:
                     # Create tabs for different insight categories
                     insights_tab, patterns_tab, recommendations_tab = st.tabs(["Summary", "Patterns", "Recommendations"])
                     
@@ -2366,9 +2694,10 @@ def display_detailed_analysis(data, enable_ai_analysis, skip_impl_phase_analysis
                     * Create dedicated integration solutions for enterprise customers
                     * Develop proactive notifications for system updates
                     """)
-        else:
-            debug("AI analysis is disabled")
-            
+        elif enable_ai_analysis:
+            st.info("No data available for AI analysis.")
+            debug("AI analysis enabled but no data available")
+        
         # Complete progress bar and remove it
         progress_bar.progress(100)
         time.sleep(0.5)  # Slight delay to show completion
