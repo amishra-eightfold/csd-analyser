@@ -143,4 +143,52 @@ def get_technical_stopwords() -> set:
         'user-agent', 'useragent', 'version', 'windows', 'macintosh', 'linux',
         'unix', 'android', 'ios', 'mobile', 'desktop', 'platform',
         'application', 'software', 'browser-agent', 'browseragent'
-    } 
+    }
+
+def get_highest_priority_from_history(sf_connection, case_id: str) -> str:
+    """Get the highest priority a case reached during its lifecycle.
+    
+    Args:
+        sf_connection: Salesforce connection object
+        case_id (str): The ID of the case to check
+        
+    Returns:
+        str: The highest priority the case reached (P0, P1, P2, P3, or original priority if no changes)
+    """
+    from salesforce_config import execute_soql_query
+    
+    # Priority order from lowest to highest
+    priority_order = {'P3': 0, 'P2': 1, 'P1': 2, 'P0': 3}
+    
+    # Query case history for priority changes
+    query = f"""
+        SELECT Id, CaseId, Field, NewValue, OldValue, CreatedDate 
+        FROM CaseHistory 
+        WHERE Field = 'Internal_Priority__c' 
+        AND CaseId = '{case_id}'
+        ORDER BY CreatedDate ASC
+    """
+    
+    try:
+        history_records = execute_soql_query(sf_connection, query)
+        if not history_records:
+            return None
+            
+        # Collect all priority values (both old and new)
+        priorities = []
+        for record in history_records:
+            if record.get('OldValue'):
+                priorities.append(record['OldValue'])
+            if record.get('NewValue'):
+                priorities.append(record['NewValue'])
+                
+        # Filter valid priorities and get the highest
+        valid_priorities = [p for p in priorities if p in priority_order]
+        if valid_priorities:
+            return max(valid_priorities, key=lambda x: priority_order.get(x, -1))
+            
+        return None
+            
+    except Exception as e:
+        print(f"Error querying case history: {str(e)}")
+        return None 
