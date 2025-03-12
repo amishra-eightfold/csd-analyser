@@ -1,5 +1,15 @@
-"""Data visualizers for the CSD Analyzer application."""
+"""Visualizers package for Support Ticket Analytics."""
 
-from .salesforce_visualizer import SalesforceVisualizer
+from .advanced_visualizations import (
+    create_csat_analysis,
+    create_word_clouds,
+    create_root_cause_analysis,
+    create_first_response_analysis
+)
 
-__all__ = ['SalesforceVisualizer'] 
+__all__ = [
+    'create_csat_analysis',
+    'create_word_clouds',
+    'create_root_cause_analysis',
+    'create_first_response_analysis'
+] 

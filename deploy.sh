@@ -15,6 +15,50 @@ usage() {
     exit 1
 }
 
+# Function to calculate MD5 hash of requirements.txt
+get_requirements_hash() {
+    if [ -f "requirements.txt" ]; then
+        md5sum requirements.txt | cut -d' ' -f1
+    else
+        echo ""
+    fi
+}
+
+# Function to check if requirements have changed
+check_requirements_changed() {
+    local current_hash=$(get_requirements_hash)
+    local remote_hash_file="$APP_DIR/.requirements_hash"
+    
+    # If no current requirements file exists
+    if [ -z "$current_hash" ]; then
+        echo "No requirements.txt found"
+        return 1
+    fi
+    
+    # Check if hash file exists on remote server
+    if ssh $SSH_OPTS $REMOTE_USER@$REMOTE_HOST "[ -f $remote_hash_file ]"; then
+        local stored_hash=$(ssh $SSH_OPTS $REMOTE_USER@$REMOTE_HOST "cat $remote_hash_file")
+        if [ "$current_hash" != "$stored_hash" ]; then
+            echo "Requirements have changed. Old hash: $stored_hash, New hash: $current_hash"
+            return 0
+        else
+            echo "Requirements unchanged"
+            return 1
+        fi
+    else
+        echo "No previous requirements hash found"
+        return 0
+    fi
+}
+
+# Function to update requirements hash on remote server
+update_requirements_hash() {
+    local current_hash=$(get_requirements_hash)
+    if [ ! -z "$current_hash" ]; then
+        echo "$current_hash" | ssh $SSH_OPTS $REMOTE_USER@$REMOTE_HOST "cat > $APP_DIR/.requirements_hash"
+    fi
+}
+
 # Function to perform cleanup
 cleanup() {
     echo "Cleaning up deployment..."
@@ -70,11 +114,27 @@ rsync -avz -e "ssh $SSH_OPTS" \
 # Setup the environment and install dependencies on the remote server
 echo "Setting up environment on remote server..."
 ssh $SSH_OPTS $REMOTE_USER@$REMOTE_HOST "cd $APP_DIR && \
-    python3 -m venv .venv && \
-    source .venv/bin/activate && \
-    pip install -r requirements.txt && \
-    python3 -c 'import nltk; nltk.download(\"punkt\"); nltk.download(\"averaged_perceptron_tagger\")' && \
-    mkdir -p .streamlit"
+    if [ ! -d '.venv' ]; then \
+        echo 'Creating new virtual environment...' && \
+        python3 -m venv .venv; \
+    fi"
+
+# Check if requirements have changed and install if necessary
+if check_requirements_changed; then
+    echo "Installing updated requirements..."
+    ssh $SSH_OPTS $REMOTE_USER@$REMOTE_HOST "cd $APP_DIR && \
+        source .venv/bin/activate && \
+        pip install -r requirements.txt && \
+        python3 -c 'import nltk; nltk.download(\"punkt\"); nltk.download(\"averaged_perceptron_tagger\")'"
+    
+    # Update the hash after successful installation
+    update_requirements_hash
+else
+    echo "Skipping pip install as requirements haven't changed"
+fi
+
+# Create .streamlit directory if it doesn't exist
+ssh $SSH_OPTS $REMOTE_USER@$REMOTE_HOST "mkdir -p $APP_DIR/.streamlit"
 
 # Copy the secrets.toml file separately (if it exists)
 if [ -f ".streamlit/secrets.toml" ]; then
