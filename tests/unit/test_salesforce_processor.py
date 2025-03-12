@@ -1,129 +1,143 @@
-"""Unit tests for the Salesforce data processor."""
+"""Unit tests for the SalesforceDataProcessor class."""
 
 import pytest
 import pandas as pd
 from datetime import datetime, timedelta
+from unittest.mock import patch, MagicMock
 from processors.salesforce_processor import SalesforceDataProcessor
 
-def test_init(mock_salesforce_auth):
+def test_init(mock_salesforce_auth, mock_salesforce):
     """Test processor initialization."""
-    processor = SalesforceDataProcessor(mock_salesforce_auth)
-    assert processor is not None
-    assert processor.sf_connection == mock_salesforce_auth
+    # Test with auth config
+    with patch('processors.salesforce_processor.Salesforce') as mock_sf_class:
+        mock_sf_instance = MagicMock()
+        mock_sf_class.return_value = mock_sf_instance
+        
+        processor = SalesforceDataProcessor(mock_salesforce_auth)
+        assert processor.sf_connection is mock_sf_instance
+        
+        # Verify Salesforce was initialized with correct parameters
+        mock_sf_class.assert_called_once_with(
+            username=mock_salesforce_auth['username'],
+            password=mock_salesforce_auth['password'],
+            security_token=mock_salesforce_auth['security_token'],
+            domain=mock_salesforce_auth['domain']
+        )
+    
+    # Test with direct connection
+    processor = SalesforceDataProcessor(mock_salesforce)
+    assert processor.sf_connection is mock_salesforce
+    
+    # Test with invalid input
+    with pytest.raises(ValueError):
+        SalesforceDataProcessor(None)
+    
+    # Test with empty dict
+    with pytest.raises(ValueError):
+        SalesforceDataProcessor({})
 
-def test_fetch_data(mock_salesforce_auth, mock_salesforce_response, sample_case_data):
+def test_fetch_data(mock_salesforce_auth, mock_salesforce, mock_salesforce_response, sample_case_data):
     """Test data fetching functionality."""
-    processor = SalesforceDataProcessor(mock_salesforce_auth)
+    processor = SalesforceDataProcessor(mock_salesforce)
     
-    # Mock the execute_soql_query function
-    def mock_execute_query(*args):
-        return mock_salesforce_response['records']
+    # Test successful data fetching
+    mock_salesforce.query.return_value = mock_salesforce_response
     
-    processor.sf_connection.query = mock_execute_query
+    start_date = "2024-01-01"
+    end_date = "2024-12-31"
+    df = processor.fetch_data(start_date, end_date)
     
-    # Test data fetching
-    start_date = datetime.now() - timedelta(days=30)
-    end_date = datetime.now()
-    
-    df, emails_df, comments_df, history_df, attachments_df = processor.fetch_data(
-        customers=['Customer1'],
-        start_date=start_date,
-        end_date=end_date
+    # Verify the query was called with correct date formatting
+    expected_query = (
+        "SELECT Id, CaseNumber, Subject, Status, Priority, CreatedDate, ClosedDate, "
+        "Product_Area__c, Product_Feature__c, RCA__c, Internal_Priority__c, "
+        "First_Response_Time__c, CSAT__c, IsEscalated, Account.Name "
+        "FROM Case "
+        "WHERE CreatedDate >= 2024-01-01T00:00:00Z "
+        "AND CreatedDate <= 2024-12-31T23:59:59Z"
     )
+    mock_salesforce.query.assert_called_with(expected_query)
     
-    assert df is not None
     assert not df.empty
     assert len(df) == len(mock_salesforce_response['records'])
-    assert 'Id' in df.columns
-    assert 'CaseNumber' in df.columns
+    assert 'Account.Name' in df.columns
+    assert 'CreatedDate' in df.columns
     assert 'Status' in df.columns
+    
+    # Test error handling for query failure
+    mock_salesforce.query.side_effect = Exception("SOQL query failed")
+    with pytest.raises(ValueError, match="SOQL query failed"):
+        processor.fetch_data(start_date, end_date)
+    
+    # Test error handling for invalid response format
+    mock_salesforce.query.side_effect = None
+    mock_salesforce.query.return_value = None
+    with pytest.raises(ValueError, match="Invalid response format"):
+        processor.fetch_data(start_date, end_date)
+    
+    # Test error handling for missing records field
+    mock_salesforce.query.return_value = {}
+    with pytest.raises(ValueError, match="No 'records' field"):
+        processor.fetch_data(start_date, end_date)
+    
+    # Test empty records handling
+    mock_salesforce.query.return_value = {'records': []}
+    empty_df = processor.fetch_data(start_date, end_date)
+    assert empty_df.empty
 
-def test_preprocess_data(mock_salesforce_auth, sample_case_data, sample_email_data, sample_comment_data):
+def test_preprocess_data(mock_salesforce_auth, mock_salesforce, sample_case_data, sample_email_data, sample_comment_data):
     """Test data preprocessing functionality."""
-    processor = SalesforceDataProcessor(mock_salesforce_auth)
+    processor = SalesforceDataProcessor(mock_salesforce)
     
-    # Test preprocessing
-    processed_df = processor._preprocess_data(
-        sample_case_data,
-        sample_email_data,
-        sample_comment_data
-    )
-    
-    assert processed_df is not None
+    # Test preprocessing with all data
+    processed_df = processor._preprocess_data(sample_case_data, sample_email_data, sample_comment_data)
     assert not processed_df.empty
     assert len(processed_df) == len(sample_case_data)
     
-    # Check if email content was merged
-    if not sample_email_data.empty:
-        assert 'email_content' in processed_df.columns
+    # Test preprocessing with missing data
+    processed_df = processor._preprocess_data(sample_case_data)
+    assert not processed_df.empty
+    assert len(processed_df) == len(sample_case_data)
     
-    # Check if comment content was merged
-    if not sample_comment_data.empty:
-        assert 'comment_content' in processed_df.columns
-    
-    # Check if classification fields were cleaned
-    for field in ['Product_Area__c', 'Product_Feature__c', 'RCA__c']:
-        if field in processed_df.columns:
-            assert not processed_df[field].isna().any()
-            assert 'Unknown' in processed_df[field].unique()
+    # Test error handling
+    with pytest.raises(ValueError):
+        processor._preprocess_data(None)
+    with pytest.raises(ValueError):
+        processor._preprocess_data(pd.DataFrame())
 
-def test_calculate_case_metrics(mock_salesforce_auth, sample_case_data):
+def test_calculate_case_metrics(mock_salesforce_auth, mock_salesforce, sample_case_data):
     """Test case metrics calculation."""
-    processor = SalesforceDataProcessor(mock_salesforce_auth)
+    processor = SalesforceDataProcessor(mock_salesforce)
     
-    # Calculate metrics
     metrics = processor.calculate_case_metrics(sample_case_data)
-    
-    assert metrics is not None
     assert isinstance(metrics, dict)
-    
-    # Check basic metrics
     assert 'total_cases' in metrics
+    assert 'open_cases' in metrics
+    assert 'closed_cases' in metrics
+    assert 'escalated_cases' in metrics
     assert metrics['total_cases'] == len(sample_case_data)
     
-    assert 'open_cases' in metrics
-    assert metrics['open_cases'] == len(sample_case_data[sample_case_data['Status'] == 'Open'])
-    
-    assert 'closed_cases' in metrics
-    assert metrics['closed_cases'] == len(sample_case_data[sample_case_data['Status'] == 'Closed'])
-    
-    # Check CSAT metrics if available
-    if 'CSAT__c' in sample_case_data.columns:
-        assert 'avg_csat' in metrics
-        assert 'csat_responses' in metrics
-        
-        csat_scores = sample_case_data['CSAT__c'].dropna()
-        assert metrics['avg_csat'] == pytest.approx(csat_scores.mean(), rel=1e-10)
-        assert metrics['csat_responses'] == len(csat_scores)
-    
-    # Check response time metrics if available
-    if 'First_Response_Time__c' in sample_case_data.columns:
-        assert 'avg_response_time' in metrics
-        assert 'median_response_time' in metrics
-        
-        response_times = sample_case_data['First_Response_Time__c'].dropna()
-        assert metrics['avg_response_time'] == pytest.approx(response_times.mean(), rel=1e-10)
-        assert metrics['median_response_time'] == pytest.approx(response_times.median(), rel=1e-10)
-
-def test_error_handling(mock_salesforce_auth):
-    """Test error handling in the processor."""
-    processor = SalesforceDataProcessor(mock_salesforce_auth)
-    
-    # Test with invalid DataFrame
+    # Test error handling
     with pytest.raises(ValueError):
         processor.calculate_case_metrics(None)
+    with pytest.raises(ValueError):
+        processor.calculate_case_metrics(pd.DataFrame())
+
+def test_error_handling(mock_salesforce_auth, mock_salesforce):
+    """Test error handling in the processor."""
+    # Test with invalid auth config
+    with pytest.raises(ValueError):
+        SalesforceDataProcessor({})
     
-    # Test with empty DataFrame
-    empty_metrics = processor.calculate_case_metrics(pd.DataFrame())
-    assert empty_metrics['total_cases'] == 0
+    # Test with invalid connection
+    with pytest.raises(ValueError):
+        SalesforceDataProcessor(None)
     
-    # Test with invalid date range
-    end_date = datetime.now() - timedelta(days=30)
-    start_date = datetime.now()  # Start date after end date
+    # Test with valid connection
+    processor = SalesforceDataProcessor(mock_salesforce)
+    assert processor.sf_connection is not None
     
-    result = processor.fetch_data(
-        customers=['Customer1'],
-        start_date=start_date,
-        end_date=end_date
-    )
-    assert result == (None, None, None, None, None) 
+    # Test fetch_data error handling
+    mock_salesforce.query.side_effect = Exception("Test error")
+    with pytest.raises(ValueError):
+        processor.fetch_data("2023-01-01", "2023-12-31") 

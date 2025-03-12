@@ -28,7 +28,7 @@ import joblib
 import os.path
 import tiktoken
 from textblob import TextBlob
-from utils.text_processing import clean_text, remove_pii, prepare_text_for_ai, get_technical_stopwords
+from utils.text_processing import clean_text, remove_pii, prepare_text_for_ai, get_technical_stopwords, get_highest_priority_from_history
 from processors.salesforce_processor import SalesforceDataProcessor
 from visualizers.salesforce_visualizer import SalesforceVisualizer
 
@@ -567,7 +567,13 @@ def display_detailed_analysis(data, enable_ai_analysis=False, skip_impl_phase_an
         cases_df['ClosedDate'] = pd.to_datetime(cases_df['ClosedDate'])
         cases_df['First_Response_Time__c'] = pd.to_datetime(cases_df['First_Response_Time__c'])
         cases_df['CSAT__c'] = pd.to_numeric(cases_df['CSAT__c'], errors='coerce')
-        debug("DataFrame processed successfully")
+        
+        # Calculate highest priority for each case
+        debug("Calculating highest priorities")
+        cases_df['Highest_Priority'] = cases_df['Id'].apply(
+            lambda case_id: get_highest_priority_from_history(st.session_state.sf_connection, case_id) or cases_df.loc[cases_df['Id'] == case_id, 'Internal_Priority__c'].iloc[0]
+        )
+        debug("Highest priorities calculated")
 
         # Response Time Analysis
         debug("Starting Response Time Analysis")
@@ -577,7 +583,7 @@ def display_detailed_analysis(data, enable_ai_analysis=False, skip_impl_phase_an
         debug(f"Response Time Analysis - Initial data shape: {response_time_df.shape}")
         debug(f"First_Response_Time__c data type: {response_time_df['First_Response_Time__c'].dtype}")
         debug(f"First_Response_Time__c sample values:\n{response_time_df['First_Response_Time__c'].head()}")
-        debug(f"Internal_Priority__c value counts:\n{response_time_df['Internal_Priority__c'].value_counts(dropna=False)}")
+        debug(f"Highest_Priority value counts:\n{response_time_df['Highest_Priority'].value_counts(dropna=False)}")
         
         # Calculate response time in hours
         response_time_df['response_time_hours'] = (response_time_df['First_Response_Time__c'] - response_time_df['CreatedDate']).dt.total_seconds() / 3600
@@ -593,14 +599,14 @@ def display_detailed_analysis(data, enable_ai_analysis=False, skip_impl_phase_an
             (response_time_df['First_Response_Time__c'].notna()) & 
             (response_time_df['CreatedDate'].notna()) &
             (response_time_df['response_time_hours'] > 0) &
-            (response_time_df['Internal_Priority__c'].notna())
+            (response_time_df['Highest_Priority'].notna())
         ]
         
         debug(f"Valid response time records: {len(valid_response_time_df)}")
         
         if len(valid_response_time_df) > 0:
             # Calculate statistics
-            response_stats = valid_response_time_df.groupby('Internal_Priority__c').agg({
+            response_stats = valid_response_time_df.groupby('Highest_Priority').agg({
                 'response_time_hours': ['count', 'mean', 'median'],
                 'Id': 'count'
             }).round(2)
@@ -610,9 +616,9 @@ def display_detailed_analysis(data, enable_ai_analysis=False, skip_impl_phase_an
             # Create visualization
             fig = go.Figure()
             
-            priorities = valid_response_time_df['Internal_Priority__c'].unique()
+            priorities = valid_response_time_df['Highest_Priority'].unique()
             for priority in priorities:
-                priority_data = valid_response_time_df[valid_response_time_df['Internal_Priority__c'] == priority]
+                priority_data = valid_response_time_df[valid_response_time_df['Highest_Priority'] == priority]
                 fig.add_trace(go.Box(
                     y=priority_data['response_time_hours'],
                     name=f"Priority {priority}",
@@ -621,7 +627,7 @@ def display_detailed_analysis(data, enable_ai_analysis=False, skip_impl_phase_an
                 ))
             
             fig.update_layout(
-                title="Response Time Distribution by Priority",
+                title="Response Time Distribution by Highest Priority",
                 yaxis_title="Response Time (hours)",
                 showlegend=True
             )
@@ -1109,20 +1115,12 @@ def display_visualizations(df, customers):
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
         
-        # Get case history for priority changes if available
-        if 'history' in st.session_state and not st.session_state.history.empty:
-            history_df = st.session_state.history
-            # Add highest priority column
-            df['Highest_Priority'] = df.apply(
-                lambda row: get_highest_priority(
-                    row['Id'], 
-                    history_df, 
-                    row['Internal_Priority__c']
-                ),
-                axis=1
-            )
-        else:
-            df['Highest_Priority'] = df['Internal_Priority__c']
+        # Calculate highest priority for each case
+        debug("Calculating highest priorities")
+        df['Highest_Priority'] = df['Id'].apply(
+            lambda case_id: get_highest_priority_from_history(st.session_state.sf_connection, case_id) or df.loc[df['Id'] == case_id, 'Internal_Priority__c'].iloc[0]
+        )
+        debug("Highest priorities calculated")
         
         # Log priority changes for debugging
         priority_changes = df[df['Highest_Priority'] != df['Internal_Priority__c']]
@@ -1213,34 +1211,47 @@ def display_visualizations(df, customers):
         df['resolution_time_days'] = (df['ClosedDate'] - df['CreatedDate']).dt.total_seconds() / (24 * 3600)
         df['Month'] = df['CreatedDate'].dt.strftime('%Y-%m')
         
-        # Filter out tickets with unspecified priority
+        # Debug logging for priorities
+        debug("All priorities in dataset:", df['Highest_Priority'].value_counts().to_dict())
+        debug("All Internal Priorities:", df['Internal_Priority__c'].value_counts().to_dict())
+        
+        # Filter out tickets with unspecified priority and invalid resolution times
         valid_priority_df = df[
             (df['resolution_time_days'].notna()) & 
+            (df['resolution_time_days'] > 0) &  # Ensure positive resolution time
             (df['Highest_Priority'].notna()) & 
-            (df['Highest_Priority'] != 'Unspecified') &
-            (df['Highest_Priority'] != '') &
-            (df['Highest_Priority'].str.strip() != '')
+            (~df['Highest_Priority'].isin(['Unspecified', '', ' ', None]))
         ]
         
+        # Debug logging for valid priorities
+        debug("Valid priorities after filtering:", valid_priority_df['Highest_Priority'].value_counts().to_dict())
+        debug("Sample of valid priority records:", valid_priority_df[['Id', 'Highest_Priority', 'Internal_Priority__c', 'resolution_time_days']].head().to_dict('records'))
+        
         if len(valid_priority_df) > 0:
-            resolution_by_priority = valid_priority_df.groupby(
-                ['Month', 'Highest_Priority'])['resolution_time_days'].mean().reset_index()
-            
+            # Create box plot
             fig_resolution = go.Figure()
             
-            for priority in sorted(valid_priority_df['Highest_Priority'].unique()):
-                priority_data = resolution_by_priority[resolution_by_priority['Highest_Priority'] == priority]
-                fig_resolution.add_trace(go.Box(
-                    y=priority_data['resolution_time_days'],
-                    name=f'Priority {priority}',
-                    marker_color=PRIORITY_COLORS.get(priority, VIRIDIS_PALETTE[0]),
-                    boxpoints=False  # Remove scatter points
-                ))
+            # Get all unique priorities and sort them
+            all_priorities = sorted(valid_priority_df['Highest_Priority'].unique())
+            debug("Unique priorities for plotting:", all_priorities)
+            
+            for priority in all_priorities:
+                priority_data = valid_priority_df[valid_priority_df['Highest_Priority'] == priority]
+                debug(f"Data points for priority {priority}:", len(priority_data))
+                
+                if len(priority_data) > 0:  # Only add trace if we have data
+                    fig_resolution.add_trace(go.Box(
+                        y=priority_data['resolution_time_days'],
+                        name=f'Priority {priority}',
+                        marker_color=PRIORITY_COLORS.get(priority, VIRIDIS_PALETTE[0]),
+                        boxpoints='outliers'  # Show outliers
+                    ))
             
             fig_resolution.update_layout(
                 title='Resolution Time Distribution by Highest Priority',
                 yaxis_title='Resolution Time (Days)',
-                showlegend=True
+                showlegend=True,
+                boxmode='group'
             )
             
             st.plotly_chart(fig_resolution)
@@ -1256,10 +1267,17 @@ def display_visualizations(df, customers):
             # Display data quality metrics
             st.write("### Data Quality Metrics")
             total_tickets = len(df)
-            excluded_tickets = total_tickets - len(valid_priority_df)
+            missing_resolution = df['resolution_time_days'].isna().sum()
+            invalid_resolution = (df['resolution_time_days'] <= 0).sum() if 'resolution_time_days' in df.columns else 0
+            missing_priority = df['Highest_Priority'].isna().sum()
+            invalid_priority = df['Highest_Priority'].isin(['Unspecified', '', ' ']).sum()
+            
             st.write(f"- Total tickets: {total_tickets}")
-            st.write(f"- Tickets with valid priority and resolution time: {len(valid_priority_df)} ({(len(valid_priority_df)/total_tickets*100):.1f}%)")
-            st.write(f"- Excluded tickets (missing priority or resolution time): {excluded_tickets} ({(excluded_tickets/total_tickets*100):.1f}%)")
+            st.write(f"- Missing resolution times: {missing_resolution}")
+            st.write(f"- Invalid resolution times (<=0): {invalid_resolution}")
+            st.write(f"- Missing priorities: {missing_priority}")
+            st.write(f"- Invalid priorities: {invalid_priority}")
+            st.write(f"- Valid tickets for analysis: {len(valid_priority_df)} ({(len(valid_priority_df)/total_tickets*100):.1f}%)")
         else:
             st.warning("No tickets found with both valid priority and resolution time data.")
         
@@ -1660,11 +1678,12 @@ def fetch_detailed_data(customer, start_date, end_date):
                 First_Response_Time__c, CSAT__c, IsEscalated,
                 OwnerId, Origin, Type, Reason,
                 Group_Id__c, Environment__c,
-                IMPL_Phase__c
+                IMPL_Phase__c, Case_Type__c
             FROM Case
             WHERE Account.Name = '{customer}'
             AND CreatedDate >= {start_date.strftime('%Y-%m-%d')}T00:00:00Z
             AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
+            AND Case_Type__c = 'Support Request'
         """
         
         cases = execute_soql_query(st.session_state.sf_connection, query)
@@ -1673,6 +1692,10 @@ def fetch_detailed_data(customer, start_date, end_date):
             return None
         
         cases_df = pd.DataFrame(cases)
+        
+        # Debug logging for case types
+        debug("Case types in dataset:", cases_df['Case_Type__c'].value_counts().to_dict())
+        debug("Total cases fetched:", len(cases_df))
         
         # Extract Account Name from nested structure
         if 'Account' in cases_df.columns and isinstance(cases_df['Account'].iloc[0], dict):

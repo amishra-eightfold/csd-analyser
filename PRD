@@ -1,0 +1,236 @@
+# Support Ticket Analysis Application PRD
+
+## Overview
+This app provides a simple interface for users to query and analyze support ticket data from Salesforce.
+
+## Core Features
+
+### 1. Landing Page
+- Customer picklist preloaded from Salesforce
+- Selection of 1-10 customers
+- Date range picker
+
+### 2. Data Flow
+- Automatic SOQL query generation based on selections
+- Data fetching from Salesforce
+- Analysis and visualization generation
+
+### 3. Filtering Capabilities
+- Product Area filter
+  - Multi-select filter showing all available product areas
+  - Updates all visualizations in real-time
+- Product Feature filter
+  - Multi-select filter showing all available features
+  - Updates all visualizations in real-time
+
+### 4. Visualizations
+1. Ticket Volume Analysis
+   - Created and closed tickets month over month (per customer)
+   - Trend analysis with interactive tooltips
+
+2. Response Time Analysis
+   - Average time to first response by priority (per customer)
+   - Box plots showing distribution
+
+3. Customer Satisfaction
+   - CSAT scores per customer month over month
+   - Trend lines with confidence intervals
+
+4. Resolution Analysis
+   - Average time to resolve by priority month over month by customer
+   - Interactive filtering capabilities
+
+5. Product Distribution
+   - Heatmap of ticket volume by product area
+   - Heatmap of ticket volume by product feature
+
+6. Text Analysis
+   - Word cloud analysis of the 'Subject' field (per customer)
+   - Word cloud analysis of the 'Description' field (per customer)
+
+7. Root Cause Analysis
+   - Distribution of root causes (pie chart)
+   - Root cause by product area (heatmap)
+   - Root cause trends over time (line chart)
+   - Average resolution time by root cause (box plot)
+
+### 5. Export Capabilities
+1. Excel Export
+   - Summary sheet with key metrics
+   - Individual sheets for each customer
+   - Formatted tables and charts
+   - Automatic file naming with timestamp
+
+2. PowerPoint Export
+   - Title slide with analysis period
+   - Summary slides with key findings
+   - All visualizations included
+   - Consistent formatting and branding
+   - Consistent color palette matching the application's theme
+
+3. PDF Export
+   - Professional report layout
+   - All visualizations and analysis included
+   - Consistent color palette matching PowerPoint and application theme
+   - Automatic table of contents generation
+   - Bookmarked sections for easy navigation
+
+4. CSV Export
+   - Raw data export
+   - All columns included
+   - UTF-8 encoding
+
+### 6. Detailed Ticket Analysis (Single Account)
+1. Additional Data Retrieval
+   - Option to fetch detailed ticket information after initial analysis
+   - Only available when a single account is selected
+   - Includes extended fields and related records
+   - Progress indicator during data fetch
+
+2. OpenAI Analysis Integration
+   - Option to send detailed ticket data to OpenAI for advanced analysis
+   - AI-generated insights and recommendations
+   - Pattern recognition in customer issues
+   - Trend identification and forecasting
+   - Natural language summaries of key findings
+   - Privacy-aware data handling with automatic PII removal
+   - Standardized placeholders for removed PII to maintain context
+
+   a. Token Management and Data Processing
+      - Smart chunking of large datasets:
+        * Automatic segmentation of data into optimal token-sized chunks
+        * Preservation of context across chunks
+        * Priority-based data selection when approaching token limits
+      - Token usage optimization:
+        * Dynamic calculation of token counts before API calls
+        * Intelligent truncation of less critical data
+        * Compression of repetitive information
+      - Batch processing strategy:
+        * Sequential processing of data chunks
+        * Aggregation of insights across multiple API calls
+        * Progress tracking for multi-chunk analysis
+
+   b. Data Completeness Assurance
+      - Validation mechanisms:
+        * Pre-processing data verification
+        * Post-processing completeness checks
+        * Missing data detection and handling
+      - Fallback strategies:
+        * Automatic retry mechanism for failed API calls
+        * Alternative processing paths for oversized data
+        * Graceful degradation when token limits are reached
+      - Quality control:
+        * Consistency checks across processed chunks
+        * Validation of merged analysis results
+        * Detection of potential data gaps
+
+   c. Error Handling and Recovery
+      - Token limit management:
+        * Proactive monitoring of token usage
+        * Dynamic adjustment of chunk sizes
+        * Automatic cost optimization
+      - Error recovery:
+        * Automatic retry with reduced chunk size
+        * Intelligent resumption of interrupted analysis
+        * State preservation during processing
+      - User feedback:
+        * Real-time progress indicators
+        * Clear error messages with suggested actions
+        * Token usage statistics and warnings
+
+### 7. Privacy and PII Protection
+1. PII Detection and Removal
+   - Automatic detection and removal of:
+     * Email addresses (any format)
+     * Phone numbers (domestic and international formats)
+     * URLs and IP addresses
+     * Credit card numbers
+     * Social security numbers
+     * Names (with titles and common patterns)
+     * Passwords
+     * Dates of birth
+   - Standardized placeholder system ([EMAIL], [PHONE], etc.)
+   - Real-time PII scrubbing during data processing
+
+2. Privacy Features
+   - Pre-processing pipeline for all text data
+   - Automatic sanitization before AI analysis
+   - Multi-format support:
+     * String data
+     * Structured data (DataFrames)
+     * Nested data structures (dictionaries, lists)
+   - Privacy-preserving data transformations
+   - Audit trail of PII removal (without logging PII)
+
+3. Implementation Components
+   - Core PII removal function
+   - High-level data preparation pipeline
+   - Integration with all data export features
+   - Monitoring and validation system
+
+## Technical Requirements
+1. Performance
+   - Query response time < 30 seconds
+   - Visualization rendering < 5 seconds
+   - Export generation < 60 seconds
+   - Detailed data fetch < 45 seconds
+   - AI analysis processing < 120 seconds
+   - PII detection and removal < 5 seconds per MB of text
+
+2. Data Handling
+   - Proper date/time formatting
+   - Null value handling
+   - Error handling with user-friendly messages
+   - Secure data transmission to OpenAI
+   - Data sanitization before AI processing
+   - PII removal with 99.9% accuracy
+   - Zero PII leakage in exports and visualizations
+   - Regular expression pattern updates for new PII formats
+   - Token optimization and management:
+     * Maximum token utilization without overflow
+     * Smart data prioritization
+     * Efficient chunking strategies
+   - Data completeness verification:
+     * Pre-submission validation
+     * Post-processing integrity checks
+     * Gap detection and remediation
+
+3. UI/UX
+   - Responsive design
+   - Interactive visualizations
+   - Clear loading indicators
+   - Intuitive filter controls
+   - Seamless transition between analysis stages
+   - Clear progress indicators for AI analysis
+   - Visual confirmation of PII removal (when appropriate)
+   - Privacy status indicators
+
+4. Privacy and Security
+   - Secure handling of all PII data
+   - Audit logging of PII removal operations
+   - Regular pattern updates for new PII types
+   - Configurable PII detection rules
+   - Validation tools for PII removal effectiveness
+   - Integration with existing security frameworks
+   - Compliance with data protection regulations
+
+## Future Considerations
+1. Scheduled exports
+2. Custom visualization builder
+3. Saved filter presets
+4. Additional export formats
+5. Enhanced AI analysis capabilities:
+   - Advanced token optimization algorithms
+   - Parallel processing of data chunks
+   - Improved context preservation across chunks
+   - Smart data prioritization based on historical insights
+6. Custom AI model training
+7. Batch processing for multiple accounts
+8. Advanced PII detection using ML models
+9. Custom PII pattern definitions
+10. Privacy compliance reporting
+11. Automated PII pattern updates
+12. Integration with enterprise DLP systems
+13. Token usage analytics and optimization dashboard
+14. Adaptive chunk sizing based on content complexity
+15. Multi-model analysis pipeline for large datasets 

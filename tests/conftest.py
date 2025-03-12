@@ -4,6 +4,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
 @pytest.fixture
 def sample_case_data():
@@ -116,14 +117,42 @@ Recommendations:
 
 @pytest.fixture
 def mock_salesforce_auth():
-    """Create mock Salesforce authentication credentials."""
+    """Mock Salesforce authentication config."""
     return {
         'username': 'test@example.com',
         'password': 'test_password',
         'security_token': 'test_token',
-        'client_id': 'test_client_id',
-        'client_secret': 'test_client_secret'
+        'domain': 'test'
     }
+
+@pytest.fixture
+def mock_salesforce():
+    """Mock Salesforce connection."""
+    mock_sf = MagicMock()
+    mock_sf.query.return_value = {
+        'done': True,
+        'records': [
+            {
+                'Id': 'case1',
+                'CaseNumber': 'C-001',
+                'Subject': 'Issue 1',
+                'Status': 'Closed',
+                'Priority': 'High',
+                'CreatedDate': datetime.now(),
+                'ClosedDate': datetime.now(),
+                'Product_Area__c': 'Area1',
+                'Product_Feature__c': 'Feature1',
+                'RCA__c': 'Root Cause 1',
+                'Internal_Priority__c': 'P1',
+                'First_Response_Time__c': 1.5,
+                'CSAT__c': 5.0,
+                'IsEscalated': False,
+                'Account': {'Name': 'Customer1'}
+            }
+        ],
+        'totalSize': 1
+    }
+    return mock_sf
 
 @pytest.fixture
 def mock_salesforce_response():
@@ -136,19 +165,52 @@ def mock_salesforce_response():
                 'Id': 'case1',
                 'CaseNumber': 'C-001',
                 'Subject': 'Issue 1',
-                'Status': 'Closed'
+                'Status': 'Closed',
+                'Priority': 'High',
+                'CreatedDate': datetime.now() - timedelta(days=5),
+                'ClosedDate': datetime.now() - timedelta(days=4),
+                'Product_Area__c': 'Area1',
+                'Product_Feature__c': 'Feature1',
+                'RCA__c': 'Bug',
+                'Internal_Priority__c': 'P1',
+                'First_Response_Time__c': 1.5,
+                'CSAT__c': 4.0,
+                'IsEscalated': True,
+                'Account': {'Name': 'Customer1'}
             },
             {
                 'Id': 'case2',
                 'CaseNumber': 'C-002',
                 'Subject': 'Issue 2',
-                'Status': 'Closed'
+                'Status': 'Closed',
+                'Priority': 'Medium',
+                'CreatedDate': datetime.now() - timedelta(days=3),
+                'ClosedDate': datetime.now() - timedelta(days=2),
+                'Product_Area__c': 'Area2',
+                'Product_Feature__c': 'Feature2',
+                'RCA__c': 'Configuration',
+                'Internal_Priority__c': 'P2',
+                'First_Response_Time__c': 2.0,
+                'CSAT__c': 5.0,
+                'IsEscalated': False,
+                'Account': {'Name': 'Customer2'}
             },
             {
                 'Id': 'case3',
                 'CaseNumber': 'C-003',
                 'Subject': 'Issue 3',
-                'Status': 'Open'
+                'Status': 'Open',
+                'Priority': 'High',
+                'CreatedDate': datetime.now() - timedelta(days=1),
+                'ClosedDate': None,
+                'Product_Area__c': 'Area1',
+                'Product_Feature__c': 'Feature1',
+                'RCA__c': 'Documentation',
+                'Internal_Priority__c': 'P1',
+                'First_Response_Time__c': 1.0,
+                'CSAT__c': None,
+                'IsEscalated': False,
+                'Account': {'Name': 'Customer1'}
             }
         ]
     }
