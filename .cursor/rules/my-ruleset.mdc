@@ -1,0 +1,13 @@
+---
+description: Rules for working on my projects
+globs: 
+alwaysApply: true
+---
+
+# Your rule conten1. Prefer python as the language
+2. Try to refactor code if lines of code in one file exceed 500 lines
+3. When refactoring , ensure that no existing functionality is broken
+4. Review the code base for duplication of logic before committing code
+5. Reuse code wherever possible
+6. Before making significant changes to the architecture, such as changing the tech stack, front-end, backend, database and any architectural design changes, check with me. 
+

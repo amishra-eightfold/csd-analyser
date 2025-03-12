@@ -76,3 +76,72 @@ Your input file should contain the following columns:
 ## License
 
 MIT License
+
+## Secrets Management
+
+This application uses a `.streamlit/secrets.toml` file for storing sensitive information like API keys and database credentials. To protect your secrets:
+
+1. The `.streamlit/secrets.toml` file and `.env` files are excluded from Git via the `.gitignore` file.
+2. Never commit sensitive information directly in code files.
+3. If you need to share your code, make sure these files are not included.
+
+### Setting up your secrets
+
+To set up your secrets:
+
+1. Create a `.streamlit/secrets.toml` file in the project root (if not already present)
+2. Add your sensitive information in the following format:
+
+```toml
+[salesforce]
+username = "your_username"
+password = "your_password"
+security_token = "your_security_token"
+domain = "your_domain"
+
+[openai]
+api_key = "your_openai_api_key"
+```
+
+The application will use these variables for authentication with external services.
+
+# Checking if secrets are properly handled
+
+## Privacy and PII Protection
+
+The application includes robust privacy protection features to ensure sensitive information is handled securely:
+
+### PII Detection and Removal
+
+The system automatically detects and removes the following types of Personally Identifiable Information (PII):
+- Email addresses
+- Phone numbers (multiple formats including international)
+- URLs and IP addresses
+- Credit card numbers
+- Social security numbers
+- Names (with common patterns and titles)
+- Passwords
+- Dates of birth
+
+### Privacy Features
+
+1. **Pre-processing Pipeline**: All text data is processed through a PII removal pipeline before any analysis or storage.
+2. **AI Analysis Protection**: Data is automatically sanitized before being sent to external AI services (e.g., OpenAI).
+3. **Standardized Placeholders**: PII is replaced with standardized placeholders (e.g., [EMAIL], [PHONE]) to maintain context while protecting privacy.
+4. **Multi-format Support**: PII removal works across various data formats:
+   - String data
+   - Structured data (DataFrames)
+   - Nested data structures (dictionaries, lists)
+
+### Implementation
+
+The PII protection is implemented through two main components:
+1. `remove_pii(text)`: Core function for detecting and removing PII from text data
+2. `prepare_text_for_ai(data)`: High-level function that handles different data types and structures
+
+### Best Practices
+
+- Always use the PII removal functions before sharing or analyzing sensitive data
+- Regularly audit and update PII detection patterns
+- Monitor and log PII removal statistics (without logging the PII itself)
+- Review and validate PII removal effectiveness periodically
