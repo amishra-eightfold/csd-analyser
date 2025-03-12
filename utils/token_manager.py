@@ -469,9 +469,9 @@ class TokenManager:
             else:
                 if not current_chunk:
                     # Single item is too large, truncate it
-                    truncated_items = self.truncate_items([item], self.chunk_tokens)
-                    if truncated_items:
-                        current_chunk.append(truncated_items[0])
+                    truncated_item = self.truncate_item(item)
+                    if truncated_item:
+                        current_chunk.append(truncated_item)
                 
                 # Finalize current chunk if not empty
                 if current_chunk:
@@ -501,9 +501,9 @@ class TokenManager:
                         current_chunk_tokens = total_tokens
                     else:
                         # Truncate item if too large
-                        truncated_items = self.truncate_items([item], self.chunk_tokens)
-                        if truncated_items:
-                            current_chunk.append(truncated_items[0])
+                        truncated_item = self.truncate_item(item)
+                        if truncated_item:
+                            current_chunk.append(truncated_item)
                             current_chunk_tokens = self.count_tokens(self.json_dumps({
                                 'items': current_chunk,
                                 'context': item_context

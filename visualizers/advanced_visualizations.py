@@ -6,16 +6,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy import stats
-from wordcloud import WordCloud
+from wordcloud import WordCloud, STOPWORDS
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
+import logging
 
 __all__ = [
     'create_csat_analysis',
     'create_word_clouds',
     'create_root_cause_analysis',
-    'create_first_response_analysis'
+    'create_first_response_analysis',
+    'create_pattern_evolution_analysis'
 ]
 
 def create_first_response_analysis(df: pd.DataFrame) -> Tuple[go.Figure, Dict]:
@@ -301,3 +303,161 @@ def create_root_cause_analysis(df: pd.DataFrame) -> Tuple[Dict[str, go.Figure], 
     }
     
     return figures, stats_dict 
+
+def create_pattern_evolution_analysis(df: pd.DataFrame) -> Tuple[Dict[str, go.Figure], Dict[str, Any]]:
+    """Create visualizations showing the evolution of patterns over time.
+    
+    Args:
+        df: DataFrame containing support ticket data
+        
+    Returns:
+        Tuple containing:
+        - Dictionary of Plotly figures showing pattern evolution
+        - Dictionary of pattern evolution statistics
+    """
+    try:
+        figures = {}
+        stats = {}
+        
+        # Ensure datetime columns
+        df['Created Date'] = pd.to_datetime(df['Created Date'])
+        df['Month'] = df['Created Date'].dt.to_period('M')
+        
+        # 1. Priority Evolution
+        priority_evolution = df.groupby(['Month', 'Priority']).size().unstack(fill_value=0)
+        priority_evolution.index = priority_evolution.index.astype(str)
+        
+        fig_priority = go.Figure()
+        for priority in priority_evolution.columns:
+            fig_priority.add_trace(go.Scatter(
+                x=priority_evolution.index,
+                y=priority_evolution[priority],
+                name=f'Priority {priority}',
+                mode='lines+markers',
+                hovertemplate='%{y} tickets<extra></extra>'
+            ))
+            
+        fig_priority.update_layout(
+            title='Priority Distribution Evolution',
+            xaxis_title='Month',
+            yaxis_title='Number of Tickets',
+            hovermode='x unified'
+        )
+        figures['priority_evolution'] = fig_priority
+        
+        # 2. Product Area Evolution
+        area_evolution = df.groupby(['Month', 'Product Area']).size().unstack(fill_value=0)
+        area_evolution.index = area_evolution.index.astype(str)
+        
+        # Calculate top 5 product areas by volume
+        top_areas = area_evolution.sum().nlargest(5).index
+        
+        fig_area = go.Figure()
+        for area in top_areas:
+            fig_area.add_trace(go.Scatter(
+                x=area_evolution.index,
+                y=area_evolution[area],
+                name=area,
+                mode='lines+markers',
+                hovertemplate='%{y} tickets<extra></extra>'
+            ))
+            
+        fig_area.update_layout(
+            title='Top 5 Product Areas Evolution',
+            xaxis_title='Month',
+            yaxis_title='Number of Tickets',
+            hovermode='x unified'
+        )
+        figures['area_evolution'] = fig_area
+        
+        # 3. Resolution Time Evolution
+        df['Resolution Time (Days)'] = pd.to_numeric(df['Resolution Time (Days)'], errors='coerce')
+        resolution_evolution = df.groupby(['Month', 'Priority'])['Resolution Time (Days)'].mean().unstack()
+        resolution_evolution.index = resolution_evolution.index.astype(str)
+        
+        fig_resolution = go.Figure()
+        for priority in resolution_evolution.columns:
+            fig_resolution.add_trace(go.Scatter(
+                x=resolution_evolution.index,
+                y=resolution_evolution[priority],
+                name=f'Priority {priority}',
+                mode='lines+markers',
+                hovertemplate='%{y:.1f} days<extra></extra>'
+            ))
+            
+        fig_resolution.update_layout(
+            title='Resolution Time Evolution by Priority',
+            xaxis_title='Month',
+            yaxis_title='Average Resolution Time (Days)',
+            hovermode='x unified'
+        )
+        figures['resolution_evolution'] = fig_resolution
+        
+        # 4. Pattern Correlation Evolution
+        # Calculate monthly correlations between resolution time and other metrics
+        correlations_over_time = []
+        for month in df['Month'].unique():
+            month_df = df[df['Month'] == month]
+            if len(month_df) > 5:  # Only calculate if we have enough data points
+                corr_data = {
+                    'Month': str(month),
+                    'Priority_Correlation': month_df['Priority'].map({'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}).corr(month_df['Resolution Time (Days)']),
+                    'CSAT_Correlation': month_df['CSAT'].corr(month_df['Resolution Time (Days)']),
+                    'Escalation_Correlation': month_df['IsEscalated'].astype(int).corr(month_df['Resolution Time (Days)'])
+                }
+                correlations_over_time.append(corr_data)
+                
+        if correlations_over_time:
+            corr_df = pd.DataFrame(correlations_over_time)
+            
+            fig_corr = go.Figure()
+            for col in ['Priority_Correlation', 'CSAT_Correlation', 'Escalation_Correlation']:
+                fig_corr.add_trace(go.Scatter(
+                    x=corr_df['Month'],
+                    y=corr_df[col],
+                    name=col.replace('_', ' '),
+                    mode='lines+markers',
+                    hovertemplate='%{y:.2f}<extra></extra>'
+                ))
+                
+            fig_corr.update_layout(
+                title='Pattern Correlations Evolution',
+                xaxis_title='Month',
+                yaxis_title='Correlation Coefficient',
+                hovermode='x unified'
+            )
+            figures['correlation_evolution'] = fig_corr
+        
+        # Calculate statistics
+        stats = {
+            'priority_trends': {
+                priority: {
+                    'trend': 'increasing' if priority_evolution[priority].is_monotonic_increasing else
+                            'decreasing' if priority_evolution[priority].is_monotonic_decreasing else 'fluctuating',
+                    'peak_month': priority_evolution[priority].idxmax(),
+                    'peak_value': priority_evolution[priority].max()
+                } for priority in priority_evolution.columns
+            },
+            'area_trends': {
+                area: {
+                    'trend': 'increasing' if area_evolution[area].is_monotonic_increasing else
+                            'decreasing' if area_evolution[area].is_monotonic_decreasing else 'fluctuating',
+                    'peak_month': area_evolution[area].idxmax(),
+                    'peak_value': area_evolution[area].max()
+                } for area in top_areas
+            },
+            'resolution_trends': {
+                priority: {
+                    'trend': 'improving' if resolution_evolution[priority].is_monotonic_decreasing else
+                            'worsening' if resolution_evolution[priority].is_monotonic_increasing else 'fluctuating',
+                    'best_month': resolution_evolution[priority].idxmin(),
+                    'best_time': resolution_evolution[priority].min()
+                } for priority in resolution_evolution.columns
+            }
+        }
+        
+        return figures, stats
+        
+    except Exception as e:
+        logging.error(f"Error in create_pattern_evolution_analysis: {str(e)}")
+        return {}, {} 

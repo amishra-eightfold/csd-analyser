@@ -32,10 +32,12 @@ from utils.text_processing import clean_text, remove_pii, prepare_text_for_ai, g
 from processors.salesforce_processor import SalesforceDataProcessor
 from visualizers.salesforce_visualizer import SalesforceVisualizer
 from visualizers.advanced_visualizations import create_csat_analysis, create_word_clouds, create_root_cause_analysis, create_first_response_analysis
+from visualizers.pattern_evolution import analyze_pattern_evolution
 from utils.pii_handler import PIIHandler, get_privacy_status_indicator
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Any
 from utils.token_manager import TokenManager, TokenInfo, convert_value_for_json
 import logging
+from utils.ai_analysis import AIAnalyzer
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -79,7 +81,10 @@ if 'customers' not in st.session_state:
 if 'selected_customers' not in st.session_state:
     st.session_state.selected_customers = []
 if 'date_range' not in st.session_state:
-    st.session_state.date_range = None
+    # Initialize with default date range (last 30 days)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=30)
+    st.session_state.date_range = (start_date, end_date)
 if 'sf_connection' not in st.session_state:
     st.session_state.sf_connection = None
 if 'data_loaded' not in st.session_state:
@@ -514,12 +519,37 @@ def main():
     # Date Range Selection
     st.sidebar.markdown("---")
     st.sidebar.header("Date Range")
-    date_range = st.sidebar.date_input(
-        "Select Date Range",
-        value=(datetime.now() - timedelta(days=30), datetime.now()),
-        max_value=datetime.now()
-    )
-    st.session_state.date_range = date_range
+    
+    # Get current dates from session state and ensure they are datetime objects
+    current_start, current_end = st.session_state.date_range
+    if not isinstance(current_start, datetime):
+        current_start = pd.to_datetime(current_start)
+    if not isinstance(current_end, datetime):
+        current_end = pd.to_datetime(current_end)
+    
+    # Create separate date inputs for start and end dates
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        start_date = st.date_input(
+            "Start Date",
+            value=current_start.date(),
+            max_value=datetime.now().date(),
+            key='start_date_input'
+        )
+    
+    with col2:
+        end_date = st.date_input(
+            "End Date",
+            value=current_end.date(),
+            max_value=datetime.now().date(),
+            min_value=start_date,  # Ensure end date is not before start date
+            key='end_date_input'
+        )
+    
+    # Update session state with new date range
+    start_date = datetime.combine(start_date, datetime.min.time())
+    end_date = datetime.combine(end_date, datetime.max.time())
+    st.session_state.date_range = (start_date, end_date)
     
     # Customer Selection
     st.sidebar.header("Customer Selection")
@@ -660,200 +690,52 @@ def fetch_data():
             st.exception(e)
         return pd.DataFrame()  # Return empty DataFrame instead of None
 
-def generate_ai_insights(cases_df: pd.DataFrame,
-                      comments_df: pd.DataFrame = None,
-                      emails_df: pd.DataFrame = None) -> dict:
-    """Generate AI insights from ticket data using OpenAI."""
-    # Initialize logger
+def generate_ai_insights(cases_df: pd.DataFrame, client: OpenAI) -> Dict[str, Any]:
+    """Generate AI insights from case data with enhanced pattern recognition."""
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-    
     try:
-        # Create a summary of the data with error handling
-        try:
-            summary_stats = {
-                'total_tickets': int(len(cases_df)),
-                'status_distribution': {k: convert_value_for_json(v) for k, v in cases_df['Status'].value_counts().to_dict().items()},
-                'priority_distribution': {k: convert_value_for_json(v) for k, v in cases_df['Priority'].value_counts().to_dict().items()},
-                'product_areas': {k: convert_value_for_json(v) for k, v in cases_df['Product Area'].value_counts().to_dict().items()},
-                'features': {k: convert_value_for_json(v) for k, v in cases_df['Product Feature'].value_counts().to_dict().items()},
-                'root_causes': {k: convert_value_for_json(v) for k, v in cases_df['Root Cause'].value_counts().to_dict().items()}
-            }
-        except Exception as e:
-            logger.error(f"Error creating summary stats: {str(e)}")
-            summary_stats = {'total_tickets': int(len(cases_df))}
-
-        # Calculate total tickets and maximum to analyze
-        total_tickets = len(cases_df)
-        max_tickets = min(50, total_tickets)  # Reduced from 100 to ensure we don't exceed token limits
-        analyzed_tickets = min(total_tickets, max_tickets)
+        analyzer = AIAnalyzer(client)
+        insights = analyzer.analyze_tickets(cases_df)
         
-        logger.info(f"Processing {analyzed_tickets} tickets out of {total_tickets} total")
-        
-        # Sort by priority and date for better analysis
-        priority_map = {'P0': 4, 'P1': 3, 'P2': 2, 'P3': 1, 'Not Set': 0}  # P0 (Critical) to P3 (Low)
-        cases_df['priority_score'] = cases_df['Priority'].map(priority_map)
-        cases_df = cases_df.sort_values(['priority_score', 'Created Date'], ascending=[False, True])
-        
-        # Select evenly distributed samples
-        if total_tickets > max_tickets:
-            step = total_tickets // max_tickets
-            selected_indices = list(range(0, total_tickets, step))[:max_tickets]
-            analysis_df = cases_df.iloc[selected_indices]
-        else:
-            analysis_df = cases_df
-
-        # Prepare cases for analysis
-        cases_for_analysis = []
-        for _, case in analysis_df[['Subject', 'Description', 'Status', 'Priority', 
-                                  'Product Area', 'Root Cause', 'Created Date']].iterrows():
-            case_dict = {}
-            for col, val in case.items():
-                case_dict[col] = convert_value_for_json(val)
-            cases_for_analysis.append(case_dict)
-
-        # Split cases into smaller chunks to avoid token limits
-        chunk_size = 5  # Process 5 tickets at a time
-        chunks = [cases_for_analysis[i:i + chunk_size] for i in range(0, len(cases_for_analysis), chunk_size)]
-        logger.info(f"Created {len(chunks)} chunks for analysis")
-        
-        # Initialize combined insights
-        all_patterns = []
-        all_recommendations = set()
-        chunk_summaries = []
-        
-        # Process each chunk
-        for chunk_index, chunk in enumerate(chunks, 1):
-            try:
-                # Prepare the prompt
-                prompt = f"""Analyze these support tickets and provide insights.
-                
-                Priority Levels:
-                - P0: Critical (Highest priority, severe business impact)
-                - P1: Urgent (High priority, significant impact)
-                - P2: Normal (Standard priority, moderate impact)
-                - P3: Low (Lowest priority, minimal impact)
-
-                Overall Statistics:
-                {json.dumps(summary_stats, indent=2)}
-
-                Tickets to Analyze:
-                {json.dumps(chunk, indent=2)}
-
-                Provide your analysis in the following JSON format:
-                {{
-                    "chunk_summary": "A summary of key insights from this chunk of tickets",
-                    "patterns": [
-                        {{"pattern": "Pattern Description", "frequency": "Frequency Description"}}
-                    ],
-                    "recommendations": [
-                        {{"title": "Recommendation Title", "description": "Recommendation Details", "priority": "High/Medium/Low"}}
-                    ]
-                }}
-                """
-
-                # Make API call
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are an expert support ticket analyst. Your responses must be in valid JSON format."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=1000,
-                    response_format={ "type": "json_object" }
-                )
-                
-                chunk_response = response.choices[0].message.content.strip()
-                
-                # Parse response
-                try:
-                    chunk_insights = json.loads(chunk_response)
-                    
-                    if isinstance(chunk_insights, dict):
-                        if 'patterns' in chunk_insights and isinstance(chunk_insights['patterns'], list):
-                            all_patterns.extend(chunk_insights['patterns'])
-                        if 'recommendations' in chunk_insights and isinstance(chunk_insights['recommendations'], list):
-                            all_recommendations.update([json.dumps(r) for r in chunk_insights['recommendations']])
-                        if 'chunk_summary' in chunk_insights and isinstance(chunk_insights['chunk_summary'], str):
-                            chunk_summaries.append(chunk_insights['chunk_summary'])
-                        
-                        logger.info(f"Successfully processed chunk {chunk_index}")
-                    
-                except json.JSONDecodeError as je:
-                    logger.error(f"JSON decode error in chunk {chunk_index}: {str(je)}")
-                    continue
-                    
-            except Exception as e:
-                logger.error(f"Error processing chunk {chunk_index}: {str(e)}")
-                continue
-
-        # Generate final insights
-        try:
-            final_prompt = f"""Based on the analysis of {analyzed_tickets} tickets out of {total_tickets} total tickets,
-            provide a comprehensive analysis. Here are the key points found so far:
-
-            Priority Levels:
-            - P0: Critical (Highest priority, severe business impact)
-            - P1: Urgent (High priority, significant impact)
-            - P2: Normal (Standard priority, moderate impact)
-            - P3: Low (Lowest priority, minimal impact)
-
-            Chunk Summaries:
-            {json.dumps(chunk_summaries, indent=2)}
-
-            Patterns Found:
-            {json.dumps(all_patterns, indent=2)}
-
-            Overall Statistics:
-            {json.dumps(summary_stats, indent=2)}
-
-            Provide a final analysis in this JSON format:
-            {{
-                "key_findings": [
-                    {{"title": "Finding Title", "description": "Finding Description"}}
-                ],
-                "common_patterns": [
-                    {{"pattern": "Pattern Description", "frequency": "Frequency Description"}}
-                ],
-                "recommendations": [
-                    {{"title": "Recommendation Title", "description": "Recommendation Details", "priority": "High/Medium/Low"}}
-                ],
-                "summary": "Overall summary of findings"
-            }}
-            """
-
-            final_response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are an expert support ticket analyst. Your responses must be in valid JSON format."},
-                    {"role": "user", "content": final_prompt}
-                ],
-                temperature=0.7,
-                max_tokens=1500,
-                response_format={ "type": "json_object" }
-            )
-            
-            final_insights = json.loads(final_response.choices[0].message.content.strip())
-            return final_insights
-
-        except Exception as e:
-            logger.error(f"Error generating final insights: {str(e)}")
-            # Return a structured error response
+        if not insights or 'error' in insights:
+            logger.error(f"Failed to generate insights: {insights.get('error', 'Unknown error')}")
             return {
-                'key_findings': [{'title': 'Analysis Error', 'description': 'Failed to generate final insights'}],
-                'common_patterns': [p for p in all_patterns if isinstance(p, dict)][:5],
-                'recommendations': [json.loads(r) for r in list(all_recommendations)[:5]],
-                'summary': 'Analysis completed with partial results. Some insights may be missing.'
+                'status': 'error',
+                'message': 'Failed to generate insights',
+                'error': insights.get('error', 'Unknown error'),
+                'timestamp': datetime.now().isoformat()
             }
-
-    except Exception as e:
-        logger.error(f"Critical error in generate_ai_insights: {str(e)}")
+            
+        # Transform insights into the expected format
+        formatted_insights = {
+            'key_findings': insights['executive_summary']['key_findings'],
+            'patterns': {
+                'recurring_issues': insights['pattern_insights']['recurring_issues'],
+                'high_confidence': insights['pattern_insights']['confidence_levels']['high_confidence'],
+                'evolution': insights['trend_analysis']['pattern_evolution']
+            },
+            'recommendations': insights['recommendations'],
+            'summary': {
+                'trends': insights['trend_analysis'],
+                'customer_impact': insights['customer_impact_analysis'],
+                'next_steps': insights['next_steps']
+            },
+            'metadata': insights['metadata']
+        }
+        
         return {
-            'key_findings': [{'title': 'Error', 'description': 'Failed to generate insights'}],
-            'common_patterns': [],
-            'recommendations': [],
-            'summary': 'Analysis failed due to an error. Please check logs for details.'
+            'status': 'success',
+            'insights': formatted_insights,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating AI insights: {str(e)}")
+        return {
+            'status': 'error',
+            'message': 'Error generating AI insights',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
         }
 
 def get_highest_priority(case_id, history_df, current_priority):
@@ -919,14 +801,57 @@ def analyze_unspecified_root_causes(df: pd.DataFrame) -> None:
         priority_dist = unspecified_df['Priority'].value_counts()
         st.dataframe(priority_dist)
         
-        # Export to CSV
-        csv_data = unspecified_df.to_csv(index=False)
-        st.download_button(
-            label="Download Unspecified Root Cause Tickets (Closed Only)",
-            data=csv_data,
-            file_name=f"unspecified_root_cause_tickets_closed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        # Export options in columns
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Export summary to CSV
+            csv_buffer = BytesIO()
+            unspecified_df.to_csv(csv_buffer, index=False, encoding='utf-8')
+            csv_buffer.seek(0)
+            st.download_button(
+                label="Download Summary CSV",
+                data=csv_buffer,
+                file_name=f"unspecified_root_cause_tickets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+        
+        with col2:
+            # Export raw data to Excel
+            excel_buffer = BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                # Write summary sheet
+                summary_df = pd.DataFrame({
+                    'Metric': ['Total Closed Tickets', 'Unspecified Root Cause Tickets', 'Percentage'],
+                    'Value': [total_closed_tickets, unspecified_count, f"{percentage:.1f}%"]
+                })
+                summary_df.to_excel(writer, sheet_name='Summary', index=False)
+                
+                # Write priority distribution
+                priority_dist.to_frame('Count').to_excel(writer, sheet_name='Priority Distribution')
+                
+                # Write raw data
+                unspecified_df.to_excel(writer, sheet_name='Raw Data', index=False)
+            
+            excel_buffer.seek(0)
+            st.download_button(
+                label="Download Detailed Excel",
+                data=excel_buffer.getvalue(),
+                file_name=f"unspecified_root_cause_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        
+        with col3:
+            # Export all raw data
+            all_data_buffer = BytesIO()
+            df.to_csv(all_data_buffer, index=False, encoding='utf-8')
+            all_data_buffer.seek(0)
+            st.download_button(
+                label="Download All Raw Data",
+                data=all_data_buffer,
+                file_name=f"all_tickets_raw_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
         
         # Debug output if enabled
         if st.session_state.debug_mode:
@@ -940,7 +865,6 @@ def analyze_unspecified_root_causes(df: pd.DataFrame) -> None:
             st.write(list(unspecified_df.columns))
             
             # Display sample tickets
-            st.write("\nSample Tickets (First 10):")
             debug_df = unspecified_df[debug_cols] if all(col in unspecified_df.columns for col in debug_cols) else unspecified_df
             st.dataframe(debug_df.head(10))
             
@@ -1346,577 +1270,374 @@ def display_visualizations(df, customers):
             
         except Exception as e:
             st.error(f"Error generating first response time analysis: {str(e)}")
-
     except Exception as e:
-        error_msg = f"Error in display_visualizations: {str(e)}"
-        debug(error_msg)
-        debug("Full traceback:", traceback.format_exc())
-        st.error(error_msg)
-
-def generate_wordcloud(text_data, title, additional_stopwords=None):
-    """Generate a word cloud from the given text data."""
-    if not isinstance(text_data, str):
-        text_data = ' '.join(str(x) for x in text_data if pd.notna(x))
-    
-    # Get default STOPWORDS from wordcloud
-    stopwords = set(STOPWORDS)
-    
-    # Add custom stopwords specific to support tickets
-    custom_stopwords = {
-        # Common words
-        'nan', 'none', 'null', 'unspecified', 'undefined', 'unknown',
-        # Support-specific terms
-        'ticket', 'case', 'issue', 'problem', 'request', 'support',
-        'customer', 'user', 'client', 'team', 'please', 'thanks',
-        'hello', 'hi', 'hey', 'dear', 'greetings', 'regards',
-        'morning', 'afternoon', 'evening',
-        # Browser and OS-related terms
-        'Mozilla', 'KHTML', 'Gecko', 'NT', 'Windows', 'Apple', 'Safari',
-        'AppleWebkit', 'Win32', 'Win64',
-        # Common verbs and prepositions
-        'is', 'are', 'was', 'were', 'be', 'been', 'being',
-        'have', 'has', 'had', 'do', 'does', 'did',
-        'will', 'would', 'should', 'could', 'may', 'might',
-        'must', 'can', 'cannot', 'cant', 'wont', 'want',
-        'need', 'needed', 'needs', 'required', 'requiring',
-        'facing', 'seeing', 'looking', 'trying', 'tried',
-        'getting', 'got', 'received', 'receiving',
-        # Common articles and conjunctions
-        'the', 'a', 'an', 'and', 'or', 'but', 'nor', 'for',
-        'yet', 'so', 'although', 'because', 'before', 'after',
-        'when', 'while', 'where', 'why', 'how',
-        # Numbers and common symbols
-        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-        '@', '#', '$', '%', '&', '*', '(', ')', '-', '_',
-        '+', '=', '[', ']', '{', '}', '|', '\\', '/', '<', '>',
-        # Time-related terms
-        'today', 'yesterday', 'tomorrow', 'week', 'month', 'year',
-        'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
-        'saturday', 'sunday', 'jan', 'feb', 'mar', 'apr', 'may',
-        'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'
-    }
-    
-    # Update stopwords with custom ones
-    stopwords.update(custom_stopwords)
-    
-    if additional_stopwords:
-        stopwords.update(additional_stopwords)
-    
-    try:
-        # Generate word cloud
-        wordcloud = WordCloud(
-            width=800,
-            height=400,
-            background_color='white',
-            max_words=100,
-            collocations=False,
-            stopwords=stopwords,
-            min_font_size=10,
-            max_font_size=50
-        ).generate(text_data)
-        
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.imshow(wordcloud, interpolation='bilinear')
-        ax.axis('off')
-        ax.set_title(title)
-        
-        return fig
-    except Exception as e:
-        st.error(f"Error generating word cloud: {str(e)}")
-        return None
-
-def generate_powerpoint(filtered_df, active_accounts, escalation_rate, pii_summary: str = None):
-    """Generate PowerPoint presentation with charts and statistics.
-    
-    Args:
-        filtered_df: DataFrame containing filtered data
-        active_accounts: Number of active accounts
-        escalation_rate: Percentage of escalated tickets
-        pii_summary: Optional privacy protection summary
-    
-    Returns:
-        PowerPoint presentation as bytes
-    """
-    try:
-        # Create presentation
-        prs = Presentation()
-        
-        # Set slide width and height (16:9 aspect ratio)
-        prs.slide_width = Inches(13.333)
-        prs.slide_height = Inches(7.5)
-        
-        # Title slide
-        title_slide_layout = prs.slide_layouts[0]
-        slide = prs.slides.add_slide(title_slide_layout)
-        title = slide.shapes.title
-        subtitle = slide.placeholders[1]
-        title.text = "Customer Support Ticket Analysis"
-        subtitle.text = f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        
-        # Privacy Summary slide (if provided)
-        if pii_summary:
-            slide = prs.slides.add_slide(prs.slide_layouts[1])
-            title = slide.shapes.title
-            content = slide.placeholders[1]
-            title.text = "Privacy Protection Summary"
-            content.text = pii_summary
-        
-        # Overview Statistics slide
-        slide = prs.slides.add_slide(prs.slide_layouts[1])
-        title = slide.shapes.title
-        title.text = "Overview Statistics"
-        content = slide.placeholders[1]
-        
-        # Calculate average CSAT if available
-        avg_csat_text = "N/A"
-        if 'CSAT__c' in filtered_df.columns:
-            try:
-                # Convert to numeric and filter for valid range
-                csat_numeric = pd.to_numeric(filtered_df['CSAT__c'], errors='coerce')
-                # Only include non-null values in the valid range
-                valid_csat = csat_numeric[(csat_numeric >= 0) & (csat_numeric <= 5) & csat_numeric.notna()]
-                if not valid_csat.empty:
-                    avg_csat = valid_csat.mean()
-                    avg_csat_text = f"{avg_csat:.2f}"
-                    debug(f"PowerPoint CSAT calculation: {len(valid_csat)} valid values, average: {avg_csat:.2f}")
-                else:
-                    debug("PowerPoint CSAT calculation: No valid CSAT values found")
-            except Exception as e:
-                debug(f"Error calculating CSAT for PowerPoint: {str(e)}")
-        
-        # Add statistics as bullet points
-        stats_text = (
-            f"• Total Cases: {len(filtered_df)}\n"
-            f"• Active Accounts: {active_accounts}\n"
-            f"• Product Areas: {filtered_df['Product Area'].nunique()}\n"
-            f"• Average CSAT: {avg_csat_text}\n"
-            f"• Escalation Rate: {escalation_rate:.1f}%"
-        )
-        content.text = stats_text
-        
-        # Save presentation
-        pptx_output = BytesIO()
-        prs.save(pptx_output)
-        return pptx_output.getvalue()
-    except Exception as e:
-        raise Exception(f"Error generating PowerPoint: {str(e)}")
-
-def export_data(df, format, customers):
-    """Export data with PII protection."""
-    try:
-        # Only process PII if enabled
-        if st.session_state.enable_pii_processing:
-            export_df, pii_stats = process_pii_in_dataframe(df)
-            pii_summary = f"""
-            Privacy Protection Summary:
-            - PII instances detected and removed: {pii_stats['pii_detected']}
-            - Columns processed: {', '.join(pii_stats['processed_columns'])}
-            - Processing timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-            """
-        else:
-            export_df = df.copy()
-            pii_summary = "PII protection disabled"
-        
-        if format == "Excel":
-            output = BytesIO()
-            try:
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    # Add PII Summary sheet
-                    pd.DataFrame({
-                        'Privacy Summary': [pii_summary]
-                    }).to_excel(writer, sheet_name='Privacy Summary', index=False)
-                    
-                    # Summary sheet
-                    summary_data = {
-                        'Customer': [],
-                        'Total Tickets': [],
-                        'Avg Response Time (hrs)': [],
-                        'Avg Resolution Time (days)': [],
-                        'Avg CSAT (0-5)': []
-                    }
-                    
-                    for customer in customers:
-                        # Use string comparison for customer filtering
-                        customer_df = export_df[export_df['Account_Name'].str.lower() == customer.lower()]
-                        summary_data['Customer'].append(customer)
-                        summary_data['Total Tickets'].append(len(customer_df))
-                        
-                        # Response Time calculation
-                        if 'First_Response_Time__c' in customer_df.columns and 'Created Date' in customer_df.columns:
-                            try:
-                                response_times = pd.to_datetime(customer_df['First_Response_Time__c']) - pd.to_datetime(customer_df['Created Date'])
-                                resp_time = response_times.dt.total_seconds().mean() / 3600
-                                summary_data['Avg Response Time (hrs)'].append(round(resp_time, 2) if pd.notna(resp_time) else 'N/A')
-                            except Exception as e:
-                                debug(f"Error calculating response time: {str(e)}")
-                                summary_data['Avg Response Time (hrs)'].append('N/A')
-                        else:
-                            summary_data['Avg Response Time (hrs)'].append('N/A')
-                        
-                        # Resolution Time calculation
-                        if 'Closed Date' in customer_df.columns and 'Created Date' in customer_df.columns:
-                            try:
-                                resolution_times = pd.to_datetime(customer_df['Closed Date']) - pd.to_datetime(customer_df['Created Date'])
-                                res_time = resolution_times.dt.total_seconds().mean() / (24 * 3600)
-                                summary_data['Avg Resolution Time (days)'].append(round(res_time, 2) if pd.notna(res_time) else 'N/A')
-                            except Exception as e:
-                                debug(f"Error calculating resolution time: {str(e)}")
-                                summary_data['Avg Resolution Time (days)'].append('N/A')
-                        else:
-                            summary_data['Avg Resolution Time (days)'].append('N/A')
-                        
-                        # CSAT calculation
-                        if 'CSAT__c' in customer_df.columns:
-                            try:
-                                csat_numeric = pd.to_numeric(customer_df['CSAT__c'], errors='coerce')
-                                valid_csat = csat_numeric[(csat_numeric >= 0) & (csat_numeric <= 5) & csat_numeric.notna()]
-                                if not valid_csat.empty:
-                                    avg_csat = valid_csat.mean()
-                                    summary_data['Avg CSAT (0-5)'].append(round(avg_csat, 2) if pd.notna(avg_csat) else 'N/A')
-                                else:
-                                    summary_data['Avg CSAT (0-5)'].append('N/A')
-                            except Exception as e:
-                                debug(f"Error calculating CSAT: {str(e)}")
-                                summary_data['Avg CSAT (0-5)'].append('N/A')
-                        else:
-                            summary_data['Avg CSAT (0-5)'].append('N/A')
-                    
-                    # Write summary sheet
-                    pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
-                    
-                    # Write detailed data sheets
-                    for customer in customers:
-                        # Use string comparison for customer filtering
-                        customer_df = export_df[export_df['Account_Name'].str.lower() == customer.lower()]
-                        sheet_name = truncate_string(customer, 31)  # Excel sheet names limited to 31 chars
-                        customer_df.to_excel(writer, sheet_name=sheet_name, index=False)
-                
-                # Offer download
-                st.download_button(
-                    label="Download Excel Report",
-                    data=output.getvalue(),
-                    file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            except Exception as excel_error:
-                debug(f"Excel export failed: {str(excel_error)}")
-                st.error(f"Excel export failed. Error: {str(excel_error)}")
-                # Fallback to CSV
-                st.info("Attempting CSV export as fallback...")
-                export_data(df, "CSV", customers)
-                
-        elif format == "PowerPoint":
-            pptx_data = generate_powerpoint(export_df, len(export_df['Account_Name'].unique()), 
-                                          export_df['IsEscalated'].astype(bool).mean() * 100,
-                                          pii_summary=pii_summary)
-            st.download_button(
-                label="Download PowerPoint",
-                data=pptx_data,
-                file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx",
-                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            )
-        elif format == "CSV":
-            output = BytesIO()
-            export_df.to_csv(output, index=False)
-            output_str = f"# {pii_summary}\n" + output.getvalue().decode('utf-8')
-            output = BytesIO(output_str.encode('utf-8'))
-            st.download_button(
-                label="Download CSV",
-                data=output.getvalue(),
-                file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
-    except Exception as e:
-        st.error(f"Error exporting data: {str(e)}")
-        st.error("Please check the data format and try again.")
-
-def truncate_string(s, max_length=30, add_ellipsis=True):
-    """Truncate a string to specified length and optionally add ellipsis if needed.
-    
-    Args:
-        s: String to truncate
-        max_length: Maximum length of the string
-        add_ellipsis: Whether to add '...' to truncated strings
-        
-    Returns:
-        Truncated string
-    """
-    if not isinstance(s, str):
-        s = str(s)
-    if len(s) > max_length:
-        return s[:max_length] + ('...' if add_ellipsis else '')
-    return s
+        st.error(f"Error in visualizations: {str(e)}")
+        if st.session_state.debug_mode:
+            st.exception(e)
+            st.write("DataFrame columns:", df.columns.tolist() if df is not None else "None")
+            st.write("DataFrame info:", df.info() if df is not None else "None")
 
 def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False, enable_pii_processing: bool = False):
     """Display detailed analysis of support tickets."""
-    
-    # Create a container for analysis
-    analysis_container = st.container()
-    
-    with analysis_container:
+    try:
         st.header("Detailed Analysis")
         
-        with st.spinner("Processing data..."):
-            # Monthly ticket trends
-            st.subheader("Monthly Ticket Volume")
-            monthly_data = df.copy()
-            monthly_data['Created Date'] = pd.to_datetime(monthly_data['Created Date'])
-            monthly_data['Closed Date'] = pd.to_datetime(monthly_data['Closed Date'])
+        # Pattern Evolution Analysis
+        st.markdown("---")
+        st.subheader("Pattern Evolution Analysis")
+        
+        # Ensure we have the required columns
+        required_columns = ['Created Date', 'Resolution Time (Days)', 'CSAT']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            st.warning(f"Missing required columns for pattern analysis: {', '.join(missing_columns)}")
+            return
+
+        # Prepare data for pattern analysis
+        df['Created Date'] = pd.to_datetime(df['Created Date'])
+        df['Month'] = df['Created Date'].dt.to_period('M')
+        
+        # Calculate monthly metrics with proper handling of NaN values
+        monthly_data = df.groupby('Month').agg({
+            'Id': 'count',  # Count of tickets
+            'Resolution Time (Days)': lambda x: x.mean() if x.notna().any() else 0,  # Mean resolution time, 0 if all NaN
+            'CSAT': lambda x: x.mean() if x.notna().any() else 0  # Mean CSAT, 0 if all NaN
+        }).reset_index()
+        
+        monthly_data = monthly_data.rename(columns={
+            'Id': 'Ticket Count',
+            'Resolution Time (Days)': 'Avg Resolution Time',
+            'CSAT': 'Avg CSAT'
+        })
+        
+        # Sort by Month to ensure proper ordering
+        monthly_data = monthly_data.sort_values('Month')
+        
+        # Convert Month to string for plotting
+        monthly_data['Month_Str'] = monthly_data['Month'].astype(str)
+        
+        # Fill any remaining NaN values with 0
+        monthly_data = monthly_data.fillna(0)
+
+        # Check data length and adjust analysis
+        data_months = len(monthly_data)
+        if data_months < 4:  # Minimum required for basic trend analysis
+            st.warning("Insufficient data for pattern evolution analysis. Please select a longer date range (minimum 4 months of data required).")
+            return
             
-            # Group by month and count tickets
-            monthly_created = monthly_data.groupby(monthly_data['Created Date'].dt.to_period('M')).size()
-            monthly_closed = monthly_data.groupby(monthly_data['Closed Date'].dt.to_period('M')).size()
-            
-            # Create figure
+        # Calculate trends and patterns
+        st.write("### Trend Analysis")
+        
+        for column in ['Ticket Count', 'Avg Resolution Time', 'Avg CSAT']:
+            # Create visualization
             fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=[str(x) for x in monthly_created.index],
-                y=monthly_created.values,
-                name='Created Tickets',
-                marker_color='blue'
-            ))
-            fig.add_trace(go.Bar(
-                x=[str(x) for x in monthly_closed.index],
-                y=monthly_closed.values,
-                name='Closed Tickets',
-                marker_color='green'
+            
+            # Add actual data
+            fig.add_trace(go.Scatter(
+                x=monthly_data['Month_Str'],
+                y=monthly_data[column],
+                mode='lines+markers',
+                name='Actual',
+                line=dict(color='blue')
             ))
             
+            # Calculate trend
+            x = np.arange(len(monthly_data))
+            y = monthly_data[column].values
+            z = np.polyfit(x, y, 1)
+            p = np.poly1d(z)
+            
+            # Add trend line
+            fig.add_trace(go.Scatter(
+                x=monthly_data['Month_Str'],
+                y=p(x),
+                mode='lines',
+                name='Trend',
+                line=dict(color='red', dash='dash')
+            ))
+            
+            # Calculate simple moving average
+            window = min(3, len(monthly_data))
+            ma = monthly_data[column].rolling(window=window, center=True).mean()
+            
+            # Add moving average
+            fig.add_trace(go.Scatter(
+                x=monthly_data['Month_Str'],
+                y=ma,
+                mode='lines',
+                name=f'{window}-Month Moving Average',
+                line=dict(color='green', dash='dot')
+            ))
+            
+            # Update layout
             fig.update_layout(
-                title='Monthly Ticket Volume',
+                title=f'{column} Pattern Evolution',
                 xaxis_title='Month',
-                yaxis_title='Number of Tickets',
-                barmode='group'
+                yaxis_title=column,
+                showlegend=True,
+                hovermode='x unified'
             )
             
             st.plotly_chart(fig)
             
-            # Resolution Time Analysis
-            st.subheader("Resolution Time Analysis")
+            # Calculate and display insights
+            current_value = y[-1]
+            previous_value = y[-2] if len(y) > 1 else y[-1]
+            trend_slope = z[0]
             
-            # Filter for tickets with valid priority and resolution time
-            resolution_data = df[df['Priority'].notna() & df['Resolution Time (Days)'].notna()]
+            trend_direction = "increasing" if trend_slope > 0 else "decreasing"
+            change_pct = ((current_value - previous_value) / previous_value * 100) if previous_value != 0 else 0
             
-            if not resolution_data.empty:
-                # Create box plot
-                fig = go.Figure()
-                for priority in sorted(resolution_data['Priority'].unique()):
-                    priority_data = resolution_data[resolution_data['Priority'] == priority]
-                    fig.add_trace(go.Box(
-                        y=priority_data['Resolution Time (Days)'],
-                        name=f'Priority {priority}',
-                        boxpoints='outliers'
-                    ))
-                
-                fig.update_layout(
-                    title='Resolution Time Distribution by Priority',
-                    yaxis_title='Resolution Time (Days)',
-                    showlegend=True
-                )
-                
-                st.plotly_chart(fig)
-                
-                # Summary statistics
-                st.subheader("Resolution Time Summary")
-                summary_stats = resolution_data.groupby('Priority')['Resolution Time (Days)'].agg([
-                    'count', 'mean', 'median', 'std', 'min', 'max'
-                ]).round(2)
-                
-                st.dataframe(summary_stats)
+            st.markdown(f"""
+            #### {column} Insights
+            - Current Value: {current_value:.2f}
+            - Previous Value: {previous_value:.2f}
+            - Change: {change_pct:+.1f}%
+            - Overall Trend: {trend_direction.title()} (slope = {trend_slope:.2f})
+            - Volatility: {y.std():.2f}
+            """)
+        
+        # Calculate correlations
+        st.write("### Metric Correlations")
+        corr_matrix = monthly_data[['Ticket Count', 'Avg Resolution Time', 'Avg CSAT']].corr()
+        
+        # Create correlation heatmap
+        fig_corr = go.Figure(data=go.Heatmap(
+            z=corr_matrix.values,
+            x=corr_matrix.columns,
+            y=corr_matrix.columns,
+            colorscale='RdBu',
+            zmin=-1,
+            zmax=1,
+            text=np.round(corr_matrix.values, 2),
+            texttemplate='%{text}',
+            textfont={"size": 10},
+            hoverongaps=False
+        ))
+        
+        fig_corr.update_layout(
+            title='Correlation Matrix',
+            width=600,
+            height=600
+        )
+        
+        st.plotly_chart(fig_corr)
+        
+        # Display correlation insights
+        st.markdown("#### Correlation Insights")
+        correlations = []
+        for i in range(len(corr_matrix.columns)):
+            for j in range(i+1, len(corr_matrix.columns)):
+                col1, col2 = corr_matrix.columns[i], corr_matrix.columns[j]
+                corr = corr_matrix.iloc[i, j]
+                strength = "strong" if abs(corr) > 0.7 else "moderate" if abs(corr) > 0.4 else "weak"
+                direction = "positive" if corr > 0 else "negative"
+                correlations.append(f"- {col1} and {col2}: {strength} {direction} correlation ({corr:.2f})")
+        
+        for insight in correlations:
+            st.markdown(insight)
+
+        # AI Analysis Section
+        if enable_ai_analysis:
+            st.markdown("---")
+            st.markdown("""
+            <h2 style='text-align: center;'>🤖 AI Analysis</h2>
+            """, unsafe_allow_html=True)
             
-            # AI Analysis Section
-            if enable_ai_analysis:
-                st.markdown("---")
-                st.markdown("""
-                <h2 style='text-align: center;'>🤖 AI Analysis</h2>
-                """, unsafe_allow_html=True)
-                
-                with st.spinner("Generating AI insights..."):
-                    try:
-                        # Process PII if enabled
-                        analysis_df = df.copy()
-                        if enable_pii_processing:
-                            analysis_df = st.session_state.pii_handler.process_dataframe(analysis_df)
+            with st.spinner("Generating AI insights..."):
+                try:
+                    # Initialize OpenAI client
+                    openai_api_key = os.getenv('OPENAI_API_KEY') or st.secrets.get("OPENAI_API_KEY", None)
+                    if not openai_api_key:
+                        st.warning("OpenAI API key not found. Please add it to your environment variables or Streamlit secrets.")
+                        return
                         
-                        # Generate AI insights
-                        insights = generate_ai_insights(analysis_df)
+                    client = OpenAI(api_key=openai_api_key)
+                    
+                    # Process PII if enabled
+                    analysis_df = df.copy()
+                    if enable_pii_processing:
+                        analysis_df, _ = st.session_state.pii_handler.process_dataframe(
+                            analysis_df,
+                            ['Subject', 'Description', 'Comments', 'Account_Name', 'Product_Area', 'Product_Feature']
+                        )
+                    
+                    # Initialize AI Analyzer with proper configuration
+                    analyzer = AIAnalyzer(client)
+                    
+                    # Generate insights with debug logging
+                    if st.session_state.debug_mode:
+                        st.write("Generating AI insights...")
+                        st.write(f"Data shape: {analysis_df.shape}")
+                        st.write("Columns:", list(analysis_df.columns))
+                    
+                    insights = analyzer.analyze_tickets(analysis_df)
+                    
+                    if insights and 'error' not in insights:
+                        # Display Executive Summary
+                        st.markdown("""
+                        <h3 style='color: #1E88E5;'>
+                            <i class='material-icons'>💡 Executive Summary</i>
+                        </h3>
+                        """, unsafe_allow_html=True)
                         
-                        if insights and isinstance(insights, dict):
+                        if 'executive_summary' in insights:
+                            exec_summary = insights['executive_summary']
+                            
                             # Key Findings
-                            if 'key_findings' in insights:
-                                st.markdown("""
-                                <h3 style='color: #1E88E5;'>
-                                    <i class='material-icons'>💡 Key Findings</i>
-                                </h3>
-                                """, unsafe_allow_html=True)
-                                
-                                for finding in insights['key_findings']:
-                                    with st.container():
-                                        st.markdown(f"""
-                                        <div style='background-color: #E3F2FD; padding: 10px; border-radius: 5px; margin: 5px 0;'>
-                                            <h4 style='color: #1565C0; margin: 0;'>{finding['title']}</h4>
-                                            <p style='margin: 5px 0 0 0;'>{finding['description']}</p>
-                                        </div>
-                                        """, unsafe_allow_html=True)
+                            st.markdown("#### Key Findings")
+                            for finding in exec_summary.get('key_findings', []):
+                                st.markdown(f"- {finding}")
                             
-                            # Common Patterns
-                            if 'common_patterns' in insights:
-                                st.markdown("""
-                                <h3 style='color: #43A047;'>
-                                    <i class='material-icons'>📊 Common Patterns</i>
-                                </h3>
-                                """, unsafe_allow_html=True)
-                                
-                                for pattern in insights['common_patterns']:
-                                    with st.container():
-                                        st.markdown(f"""
-                                        <div style='background-color: #E8F5E9; padding: 10px; border-radius: 5px; margin: 5px 0;'>
-                                            <p style='margin: 0;'><b>Pattern:</b> {pattern['pattern']}</p>
-                                            <p style='margin: 5px 0 0 0; color: #2E7D32;'><b>Frequency:</b> {pattern['frequency']}</p>
-                                        </div>
-                                        """, unsafe_allow_html=True)
+                            # Critical Patterns
+                            if 'critical_patterns' in exec_summary:
+                                st.markdown("#### Critical Patterns")
+                                for pattern in exec_summary['critical_patterns']:
+                                    st.markdown(f"- {pattern}")
                             
-                            # Recommendations
-                            if 'recommendations' in insights:
-                                st.markdown("""
-                                <h3 style='color: #FB8C00;'>
-                                    <i class='material-icons'>⚡ Recommendations</i>
-                                </h3>
-                                """, unsafe_allow_html=True)
-                                
-                                for rec in insights['recommendations']:
-                                    priority_color = {
-                                        'High': '#F44336',
-                                        'Medium': '#FB8C00',
-                                        'Low': '#7CB342'
-                                    }.get(rec['priority'], '#757575')
-                                    
-                                    with st.container():
-                                        st.markdown(f"""
-                                        <div style='background-color: #FFF3E0; padding: 10px; border-radius: 5px; margin: 5px 0;'>
-                                            <div style='display: flex; justify-content: space-between; align-items: center;'>
-                                                <h4 style='color: #E65100; margin: 0;'>{rec['title']}</h4>
-                                                <span style='color: {priority_color}; font-weight: bold;'>Priority: {rec['priority']}</span>
-                                            </div>
-                                            <p style='margin: 5px 0 0 0;'>{rec['description']}</p>
-                                        </div>
-                                        """, unsafe_allow_html=True)
+                            # Risk Areas
+                            if 'risk_areas' in exec_summary:
+                                st.markdown("#### Risk Areas")
+                                for risk in exec_summary['risk_areas']:
+                                    st.markdown(f"- {risk}")
+                        
+                        # Pattern Insights
+                        if 'pattern_insights' in insights:
+                            st.markdown("""
+                            <h3 style='color: #43A047;'>
+                                <i class='material-icons'>📊 Pattern Analysis</i>
+                            </h3>
+                            """, unsafe_allow_html=True)
                             
-                            # Overall Summary
-                            if 'summary' in insights:
-                                st.markdown("""
-                                <h3 style='color: #5E35B1;'>
-                                    <i class='material-icons'>📝 Overall Summary</i>
-                                </h3>
-                                """, unsafe_allow_html=True)
+                            pattern_insights = insights['pattern_insights']
+                            
+                            # Recurring Issues
+                            if 'recurring_issues' in pattern_insights:
+                                st.markdown("#### Recurring Issues")
+                                for issue in pattern_insights['recurring_issues']:
+                                    st.markdown(f"- {issue}")
+                            
+                            # Confidence Levels
+                            if 'confidence_levels' in pattern_insights:
+                                conf_levels = pattern_insights['confidence_levels']
+                                
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.markdown("#### High Confidence Patterns")
+                                    for pattern in conf_levels.get('high_confidence', []):
+                                        st.markdown(f"- {pattern}")
+                                
+                                with col2:
+                                    st.markdown("#### Medium Confidence Patterns")
+                                    for pattern in conf_levels.get('medium_confidence', []):
+                                        st.markdown(f"- {pattern}")
+                                
+                                with col3:
+                                    st.markdown("#### Low Confidence Patterns")
+                                    for pattern in conf_levels.get('low_confidence', []):
+                                        st.markdown(f"- {pattern}")
+                        
+                        # Customer Impact Analysis
+                        if 'customer_impact_analysis' in insights:
+                            st.markdown("""
+                            <h3 style='color: #FB8C00;'>
+                                <i class='material-icons'>👥 Customer Impact</i>
+                            </h3>
+                            """, unsafe_allow_html=True)
+                            
+                            impact = insights['customer_impact_analysis']
+                            
+                            # Display satisfaction trends
+                            st.markdown("#### Customer Satisfaction Trends")
+                            st.markdown(impact.get('satisfaction_trends', 'No satisfaction trend data available'))
+                            
+                            # Pain Points
+                            if 'pain_points' in impact:
+                                st.markdown("#### Customer Pain Points")
+                                for point in impact['pain_points']:
+                                    st.markdown(f"- {point}")
+                            
+                            # Improvement Opportunities
+                            if 'improvement_opportunities' in impact:
+                                st.markdown("#### Improvement Opportunities")
+                                for opp in impact['improvement_opportunities']:
+                                    st.markdown(f"- {opp}")
+                        
+                        # Recommendations
+                        if 'recommendations' in insights:
+                            st.markdown("""
+                            <h3 style='color: #E91E63;'>
+                                <i class='material-icons'>⚡ Recommendations</i>
+                            </h3>
+                            """, unsafe_allow_html=True)
+                            
+                            for rec in insights['recommendations']:
+                                priority_color = {
+                                    'High': '#F44336',
+                                    'Medium': '#FB8C00',
+                                    'Low': '#7CB342'
+                                }.get(rec['priority'], '#757575')
                                 
                                 st.markdown(f"""
-                                <div style='background-color: #EDE7F6; padding: 15px; border-radius: 5px; margin: 10px 0;'>
-                                    <p style='margin: 0; font-size: 1.1em;'>{insights['summary']}</p>
+                                <div style='background-color: #FFF3E0; padding: 10px; border-radius: 5px; margin: 5px 0;'>
+                                    <div style='display: flex; justify-content: space-between; align-items: center;'>
+                                        <h4 style='color: #E65100; margin: 0;'>{rec['title']}</h4>
+                                        <span style='color: {priority_color}; font-weight: bold;'>Priority: {rec['priority']}</span>
+                                    </div>
+                                    <p style='margin: 5px 0;'>{rec['description']}</p>
+                                    <p style='margin: 5px 0;'><strong>Impact:</strong> {rec['impact']}</p>
+                                    <p style='margin: 5px 0;'><strong>Effort:</strong> {rec['effort']}</p>
+                                    <p style='margin: 5px 0;'><strong>Timeline:</strong> {rec.get('timeline', 'Not specified')}</p>
                                 </div>
                                 """, unsafe_allow_html=True)
-                        else:
-                            st.warning("No AI insights were generated. Please try again with a different data selection.")
-                    
-                    except Exception as e:
-                        st.error("Error generating AI insights. Please try again or contact support if the issue persists.")
-                        if st.session_state.debug_mode:
-                            st.exception(e)
-            
-            # Add CSAT Analysis
-            st.markdown("---")
-            st.subheader("Customer Satisfaction Analysis")
-            try:
-                csat_fig, csat_stats = create_csat_analysis(df)
-                st.plotly_chart(csat_fig)
+                        
+                        # Next Steps
+                        if 'next_steps' in insights:
+                            st.markdown("""
+                            <h3 style='color: #5E35B1;'>
+                                <i class='material-icons'>➡️ Next Steps</i>
+                            </h3>
+                            """, unsafe_allow_html=True)
+                            
+                            for step in insights['next_steps']:
+                                st.markdown(f"- {step}")
+                        
+                        # Analysis Metadata
+                        if 'metadata' in insights:
+                            with st.expander("Analysis Metadata"):
+                                meta = insights['metadata']
+                                st.markdown(f"""
+                                - Analysis Timestamp: {meta['analysis_timestamp']}
+                                - Tickets Analyzed: {meta['tickets_analyzed']} of {meta['total_tickets']}
+                                - Chunks Processed: {meta['chunks_processed']}
+                                - Patterns Detected: {meta['patterns_detected']}
+                                - Pattern Insights Generated: {meta['pattern_insights_generated']}
+                                """)
+                    else:
+                        st.error("Failed to generate AI insights. Please check the logs for more information.")
+                        if 'error' in insights:
+                            st.error(f"Error: {insights['error']}")
+                            if st.session_state.debug_mode:
+                                st.write("Debug information:")
+                                st.write(insights)
                 
-                # Display CSAT statistics
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Overall CSAT", f"{csat_stats['overall_mean']:.2f}")
-                with col2:
-                    st.metric("Response Rate", f"{csat_stats['response_rate']:.1f}%")
-                with col3:
-                    st.metric("Trend", csat_stats['trend'])
-            except Exception as e:
-                st.error(f"Error generating CSAT analysis: {str(e)}")
+                except Exception as e:
+                    st.error("Error generating AI insights. Please try again or contact support if the issue persists.")
+                    if st.session_state.debug_mode:
+                        st.exception(e)
+                        st.write("Debug information:")
+                        st.write({
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                            "traceback": traceback.format_exc()
+                        })
 
-            # Add Text Analysis
-            st.markdown("---")
-            st.subheader("Text Analysis")
-            try:
-                word_clouds = create_word_clouds(df)
-                if word_clouds:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if 'Subject' in word_clouds:
-                            st.pyplot(word_clouds['Subject'])
-                    with col2:
-                        if 'Description' in word_clouds:
-                            st.pyplot(word_clouds['Description'])
-                else:
-                    st.warning("No text data available for word cloud generation")
-            except Exception as e:
-                st.error(f"Error generating word clouds: {str(e)}")
-
-            # Add Root Cause Analysis
-            st.markdown("---")
-            st.subheader("Root Cause Analysis")
-            try:
-                rca_figures, rca_stats = create_root_cause_analysis(df)
-                
-                # Display RCA trend over time
-                st.plotly_chart(rca_figures['trends'])
-                
-                # Display resolution time by root cause
-                st.plotly_chart(rca_figures['resolution_time'])
-                
-                # Display RCA statistics
-                st.write("### Root Cause Distribution")
-                rca_dist = pd.DataFrame.from_dict(rca_stats['rca_distribution'], 
-                                                orient='index', 
-                                                columns=['Count']).reset_index()
-                rca_dist.columns = ['Root Cause', 'Count']
-                st.dataframe(rca_dist)
-                
-                st.write("### Average Resolution Time by Root Cause")
-                avg_res = pd.DataFrame.from_dict(rca_stats['avg_resolution_by_rca'], 
-                                               orient='index', 
-                                               columns=['Days']).reset_index()
-                avg_res.columns = ['Root Cause', 'Average Days']
-                avg_res['Average Days'] = avg_res['Average Days'].round(1)
-                st.dataframe(avg_res)
-            except Exception as e:
-                st.error(f"Error generating root cause analysis: {str(e)}")
-
-            # Add First Response Time Analysis
-            st.markdown("---")
-            st.subheader("First Response Time Analysis")
-            try:
-                frt_fig, frt_stats = create_first_response_analysis(df)
-                
-                # Display the box plot
-                st.plotly_chart(frt_fig)
-                
-                # Display response time statistics
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Overall Mean Response Time", f"{frt_stats['overall_mean']:.1f} hours")
-                with col2:
-                    st.metric("Overall Median Response Time", f"{frt_stats['overall_median']:.1f} hours")
-                with col3:
-                    st.metric("Within 24h SLA", f"{frt_stats['sla_compliance']['within_24h']:.1f}%")
-                
-                # Display detailed statistics by priority
-                st.write("### Response Time Statistics by Priority")
-                # Convert the multi-level dictionary to a DataFrame
-                priority_stats = pd.DataFrame(frt_stats['by_priority'])
-                priority_stats = priority_stats['first_response_hours'].reset_index()
-                priority_stats.columns = ['Priority', 'Count', 'Mean (hours)', 'Median (hours)', 'Std Dev']
-                st.dataframe(priority_stats)
-                
-            except Exception as e:
-                st.error(f"Error generating first response time analysis: {str(e)}")
+    except Exception as e:
+        st.error(f"Error in detailed analysis: {str(e)}")
+        if st.session_state.debug_mode:
+            st.exception(e)
+            st.write("DataFrame columns:", df.columns.tolist())
+            st.write("DataFrame info:", df.info())
 
 def export_analysis():
     """Export analysis data in various formats."""
