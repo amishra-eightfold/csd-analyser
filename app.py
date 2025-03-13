@@ -34,10 +34,13 @@ from visualizers.salesforce_visualizer import SalesforceVisualizer
 from visualizers.advanced_visualizations import create_csat_analysis, create_word_clouds, create_root_cause_analysis, create_first_response_analysis
 from visualizers.pattern_evolution import analyze_pattern_evolution
 from utils.pii_handler import PIIHandler, get_privacy_status_indicator
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
 from utils.token_manager import TokenManager, TokenInfo, convert_value_for_json
 import logging
 from utils.ai_analysis import AIAnalyzer
+from utils.exporter import BaseExporter
+from utils.visualization_helpers import truncate_string
+from utils.debug_logger import DebugLogger
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -99,6 +102,10 @@ if 'enable_detailed_analysis' not in st.session_state:
     st.session_state.enable_detailed_analysis = True
 if 'enable_ai_analysis' not in st.session_state:
     st.session_state.enable_ai_analysis = False
+
+# Initialize debug logger
+if 'debug_logger' not in st.session_state:
+    st.session_state.debug_logger = DebugLogger()
 
 # Custom CSS
 st.markdown("""
@@ -235,42 +242,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Helper function to conditionally display debug information
-def debug(message, data=None):
-    """Enhanced debug function that logs to console, file and Streamlit."""
-    if not hasattr(st.session_state, 'debug_mode') or not st.session_state.debug_mode:
-        return
-        
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    # Format the debug message
-    if data is not None:
-        if isinstance(data, dict):
-            data_str = "\n  " + "\n  ".join([f"{k}: {v}" for k, v in data.items()])
-        else:
-            data_str = str(data)
-        log_message = f"[DEBUG] {timestamp} - {message}:{data_str}"
-    else:
-        log_message = f"[DEBUG] {timestamp} - {message}"
-    
-    # Print to console
-    print(log_message)
-    
-    # Write to file
-    try:
-        with open('debug.log', 'a') as f:
-            f.write(log_message + '\n')
-    except Exception as e:
-        print(f"Error writing to debug log file: {str(e)}")
-    
-    # Show in Streamlit debug container
-    if not hasattr(st.session_state, 'debug_container'):
-        st.session_state.debug_container = []
-    
-    # Add to debug container and keep only last 1000 messages
-    st.session_state.debug_container.append(log_message)
-    if len(st.session_state.debug_container) > 1000:
-        st.session_state.debug_container = st.session_state.debug_container[-1000:]
+def debug(message, data=None, category="app"):
+    """Enhanced debug function that uses the centralized DebugLogger."""
+    if hasattr(st.session_state, 'debug_logger'):
+        st.session_state.debug_logger.log(message, data, category)
 
 def process_pii_in_dataframe(df):
     """Process PII in DataFrame with visual feedback."""
@@ -400,10 +375,6 @@ client = OpenAI()
 def main():
     st.title("Support Ticket Analytics")
     
-    # Initialize debug container if not exists
-    if 'debug_container' not in st.session_state:
-        st.session_state.debug_container = []
-    
     # Initialize debug mode if in development environment
     if os.getenv('ENVIRONMENT', 'development').lower() != 'production':
         st.sidebar.markdown("---")
@@ -416,26 +387,18 @@ def main():
             key="debug_mode_checkbox"
         )
         
-        # Show debug container if debug mode is enabled
+        # Display debug UI if debug mode is enabled
         if st.session_state.debug_mode:
             # Log initial debug message only when first enabled
             if not was_debug_enabled:
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                st.session_state.debug_container.extend([
-                    f"[DEBUG] {timestamp} - Debug mode enabled",
-                    f"[DEBUG] {timestamp} - Application startup - Environment: {os.getenv('ENVIRONMENT', 'development')}, Session state keys: {list(st.session_state.keys())}"
-                ])
+                debug("Debug mode enabled")
+                debug("Application startup", {
+                    'environment': os.getenv('ENVIRONMENT', 'development'),
+                    'session_state_keys': list(st.session_state.keys())
+                })
             
-            if st.sidebar.button("Clear Debug Log"):
-                st.session_state.debug_container = []
-            
-            # Create a container for debug output
-            with st.expander("Debug Log", expanded=True):
-                if st.session_state.debug_container:
-                    for msg in st.session_state.debug_container:
-                        st.code(msg, language="text")
-                else:
-                    st.info("No debug messages yet.")
+            # Display debug UI
+            st.session_state.debug_logger.display_debug_ui()
     
     # Add debug message for Salesforce connection attempt
     if st.session_state.debug_mode:
@@ -491,6 +454,7 @@ def main():
     # Fetch customers if not already loaded
     if st.session_state.customers is None:
         try:
+            debug("Fetching customer list")
             query = """
                 SELECT Account.Account_Name__c 
                 FROM Account 
@@ -501,10 +465,13 @@ def main():
             records = execute_soql_query(st.session_state.sf_connection, query)
             if records:
                 st.session_state.customers = [record['Account_Name__c'] for record in records]
+                debug(f"Loaded {len(st.session_state.customers)} customers")
             else:
                 st.session_state.customers = []
+                debug("No customers found", category="error")
         except Exception as e:
             st.error(f"Error fetching customers: {str(e)}")
+            debug(f"Error fetching customers: {str(e)}", {'traceback': traceback.format_exc()}, category="error")
             return
     
     # Sidebar
@@ -512,15 +479,32 @@ def main():
     
     # Analysis Options
     st.sidebar.header("Analysis Options")
-    st.session_state.enable_detailed_analysis = st.sidebar.checkbox("Enable Detailed Analysis", value=True)
-    st.session_state.enable_ai_analysis = st.sidebar.checkbox("Enable AI Analysis", value=False)
-    st.session_state.enable_pii_processing = st.sidebar.checkbox("Enable PII Protection", value=False)
+    st.session_state.enable_detailed_analysis = st.sidebar.checkbox(
+        "Enable Detailed Analysis",
+        value=True,
+        help="Show comprehensive metrics and visualizations"
+    )
+    st.session_state.enable_ai_analysis = st.sidebar.checkbox(
+        "Enable AI Analysis",
+        value=False,
+        help="Use AI to generate insights and recommendations"
+    )
+    st.session_state.enable_pii_processing = st.sidebar.checkbox(
+        "Enable PII Protection",
+        value=False,
+        help="Remove sensitive information before analysis"
+    )
     
     # Date Range Selection
     st.sidebar.markdown("---")
     st.sidebar.header("Date Range")
     
     # Get current dates from session state and ensure they are datetime objects
+    if 'date_range' not in st.session_state:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+        st.session_state.date_range = (start_date, end_date)
+    
     current_start, current_end = st.session_state.date_range
     if not isinstance(current_start, datetime):
         current_start = pd.to_datetime(current_start)
@@ -596,14 +580,29 @@ def main():
             try:
                 df = fetch_data()
                 st.session_state.data_loaded = True
-                if st.session_state.enable_detailed_analysis:
-                    display_detailed_analysis(
-                        df, 
-                        enable_ai_analysis=st.session_state.enable_ai_analysis,
-                        enable_pii_processing=st.session_state.enable_pii_processing
-                    )
+                
+                if df is not None and not df.empty:
+                    # Display basic visualizations first
+                    debug("Starting basic visualizations")
+                    display_visualizations(df, st.session_state.selected_customers)
+                    
+                    # Display detailed analysis if enabled
+                    if st.session_state.enable_detailed_analysis:
+                        debug("Starting detailed analysis")
+                        display_detailed_analysis(
+                            df, 
+                            enable_ai_analysis=st.session_state.enable_ai_analysis,
+                            enable_pii_processing=st.session_state.enable_pii_processing
+                        )
+                else:
+                    debug("No data available for analysis", category="error")
+                    st.warning("No data available for the selected criteria. Please adjust your filters and try again.")
+                    
             except Exception as e:
                 st.error(f"Error fetching data: {str(e)}")
+                debug(f"Error in main analysis flow: {str(e)}", 
+                      {'traceback': traceback.format_exc()}, 
+                      category="error")
                 if st.session_state.debug_mode:
                     st.exception(e)
     else:
@@ -614,10 +613,17 @@ def fetch_data():
     try:
         if not st.session_state.selected_customers:
             st.warning("No customers selected")
+            debug("No customers selected for data fetch", category="app")
             return None
             
         customer_list = "'" + "','".join(st.session_state.selected_customers) + "'"
         start_date, end_date = st.session_state.date_range
+        
+        debug("Fetching data with parameters", {
+            'customers': st.session_state.selected_customers,
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': end_date.strftime('%Y-%m-%d')
+        })
         
         query = f"""
             SELECT 
@@ -631,10 +637,15 @@ def fetch_data():
             AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
         """
         
+        debug("Executing SOQL query", {'query': query}, category="api")
+        
         records = execute_soql_query(st.session_state.sf_connection, query)
         if not records:
             st.warning("No data found for the selected criteria")
-            return pd.DataFrame()  # Return empty DataFrame instead of None
+            debug("No records returned from query", category="app")
+            return pd.DataFrame()
+        
+        debug(f"Retrieved {len(records)} records from Salesforce", category="api")
         
         df = pd.DataFrame(records)
         
@@ -658,10 +669,9 @@ def fetch_data():
         date_columns = ['CreatedDate', 'ClosedDate', 'First_Response_Time__c']
         for col in date_columns:
             if col in df.columns:
-                # Convert to datetime and localize to UTC if naive
                 df[col] = pd.to_datetime(df[col], utc=True)
         
-        # Calculate resolution time (both dates are now in UTC)
+        # Calculate resolution time
         mask = df['ClosedDate'].notna() & df['CreatedDate'].notna()
         df.loc[mask, 'Resolution Time (Days)'] = (
             df.loc[mask, 'ClosedDate'] - df.loc[mask, 'CreatedDate']
@@ -679,16 +689,24 @@ def fetch_data():
             'Internal_Priority__c': 'Priority'
         })
         
+        debug("Data processing completed", {
+            'shape': df.shape,
+            'columns': df.columns.tolist(),
+            'date_range': f"{df['Created Date'].min()} to {df['Created Date'].max()}"
+        })
+        
         if df.empty:
             st.warning("No data available after processing")
+            debug("Empty DataFrame after processing", category="error")
             return pd.DataFrame()
             
         return df
     except Exception as e:
         st.error(f"Error fetching data: {str(e)}")
+        debug(f"Error in fetch_data: {str(e)}", {'traceback': traceback.format_exc()}, category="error")
         if st.session_state.debug_mode:
             st.exception(e)
-        return pd.DataFrame()  # Return empty DataFrame instead of None
+        return pd.DataFrame()
 
 def generate_ai_insights(cases_df: pd.DataFrame, client: OpenAI) -> Dict[str, Any]:
     """Generate AI insights from case data with enhanced pattern recognition."""
@@ -889,10 +907,13 @@ def analyze_unspecified_root_causes(df: pd.DataFrame) -> None:
 def display_visualizations(df, customers):
     """Display visualizations using the dataset."""
     try:
-        debug("Starting display_visualizations function")
+        debug("Starting display_visualizations function", {
+            'data_shape': df.shape if df is not None else None,
+            'customer_count': len(customers) if customers else 0
+        })
         
         if df is None or df.empty:
-            debug("DataFrame is None or empty")
+            debug("DataFrame is None or empty", category="error")
             st.warning("No data available for visualization.")
             return
             
@@ -902,9 +923,11 @@ def display_visualizations(df, customers):
         # Add Root Cause Analysis section
         st.markdown("---")
         st.subheader("Root Cause Analysis")
+        debug("Starting Root Cause Analysis")
         analyze_unspecified_root_causes(df)
         
         # Convert date columns
+        debug("Converting date columns")
         date_cols = ['Created Date', 'Closed Date']
         for col in date_cols:
             if col in df.columns:
@@ -915,17 +938,21 @@ def display_visualizations(df, customers):
         df['Highest_Priority'] = df['Id'].apply(
             lambda case_id: get_highest_priority_from_history(st.session_state.sf_connection, case_id) or df.loc[df['Id'] == case_id, 'Priority'].iloc[0]
         )
-        debug("Highest priorities calculated")
+        debug("Highest priorities calculated", {
+            'priority_distribution': df['Highest_Priority'].value_counts().to_dict()
+        })
         
         # Log priority changes for debugging
         priority_changes = df[df['Highest_Priority'] != df['Priority']]
         if not priority_changes.empty:
-            debug(f"Found {len(priority_changes)} cases with priority changes:")
-            for _, case in priority_changes.iterrows():
-                debug(f"Case {case['Id']}: Initial Priority={case['Priority']}, Highest Priority={case['Highest_Priority']}")
+            debug(f"Found {len(priority_changes)} cases with priority changes:", {
+                'changes': priority_changes[['Id', 'Priority', 'Highest_Priority']].to_dict('records')[:5]  # Show first 5 changes
+            })
         
         # 1. Ticket Volume by Customer (Bar Chart)
         st.subheader("Ticket Distribution")
+        debug("Generating ticket distribution visualization")
+        
         # Create a mapping of truncated names to ticket counts
         ticket_counts = df.groupby('Account_Name', dropna=False).size().reset_index(name='Ticket_Count')
         ticket_counts['Truncated_Name'] = ticket_counts['Account_Name'].apply(lambda x: truncate_string(x, 20))
@@ -950,9 +977,11 @@ def display_visualizations(df, customers):
         )
         
         st.plotly_chart(fig_counts)
+        debug("Ticket distribution visualization completed")
         
         # 2. Monthly Ticket Trends (Bar Chart)
         st.subheader("Monthly Ticket Trends")
+        debug("Generating monthly trends visualization")
         
         df['Month'] = df['Created Date'].dt.to_period('M')
         df['Month_Closed'] = df['Closed Date'].dt.to_period('M')
@@ -973,6 +1002,11 @@ def display_visualizations(df, customers):
         monthly_trends['Month'] = pd.to_datetime(monthly_trends['Month'])
         monthly_trends = monthly_trends.sort_values('Month')
         monthly_trends['Month'] = monthly_trends['Month'].dt.strftime('%Y-%m')
+        
+        debug("Monthly trends data prepared", {
+            'months_available': len(monthly_trends),
+            'date_range': f"{monthly_trends['Month'].iloc[0]} to {monthly_trends['Month'].iloc[-1]}"
+        })
         
         fig_trends = go.Figure()
         
@@ -999,16 +1033,20 @@ def display_visualizations(df, customers):
         )
         
         st.plotly_chart(fig_trends)
+        debug("Monthly trends visualization completed")
         
         # 3. Resolution Time Analysis
         st.subheader("Resolution Time Analysis")
+        debug("Starting resolution time analysis")
         
         df['resolution_time_days'] = (df['Closed Date'] - df['Created Date']).dt.total_seconds() / (24 * 3600)
         df['Month'] = df['Created Date'].dt.strftime('%Y-%m')
         
         # Debug logging for priorities
-        debug("All priorities in dataset:", df['Highest_Priority'].value_counts().to_dict())
-        debug("All Internal Priorities:", df['Priority'].value_counts().to_dict())
+        debug("Priority data for resolution time analysis", {
+            'all_priorities': df['Highest_Priority'].value_counts().to_dict(),
+            'internal_priorities': df['Priority'].value_counts().to_dict()
+        })
         
         # Filter out tickets with unspecified priority and invalid resolution times
         valid_priority_df = df[
@@ -1019,8 +1057,11 @@ def display_visualizations(df, customers):
         ]
         
         # Debug logging for valid priorities
-        debug("Valid priorities after filtering:", valid_priority_df['Highest_Priority'].value_counts().to_dict())
-        debug("Sample of valid priority records:", valid_priority_df[['Id', 'Highest_Priority', 'Priority', 'resolution_time_days']].head().to_dict('records'))
+        debug("Valid priority data after filtering", {
+            'valid_priorities': valid_priority_df['Highest_Priority'].value_counts().to_dict(),
+            'valid_records': len(valid_priority_df),
+            'total_records': len(df)
+        })
         
         if len(valid_priority_df) > 0:
             # Create box plot
@@ -1028,11 +1069,18 @@ def display_visualizations(df, customers):
             
             # Get all unique priorities and sort them
             all_priorities = sorted(valid_priority_df['Highest_Priority'].unique())
-            debug("Unique priorities for plotting:", all_priorities)
+            debug("Unique priorities for plotting", {
+                'priorities': all_priorities,
+                'priority_counts': {p: len(valid_priority_df[valid_priority_df['Highest_Priority'] == p]) for p in all_priorities}
+            })
             
             for priority in all_priorities:
                 priority_data = valid_priority_df[valid_priority_df['Highest_Priority'] == priority]
-                debug(f"Data points for priority {priority}:", len(priority_data))
+                debug(f"Data points for priority {priority}", {
+                    'count': len(priority_data),
+                    'mean_resolution_time': priority_data['resolution_time_days'].mean(),
+                    'median_resolution_time': priority_data['resolution_time_days'].median()
+                })
                 
                 if len(priority_data) > 0:  # Only add trace if we have data
                     fig_resolution.add_trace(go.Box(
@@ -1050,6 +1098,7 @@ def display_visualizations(df, customers):
             )
             
             st.plotly_chart(fig_resolution)
+            debug("Resolution time visualization completed")
             
             # Display summary statistics
             st.write("### Resolution Time Summary")
@@ -1058,6 +1107,7 @@ def display_visualizations(df, customers):
             }).round(2)
             summary_stats.columns = ['Count', 'Mean Days', 'Median Days']
             st.write(summary_stats)
+            debug("Resolution time summary statistics displayed")
             
             # Display data quality metrics
             st.write("### Data Quality Metrics")
@@ -1067,120 +1117,32 @@ def display_visualizations(df, customers):
             missing_priority = df['Highest_Priority'].isna().sum()
             invalid_priority = df['Highest_Priority'].isin(['Unspecified', '', ' ']).sum()
             
+            quality_metrics = {
+                'total_tickets': total_tickets,
+                'missing_resolution': missing_resolution,
+                'invalid_resolution': invalid_resolution,
+                'missing_priority': missing_priority,
+                'invalid_priority': invalid_priority,
+                'valid_tickets': len(valid_priority_df),
+                'valid_percentage': (len(valid_priority_df)/total_tickets*100)
+            }
+            
             st.write(f"- Total tickets: {total_tickets}")
             st.write(f"- Missing resolution times: {missing_resolution}")
             st.write(f"- Invalid resolution times (<=0): {invalid_resolution}")
             st.write(f"- Missing priorities: {missing_priority}")
             st.write(f"- Invalid priorities: {invalid_priority}")
             st.write(f"- Valid tickets for analysis: {len(valid_priority_df)} ({(len(valid_priority_df)/total_tickets*100):.1f}%)")
+            
+            debug("Data quality metrics", quality_metrics)
         else:
             st.warning("No tickets found with both valid priority and resolution time data.")
+            debug("No valid tickets for resolution time analysis", category="error")
         
-        # 4. Resolution Time Heatmap
-        st.subheader("Resolution Time Distribution")
-        
-        # Product Area Heatmap
-        resolution_by_area = df[df['resolution_time_days'].notna()].pivot_table(
-            values='resolution_time_days',
-            index='Product Area',
-            columns='Highest_Priority',
-            aggfunc='mean'
-        ).fillna(0)
-        
-        # Truncate product area names
-        truncated_areas = [truncate_string(area, 20) for area in resolution_by_area.index]
-        
-        fig_heatmap_area = go.Figure(data=go.Heatmap(
-            z=resolution_by_area.values,
-            x=resolution_by_area.columns,
-            y=truncated_areas,
-            colorscale=HEATMAP_PALETTE,
-            text=np.round(resolution_by_area.values, 1),
-            texttemplate='%{text}',
-            textfont={"size": 10},
-            hoverongaps=False,
-            hovertext=[[f"{area}<br>{col}: {val:.1f}" 
-                       for col, val in zip(resolution_by_area.columns, row)] 
-                      for area, row in zip(resolution_by_area.index, resolution_by_area.values)]
-        ))
-        
-        fig_heatmap_area.update_layout(
-            title='Resolution Time by Product Area and Highest Priority (Days)',
-            xaxis_title='Highest Priority',
-            yaxis_title='Product Area'
-        )
-        
-        st.plotly_chart(fig_heatmap_area)
-        
-        # 5. Ticket Volume Heatmaps
-        st.subheader("Ticket Volume Distribution")
-        
-        # Product Area vs Feature Heatmap
-        volume_heatmap = df.pivot_table(
-            values='Id',
-            index='Product Area',
-            columns='Product Feature',
-            aggfunc='count',
-            fill_value=0
-        )
-        
-        # Truncate both product area and feature names
-        truncated_areas = [truncate_string(area, 20) for area in volume_heatmap.index]
-        truncated_features = [truncate_string(feature, 20) for feature in volume_heatmap.columns]
-        
-        fig_volume_heatmap = go.Figure(data=go.Heatmap(
-            z=volume_heatmap.values,
-            x=truncated_features,
-            y=truncated_areas,
-            colorscale=HEATMAP_PALETTE,
-            text=volume_heatmap.values,
-            texttemplate='%{text}',
-            textfont={"size": 10},
-            hoverongaps=False,
-            hovertext=[[f"{area}<br>{feature}: {val}" 
-                       for feature, val in zip(volume_heatmap.columns, row)] 
-                      for area, row in zip(volume_heatmap.index, volume_heatmap.values)]
-        ))
-        
-        fig_volume_heatmap.update_layout(
-            title='Ticket Volume by Product Area and Feature',
-            xaxis_title='Product Feature',
-            yaxis_title='Product Area'
-        )
-        
-        st.plotly_chart(fig_volume_heatmap)
-        
-        # 6. Ticket Volume by RCA
-        st.subheader("Root Cause Analysis")
-        
-        rca_counts = df['Root Cause'].value_counts().reset_index()
-        rca_counts.columns = ['RCA', 'Count']
-        rca_counts['Truncated_RCA'] = rca_counts['RCA'].apply(lambda x: truncate_string(x, 20))
-        
-        fig_rca = go.Figure(data=[
-            go.Bar(
-                x=rca_counts['Truncated_RCA'],
-                y=rca_counts['Count'],
-                marker_color=VIRIDIS_PALETTE[2],
-                text=rca_counts['Count'],
-                textposition='auto',
-                hovertext=rca_counts['RCA']  # Show full RCA name on hover
-            )
-        ])
-        
-        fig_rca.update_layout(
-            title='Ticket Volume by Root Cause',
-            xaxis_title='Root Cause',
-            yaxis_title='Number of Tickets',
-            xaxis_tickangle=-45,
-            height=500  # Make it taller to accommodate RCA labels
-        )
-        
-        st.plotly_chart(fig_rca)
-        
-        # After the existing Resolution Time Analysis section
+        # Add CSAT Analysis
         st.write("---")
         st.subheader("Customer Satisfaction Analysis")
+        debug("Starting CSAT analysis")
         try:
             csat_fig, csat_stats = create_csat_analysis(df)
             st.plotly_chart(csat_fig)
@@ -1193,11 +1155,16 @@ def display_visualizations(df, customers):
                 st.metric("Response Rate", f"{csat_stats['response_rate']:.1f}%")
             with col3:
                 st.metric("Trend", csat_stats['trend'])
+                
+            debug("CSAT analysis completed", csat_stats)
         except Exception as e:
             st.error(f"Error generating CSAT analysis: {str(e)}")
-
+            debug(f"Error in CSAT analysis: {str(e)}", {'traceback': traceback.format_exc()}, category="error")
+        
+        # Add Word Cloud Analysis
         st.write("---")
         st.subheader("Text Analysis")
+        debug("Starting text analysis")
         try:
             word_clouds = create_word_clouds(df)
             if word_clouds:
@@ -1208,70 +1175,120 @@ def display_visualizations(df, customers):
                 with col2:
                     if 'Description' in word_clouds:
                         st.pyplot(word_clouds['Description'])
+                debug("Word cloud analysis completed")
             else:
                 st.warning("No text data available for word cloud generation")
+                debug("No text data for word clouds", category="error")
         except Exception as e:
             st.error(f"Error generating word clouds: {str(e)}")
-
+            debug(f"Error in word cloud generation: {str(e)}", {'traceback': traceback.format_exc()}, category="error")
+        
+        debug("All visualizations completed successfully")
+        
+        # Add Product Analysis Heatmaps
         st.write("---")
-        st.subheader("Root Cause Analysis")
+        st.subheader("Product Analysis Heatmaps")
+        debug("Starting product analysis heatmaps")
+        
         try:
-            rca_figures, rca_stats = create_root_cause_analysis(df)
+            # Prepare data for heatmaps
+            # Handle missing values in product fields
+            df['Product Area'] = df['Product Area'].fillna('Unspecified')
+            df['Product Feature'] = df['Product Feature'].fillna('Unspecified')
             
-            # Display RCA trend over time
-            st.plotly_chart(rca_figures['trends'])
+            # 1. Resolution Time Heatmap
+            resolution_pivot = df.pivot_table(
+                values='Resolution Time (Days)',
+                index='Product Area',
+                columns='Product Feature',
+                aggfunc='mean',
+                fill_value=0
+            )
             
-            # Display resolution time by root cause
-            st.plotly_chart(rca_figures['resolution_time'])
+            fig_resolution_heatmap = go.Figure(data=go.Heatmap(
+                z=resolution_pivot.values,
+                x=resolution_pivot.columns,
+                y=resolution_pivot.index,
+                colorscale=HEATMAP_PALETTE,
+                text=np.round(resolution_pivot.values, 1),
+                texttemplate='%{text}',
+                textfont={"size": 10},
+                colorbar=dict(title='Days')
+            ))
             
-            # Display RCA statistics
-            st.write("### Root Cause Distribution")
-            rca_dist = pd.DataFrame.from_dict(rca_stats['rca_distribution'], 
-                                            orient='index', 
-                                            columns=['Count']).reset_index()
-            rca_dist.columns = ['Root Cause', 'Count']
-            st.dataframe(rca_dist)
+            fig_resolution_heatmap.update_layout(
+                title='Average Resolution Time by Product Area and Feature',
+                xaxis_title='Product Feature',
+                yaxis_title='Product Area',
+                width=800,
+                height=600
+            )
             
-            st.write("### Average Resolution Time by Root Cause")
-            avg_res = pd.DataFrame.from_dict(rca_stats['avg_resolution_by_rca'], 
-                                           orient='index', 
-                                           columns=['Days']).reset_index()
-            avg_res.columns = ['Root Cause', 'Average Days']
-            avg_res['Average Days'] = avg_res['Average Days'].round(1)
-            st.dataframe(avg_res)
-        except Exception as e:
-            st.error(f"Error generating root cause analysis: {str(e)}")
-
-        # Add First Response Time Analysis
-        st.markdown("---")
-        st.subheader("First Response Time Analysis")
-        try:
-            frt_fig, frt_stats = create_first_response_analysis(df)
+            st.plotly_chart(fig_resolution_heatmap)
             
-            # Display the box plot
-            st.plotly_chart(frt_fig)
+            # 2. Ticket Volume Heatmap
+            volume_pivot = df.pivot_table(
+                values='Id',
+                index='Product Area',
+                columns='Product Feature',
+                aggfunc='count',
+                fill_value=0
+            )
             
-            # Display response time statistics
-            col1, col2, col3 = st.columns(3)
+            fig_volume_heatmap = go.Figure(data=go.Heatmap(
+                z=volume_pivot.values,
+                x=volume_pivot.columns,
+                y=volume_pivot.index,
+                colorscale=HEATMAP_PALETTE,
+                text=volume_pivot.values.astype(int),
+                texttemplate='%{text}',
+                textfont={"size": 10},
+                colorbar=dict(title='Count')
+            ))
+            
+            fig_volume_heatmap.update_layout(
+                title='Ticket Volume by Product Area and Feature',
+                xaxis_title='Product Feature',
+                yaxis_title='Product Area',
+                width=800,
+                height=600
+            )
+            
+            st.plotly_chart(fig_volume_heatmap)
+            
+            # Add summary statistics
+            st.write("### Product Analysis Summary")
+            col1, col2 = st.columns(2)
+            
             with col1:
-                st.metric("Overall Mean Response Time", f"{frt_stats['overall_mean']:.1f} hours")
-            with col2:
-                st.metric("Overall Median Response Time", f"{frt_stats['overall_median']:.1f} hours")
-            with col3:
-                st.metric("Within 24h SLA", f"{frt_stats['sla_compliance']['within_24h']:.1f}%")
+                st.write("Top Product Areas by Volume:")
+                top_areas = df['Product Area'].value_counts().head(5)
+                for area, count in top_areas.items():
+                    st.write(f"- {area}: {count} tickets")
             
-            # Display detailed statistics by priority
-            st.write("### Response Time Statistics by Priority")
-            # Convert the multi-level dictionary to a DataFrame
-            priority_stats = pd.DataFrame(frt_stats['by_priority'])
-            priority_stats = priority_stats['first_response_hours'].reset_index()
-            priority_stats.columns = ['Priority', 'Count', 'Mean (hours)', 'Median (hours)', 'Std Dev']
-            st.dataframe(priority_stats)
+            with col2:
+                st.write("Top Product Features by Volume:")
+                top_features = df['Product Feature'].value_counts().head(5)
+                for feature, count in top_features.items():
+                    st.write(f"- {feature}: {count} tickets")
+            
+            debug("Product analysis heatmaps completed", {
+                'product_areas': len(df['Product Area'].unique()),
+                'product_features': len(df['Product Feature'].unique()),
+                'total_combinations': len(df.groupby(['Product Area', 'Product Feature']).size())
+            })
             
         except Exception as e:
-            st.error(f"Error generating first response time analysis: {str(e)}")
+            st.error("Error generating product analysis heatmaps")
+            debug(f"Error in product analysis heatmaps: {str(e)}", 
+                  {'traceback': traceback.format_exc()}, 
+                  category="error")
+            if st.session_state.debug_mode:
+                st.exception(e)
+        
     except Exception as e:
         st.error(f"Error in visualizations: {str(e)}")
+        debug(f"Error in display_visualizations: {str(e)}", {'traceback': traceback.format_exc()}, category="error")
         if st.session_state.debug_mode:
             st.exception(e)
             st.write("DataFrame columns:", df.columns.tolist() if df is not None else "None")
@@ -1282,6 +1299,12 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
     try:
         st.header("Detailed Analysis")
         
+        debug("Starting detailed analysis", {
+            'enable_ai_analysis': enable_ai_analysis,
+            'enable_pii_processing': enable_pii_processing,
+            'data_shape': df.shape
+        })
+        
         # Pattern Evolution Analysis
         st.markdown("---")
         st.subheader("Pattern Evolution Analysis")
@@ -1291,6 +1314,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             st.warning(f"Missing required columns for pattern analysis: {', '.join(missing_columns)}")
+            debug("Missing required columns", {'missing': missing_columns}, category="error")
             return
 
         # Prepare data for pattern analysis
@@ -1321,8 +1345,11 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
 
         # Check data length and adjust analysis
         data_months = len(monthly_data)
-        if data_months < 4:  # Minimum required for basic trend analysis
-            st.warning("Insufficient data for pattern evolution analysis. Please select a longer date range (minimum 4 months of data required).")
+        debug(f"Monthly data prepared", {'months_available': data_months})
+        
+        if data_months < 2:  # Minimum required for basic trend analysis
+            st.warning("Insufficient data for pattern evolution analysis. Please select a longer date range (minimum 2 months of data required).")
+            debug("Insufficient data for pattern analysis", {'months': data_months}, category="error")
             return
             
         # Calculate trends and patterns
@@ -1356,18 +1383,19 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                 line=dict(color='red', dash='dash')
             ))
             
-            # Calculate simple moving average
-            window = min(3, len(monthly_data))
-            ma = monthly_data[column].rolling(window=window, center=True).mean()
-            
-            # Add moving average
-            fig.add_trace(go.Scatter(
-                x=monthly_data['Month_Str'],
-                y=ma,
-                mode='lines',
-                name=f'{window}-Month Moving Average',
-                line=dict(color='green', dash='dot')
-            ))
+            # Calculate simple moving average if enough data points
+            if len(monthly_data) >= 2:
+                window = min(3, len(monthly_data))
+                ma = monthly_data[column].rolling(window=window, center=True).mean()
+                
+                # Add moving average
+                fig.add_trace(go.Scatter(
+                    x=monthly_data['Month_Str'],
+                    y=ma,
+                    mode='lines',
+                    name=f'{window}-Month Moving Average',
+                    line=dict(color='green', dash='dot')
+                ))
             
             # Update layout
             fig.update_layout(
@@ -1379,24 +1407,11 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             )
             
             st.plotly_chart(fig)
-            
-            # Calculate and display insights
-            current_value = y[-1]
-            previous_value = y[-2] if len(y) > 1 else y[-1]
-            trend_slope = z[0]
-            
-            trend_direction = "increasing" if trend_slope > 0 else "decreasing"
-            change_pct = ((current_value - previous_value) / previous_value * 100) if previous_value != 0 else 0
-            
-            st.markdown(f"""
-            #### {column} Insights
-            - Current Value: {current_value:.2f}
-            - Previous Value: {previous_value:.2f}
-            - Change: {change_pct:+.1f}%
-            - Overall Trend: {trend_direction.title()} (slope = {trend_slope:.2f})
-            - Volatility: {y.std():.2f}
-            """)
-        
+            debug(f"Generated trend analysis for {column}", {
+                'trend_slope': z[0],
+                'data_points': len(monthly_data)
+            })
+
         # Calculate correlations
         st.write("### Metric Correlations")
         corr_matrix = monthly_data[['Ticket Count', 'Avg Resolution Time', 'Avg CSAT']].corr()
@@ -1660,6 +1675,115 @@ def export_analysis():
         
     except Exception as e:
         st.error(f"Error during export: {str(e)}")
+        if st.session_state.debug_mode:
+            st.exception(e)
+
+def export_data(df: pd.DataFrame, format: str, customers: List[str]) -> None:
+    """
+    Export data to the selected format using BaseExporter.
+    
+    Args:
+        df (pd.DataFrame): DataFrame to export
+        format (str): Export format (Excel, CSV, or PowerPoint)
+        customers (List[str]): List of selected customers
+    """
+    try:
+        # Initialize exporter
+        exporter = BaseExporter(df)
+        
+        # Generate timestamp for filename
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        if format == "Excel":
+            # Prepare sheets for Excel export
+            sheets = {}
+            
+            # Summary sheet data
+            summary_data = {
+                'Customer': [],
+                'Total Tickets': [],
+                'Avg Response Time (hrs)': [],
+                'Avg Resolution Time (days)': [],
+                'Avg CSAT': []
+            }
+            
+            for customer in customers:
+                customer_df = df[df['Account_Name'] == customer]
+                summary_data['Customer'].append(customer)
+                summary_data['Total Tickets'].append(len(customer_df))
+                
+                # Response Time
+                if 'First_Response_Time__c' in customer_df.columns:
+                    resp_time = (customer_df['First_Response_Time__c'] - customer_df['CreatedDate']).dt.total_seconds().mean() / 3600
+                    summary_data['Avg Response Time (hrs)'].append(round(resp_time, 2) if pd.notna(resp_time) else 'N/A')
+                else:
+                    summary_data['Avg Response Time (hrs)'].append('N/A')
+                
+                # Resolution Time
+                if 'ClosedDate' in customer_df.columns:
+                    res_time = (customer_df['ClosedDate'] - customer_df['CreatedDate']).dt.total_seconds().mean() / (24 * 3600)
+                    summary_data['Avg Resolution Time (days)'].append(round(res_time, 2) if pd.notna(res_time) else 'N/A')
+                else:
+                    summary_data['Avg Resolution Time (days)'].append('N/A')
+                
+                # CSAT
+                if 'CSAT__c' in customer_df.columns:
+                    avg_csat = customer_df['CSAT__c'].mean()
+                    summary_data['Avg CSAT'].append(round(avg_csat, 2) if pd.notna(avg_csat) else 'N/A')
+                else:
+                    summary_data['Avg CSAT'].append('N/A')
+                
+                # Add customer-specific sheet
+                sheets[customer[:31]] = customer_df  # Excel sheet names limited to 31 chars
+            
+            # Add summary sheet
+            sheets['Summary'] = summary_data
+            
+            # Export to Excel
+            output = exporter.to_excel(
+                filename=f"support_analysis_{timestamp}.xlsx",
+                sheets=sheets,
+                include_summary=True
+            )
+            
+            # Offer download
+            st.download_button(
+                label="Download Excel Report",
+                data=output.getvalue(),
+                file_name=f"support_analysis_{timestamp}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            
+        elif format == "CSV":
+            # Export to CSV
+            output = exporter.to_csv(filename=f"support_analysis_{timestamp}.csv")
+            
+            # Offer download
+            st.download_button(
+                label="Download CSV Report",
+                data=output.getvalue(),
+                file_name=f"support_analysis_{timestamp}.csv",
+                mime="text/csv"
+            )
+            
+        elif format == "PowerPoint":
+            # Export to PowerPoint with custom title
+            output = exporter.to_powerpoint(
+                filename=f"support_analysis_{timestamp}.pptx",
+                title="Support Ticket Analysis",
+                include_charts=True
+            )
+            
+            # Offer download
+            st.download_button(
+                label="Download PowerPoint Report",
+                data=output.getvalue(),
+                file_name=f"support_analysis_{timestamp}.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            )
+            
+    except Exception as e:
+        st.error(f"Error exporting data: {str(e)}")
         if st.session_state.debug_mode:
             st.exception(e)
 
