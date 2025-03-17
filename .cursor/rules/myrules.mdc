@@ -1,0 +1,64 @@
+---
+description: description: Rules for working on my projects
+globs: globs: ["**/*.py", "**/*.ipynb", "**/*.md"]
+alwaysApply: true
+---
+
+# Your rule content
+
+- You can @ files here
+- You can use markdown but dont have to
+---
+description: Rules for working on my projects
+globs: ["**/*.py", "**/*.ipynb", "**/*.md"]
+alwaysApply: true
+---
+
+# Development Rules and Guidelines
+
+## Code Style and Structure
+1. Prefer Python as the primary programming language
+2. Refactor code if any file exceeds 500 lines
+3. Follow PEP 8 style guidelines for Python code
+4. Use meaningful variable and function names
+5. Add type hints to function parameters and return values
+
+## Code Quality and Safety
+1. Ensure no existing functionality is broken when refactoring
+2. Review codebase for logic duplication before committing code
+3. Reuse code wherever possible through proper abstraction
+4. Write unit tests for new functionality
+5. Maintain test coverage above 80%
+
+## Documentation
+1. Add docstrings to all functions and classes
+2. Keep README.md up to date with new changes
+3. Document any complex algorithms or business logic
+4. Include examples for non-obvious code usage
+
+## Performance and Security
+1. Optimize database queries and data processing
+2. Handle sensitive data according to security best practices
+3. Implement proper error handling and logging
+4. Use environment variables for configuration
+
+## Architecture and Dependencies
+1. Consult before making significant architectural changes including:
+   - Tech stack modifications
+   - Frontend/backend changes
+   - Database schema changes
+   - Third-party service integrations
+2. Keep dependencies up to date
+3. Document new dependencies in requirements.txt
+
+## Version Control
+1. Use meaningful commit messages
+2. Create feature branches for new development
+3. Review code before merging to main branch
+4. Keep commits focused and atomic
+
+## Data Handling
+1. Validate input data
+2. Handle edge cases and null values
+3. Implement proper data sanitization
+4. Follow data privacy regulations

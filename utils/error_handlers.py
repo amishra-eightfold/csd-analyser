@@ -35,8 +35,16 @@ class ErrorHandler:
         
         if context:
             error_details.update(context)
-            
-        logger.error(f"Error occurred: {error_details}")
+        
+        # Log to debug logger if available
+        if hasattr(st.session_state, 'debug_logger'):
+            st.session_state.debug_logger.log(
+                f"Error occurred: {error_details['error_type']}",
+                error_details,
+                category="error"
+            )
+        else:
+            logger.error(f"Error occurred: {error_details}")
     
     @staticmethod
     def handle_error(error: Exception, 
@@ -55,8 +63,14 @@ class ErrorHandler:
         else:
             st.error(f"An error occurred: {str(error)}")
             
-        if show_traceback:
+        if show_traceback and hasattr(st.session_state, 'debug_mode') and st.session_state.debug_mode:
             st.error(f"Traceback: {traceback.format_exc()}")
+            
+        # Log error details
+        ErrorHandler.log_error(error, {
+            'show_traceback': show_traceback,
+            'custom_message': error_message
+        })
 
 def handle_errors(error_types: Optional[Type[Exception]] = Exception,
                  show_traceback: bool = False,

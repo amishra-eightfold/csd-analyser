@@ -10,6 +10,21 @@ BLUES_PALETTE = ["#E3F2FD", "#90CAF9", "#42A5F5", "#1E88E5", "#1565C0", "#0D47A1
 AQUA_PALETTE = ["#E0F7FA", "#80DEEA", "#26C6DA", "#00ACC1", "#00838F", "#006064"]
 PURPLE_PALETTE = ["#F3E5F5", "#CE93D8", "#AB47BC", "#8E24AA", "#6A1B9A", "#4A148C"]
 
+def truncate_string(text: str, max_length: int = 20) -> str:
+    """
+    Truncate a string to a specified length and add ellipsis if needed.
+    
+    Args:
+        text (str): Text to truncate
+        max_length (int): Maximum length of the truncated string
+        
+    Returns:
+        str: Truncated string with ellipsis if needed
+    """
+    if not text or len(text) <= max_length:
+        return str(text)
+    return str(text)[:max_length-3] + "..."
+
 class PlotStyle:
     """Class for managing plot styles and themes."""
     

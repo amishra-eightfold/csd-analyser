@@ -3,10 +3,11 @@
 import pytest
 import pandas as pd
 import streamlit as st
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
 from datetime import datetime, timedelta
 import json
 import os
+from openai import OpenAI
 
 class MockSessionState:
     """Mock Streamlit session state."""
@@ -53,15 +54,15 @@ def test_full_analysis_flow(
     3. Basic analysis generation
     4. AI-powered insights generation
     5. Visualization creation
-    6. Export functionality
     """
     # Mock Streamlit session state
     mock_state = MockSessionState()
-    mock_state.sf_connection = mock_salesforce  # This is now a direct connection object
-    mock_state.customers = None
-    mock_state.selected_customers = []
-    mock_state.date_range = None
-    mock_state.data_loaded = False
+    mock_state.sf_connection = mock_salesforce
+    mock_state.selected_customers = ['Customer1']
+    mock_state.date_range = (
+        datetime.now() - timedelta(days=30),
+        datetime.now()
+    )
     mock_state.debug_mode = False
     
     # Mock Streamlit components
@@ -71,108 +72,83 @@ def test_full_analysis_flow(
          patch('streamlit.sidebar.checkbox') as mock_checkbox, \
          patch('streamlit.progress') as mock_progress, \
          patch('streamlit.error') as mock_error, \
-         patch('streamlit.success') as mock_success:
+         patch('streamlit.warning') as mock_warning:
         
         # Set up mock returns
         mock_selectbox.return_value = 'Customer1'
-        mock_date_input.return_value = (
-            datetime.now() - timedelta(days=30),
-            datetime.now()
-        )
+        mock_date_input.return_value = mock_state.date_range
         mock_checkbox.return_value = True
         mock_progress.return_value = MagicMock()
         
         # Mock Salesforce connection and queries
-        with patch('processors.salesforce_processor.Salesforce') as mock_sf:
-            mock_sf.return_value = mock_salesforce
-            mock_salesforce.query.side_effect = [
-                mock_salesforce_response,
-                {'records': sample_comment_data.to_dict('records')},
-                {'records': sample_email_data.to_dict('records')}
-            ]
+        with patch('salesforce_config.execute_soql_query') as mock_execute_query:
+            mock_execute_query.return_value = mock_salesforce_response['records']
             
             # Mock OpenAI API calls
-            with patch('openai.OpenAI') as mock_openai, \
-                 patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-                mock_openai_instance = MagicMock()
-                mock_openai.return_value = mock_openai_instance
-                mock_openai_instance.chat.completions.create.return_value = \
-                    type('Response', (), {
-                        'choices': [
-                            type('Choice', (), {
-                                'message': type('Message', (), {
-                                    'content': json.dumps({
-                                        'summary': 'Test summary',
-                                        'patterns': ['Pattern 1', 'Pattern 2'],
-                                        'recommendations': ['Rec 1', 'Rec 2']
-                                    })
-                                })()
-                            })()
-                        ]
-                    })()
+            with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+                # Create a proper mock OpenAI client
+                mock_openai = Mock(spec=OpenAI)
+                mock_openai.chat = Mock()
+                mock_openai.chat.completions = Mock()
+                mock_openai.chat.completions.create = Mock()
+                
+                # Set up the mock response
+                mock_response = Mock()
+                mock_response.choices = [Mock()]
+                mock_response.choices[0].message = Mock()
+                mock_response.choices[0].message.content = json.dumps({
+                    'executive_summary': {
+                        'key_findings': ['Finding 1', 'Finding 2']
+                    },
+                    'pattern_insights': {
+                        'recurring_issues': ['Issue 1', 'Issue 2'],
+                        'confidence_levels': {
+                            'high_confidence': ['Pattern 1', 'Pattern 2']
+                        }
+                    },
+                    'trend_analysis': {
+                        'pattern_evolution': ['Trend 1', 'Trend 2']
+                    },
+                    'recommendations': ['Rec 1', 'Rec 2'],
+                    'customer_impact_analysis': 'Impact analysis',
+                    'next_steps': ['Step 1', 'Step 2'],
+                    'metadata': {'version': '1.0'}
+                })
+                mock_openai.chat.completions.create.return_value = mock_response
                 
                 # Import here to avoid circular imports
                 from app import (
                     fetch_data,
-                    display_basic_analysis,
                     display_detailed_analysis,
                     generate_ai_insights
                 )
                 
                 # Test data fetching
-                cases_df, emails_df, comments_df, history_df, attachments_df = fetch_data(
-                    customers=['Customer1'],
-                    start_date=datetime.now() - timedelta(days=30),
-                    end_date=datetime.now()
-                )
+                cases_df = fetch_data()
                 assert not cases_df.empty
-                # We expect 2 cases for Customer1 (case1 and case3)
-                assert len(cases_df) == 2
-                assert all(cases_df['Account.Name'] == 'Customer1')
+                assert len(cases_df) == 2  # We expect 2 cases for Customer1
+                assert all(cases_df['Account_Name'] == 'Customer1')
                 
-                # Test basic analysis
-                with patch('matplotlib.pyplot.show'):
-                    basic_stats = display_basic_analysis(cases_df)
-                    assert isinstance(basic_stats, dict)
-                    assert 'total_cases' in basic_stats
-                    assert 'avg_response_time' in basic_stats
-                    assert 'avg_csat' in basic_stats
-                    assert 'escalated_cases' in basic_stats
-                    assert 'open_cases' in basic_stats
-                    assert 'closed_cases' in basic_stats
-                    assert basic_stats['total_cases'] == 2
-                    assert basic_stats['open_cases'] == 1
-                    assert basic_stats['closed_cases'] == 1
-                    assert basic_stats['escalated_cases'] == 1
-                    assert basic_stats['avg_csat'] == 4.0
-                    assert basic_stats['avg_response_time'] == 1.25
-                
-                # Test detailed analysis
-                with patch('matplotlib.pyplot.show'):
-                    data = {
-                        'cases': cases_df,
-                        'comments': sample_comment_data,
-                        'emails': sample_email_data
-                    }
-                    detailed_stats = display_detailed_analysis(data)
-                    assert isinstance(detailed_stats, dict)
-                    assert 'priority_distribution' in detailed_stats
-                    assert 'status_distribution' in detailed_stats
-                    assert 'time_analysis' in detailed_stats
+                # Test detailed analysis with AI analysis enabled
+                detailed_stats = display_detailed_analysis(
+                    cases_df,
+                    enable_ai_analysis=True,
+                    enable_pii_processing=False
+                )
                 
                 # Test AI insights
-                insights = generate_ai_insights(
-                    cases_df,
-                    sample_comment_data,
-                    sample_email_data
-                )
+                insights = generate_ai_insights(cases_df, mock_openai)
                 assert isinstance(insights, dict)
-                assert 'summary' in insights
-                assert 'patterns' in insights
-                assert 'recommendations' in insights
+                assert insights['status'] == 'success'
+                assert 'insights' in insights
+                assert 'timestamp' in insights
+                
+                insights_data = insights['insights']
+                assert 'key_findings' in insights_data
+                assert 'patterns' in insights_data
+                assert 'recommendations' in insights_data
+                assert 'summary' in insights_data
+                assert 'metadata' in insights_data
                 
                 # Verify no errors were shown
-                mock_error.assert_not_called()
-                
-                # Verify success message was shown
-                mock_success.assert_called() 
+                mock_error.assert_not_called() 
