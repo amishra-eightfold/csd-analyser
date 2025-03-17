@@ -9,7 +9,7 @@ from openai import OpenAI
 import logging
 from collections import defaultdict
 from .token_manager import TokenManager, convert_value_for_json
-from .text_processing import prepare_text_for_ai, clean_text
+from .text_processing import prepare_text_for_ai, clean_text, get_technical_stopwords, remove_stopwords
 from .pattern_recognition import PatternDetector, PatternAnalyzer
 
 class ContextManager:
@@ -127,6 +127,55 @@ Provide your analysis in this JSON format:
 }}"""
         return prompt
 
+    def _calculate_ticket_importance(self, ticket: Dict[str, Any]) -> float:
+        """Calculate importance score for a ticket to prioritize analysis.
+        
+        Higher scores indicate higher importance based on:
+        - Ticket priority (P1 > P2 > P3)
+        - Escalation status (escalated tickets are more important)
+        - Resolution time (longer resolution times may indicate complex issues)
+        - CSAT score (lower scores indicate potential issues)
+        - Root cause (tickets with specified root causes provide better insights)
+        - Closed status (closed tickets have complete information)
+        
+        Returns:
+            float: Importance score between 0 and 100
+        """
+        score = 50.0  # Base score
+        
+        # Priority factor (25 points max)
+        priority_map = {'P1': 25, 'P2': 20, 'P3': 15, 'P4': 10}
+        priority = str(ticket.get('Priority', '')).upper()
+        score += priority_map.get(priority, 0)
+        
+        # Escalation factor (10 points)
+        if ticket.get('IsEscalated') is True:
+            score += 10
+        
+        # Resolution time factor (5 points max)
+        resolution_time = ticket.get('Resolution Time (Days)', 0)
+        if resolution_time and resolution_time > 0:
+            # Normalize resolution time (up to 5 points for longer resolution times)
+            score += min(5, resolution_time / 5)
+        
+        # CSAT factor (5 points max - lower scores get more points)
+        csat = ticket.get('CSAT', None)
+        if csat is not None and isinstance(csat, (int, float)) and 1 <= csat <= 5:
+            # Invert CSAT score to prioritize low satisfaction
+            score += (6 - csat)
+        
+        # Root cause factor (5 points)
+        root_cause = str(ticket.get('Root Cause', '')).strip()
+        if root_cause and root_cause.lower() not in ('not specified', 'none', 'unknown', 'n/a'):
+            score += 5
+        
+        # Status factor (5 points for closed tickets with complete data)
+        status = str(ticket.get('Status', '')).lower()
+        if status in ('closed', 'resolved', 'completed'):
+            score += 5
+            
+        return min(100, score)  # Cap at 100
+
     def _analyze_chunk(self, chunk_data: List[Dict], context: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a chunk of tickets with context preservation."""
         try:
@@ -145,31 +194,36 @@ Provide your analysis in this JSON format:
                 truncated_data = []
                 current_tokens = self.token_manager.count_tokens(self._prepare_chunk_prompt([], optimized_context))
                 
-                # Sort items by priority score
+                # Sort items by importance score
                 sorted_items = sorted(chunk_data, 
-                                   key=lambda x: self.token_manager.calculate_priority_score(x),
+                                   key=lambda x: self._calculate_ticket_importance(x),
                                    reverse=True)
                 
                 for item in sorted_items:
-                    item_prompt = self._prepare_chunk_prompt(truncated_data + [item], optimized_context)
-                    item_tokens = self.token_manager.count_tokens(item_prompt)
+                    # First, try to add a compact version of the item
+                    compact_item = self._create_compact_ticket(item)
+                    compact_prompt = self._prepare_chunk_prompt(truncated_data + [compact_item], optimized_context)
+                    compact_tokens = self.token_manager.count_tokens(compact_prompt)
                     
-                    if item_tokens <= self.token_manager.available_tokens:
-                        truncated_data.append(item)
-                        current_tokens = item_tokens
+                    if compact_tokens <= self.token_manager.available_tokens:
+                        # Can add the compact version
+                        truncated_data.append(compact_item)
+                        current_tokens = compact_tokens
                     else:
-                        # Try to add a truncated version of the item
-                        truncated_item = self.token_manager.truncate_item(item)
-                        truncated_prompt = self._prepare_chunk_prompt(truncated_data + [truncated_item], optimized_context)
-                        if self.token_manager.count_tokens(truncated_prompt) <= self.token_manager.available_tokens:
-                            truncated_data.append(truncated_item)
+                        # Can't add even the compact version, try ultra compact
+                        ultra_compact = self._create_ultra_compact_ticket(item)
+                        ultra_prompt = self._prepare_chunk_prompt(truncated_data + [ultra_compact], optimized_context)
+                        if self.token_manager.count_tokens(ultra_prompt) <= self.token_manager.available_tokens:
+                            truncated_data.append(ultra_compact)
                 
                 chunk_data = truncated_data
                 prompt = self._prepare_chunk_prompt(chunk_data, optimized_context)
+                
+                self.logger.info(f"Truncated chunk from {len(sorted_items)} to {len(chunk_data)} tickets")
             
             # Get token info for logging
             token_info = self.token_manager.get_token_info((chunk_data, optimized_context), "chunk_analysis")
-            self.logger.info(f"Analyzing chunk with {token_info.total_tokens} tokens")
+            self.logger.info(f"Analyzing chunk with {token_info.total_tokens} tokens ({len(chunk_data)} tickets)")
             
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -199,6 +253,54 @@ Provide your analysis in this JSON format:
                 "patterns": [],
                 "recommendations": []
             }
+    
+    def _create_compact_ticket(self, ticket: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a more compact version of a ticket to optimize token usage.
+        
+        Keeps essential fields and truncates longer text fields.
+        """
+        # Define essential fields to keep
+        essential_fields = {
+            'Id', 'CaseNumber', 'Subject', 'Status', 'Priority', 
+            'Root Cause', 'Product Area', 'Product Feature', 'Created Date', 
+            'Closed Date', 'Resolution Time (Days)', 'CSAT', 'IsEscalated'
+        }
+        
+        # Create compact version with only essential fields
+        compact = {k: v for k, v in ticket.items() if k in essential_fields}
+        
+        # Truncate description to conserve tokens
+        if 'Description' in ticket and ticket['Description']:
+            # Extract first 100 words or fewer
+            words = str(ticket['Description']).split()
+            if len(words) > 100:
+                compact['Description'] = ' '.join(words[:100]) + '...'
+            else:
+                compact['Description'] = ticket['Description']
+        
+        return compact
+    
+    def _create_ultra_compact_ticket(self, ticket: Dict[str, Any]) -> Dict[str, Any]:
+        """Create an ultra compact version of a ticket when tokens are very limited.
+        
+        Keeps only the most critical fields needed for analysis.
+        """
+        # Define minimal fields for ultra compact mode
+        minimal_fields = {
+            'CaseNumber', 'Subject', 'Status', 'Priority', 
+            'Root Cause', 'Product Area', 'Resolution Time (Days)', 'CSAT'
+        }
+        
+        # Create ultra compact version
+        ultra_compact = {k: v for k, v in ticket.items() if k in minimal_fields}
+        
+        # Truncate subject to conserve tokens
+        if 'Subject' in ultra_compact and ultra_compact['Subject']:
+            words = str(ultra_compact['Subject']).split()
+            if len(words) > 15:
+                ultra_compact['Subject'] = ' '.join(words[:15]) + '...'
+        
+        return ultra_compact
 
     def _prepare_final_prompt(self, all_insights: List[Dict], summary_stats: Dict, pattern_analysis: Dict) -> str:
         """Prepare prompt for final analysis with comprehensive context."""
@@ -262,13 +364,13 @@ Provide a detailed analysis in this JSON format:
 }}"""
         return prompt
 
-    def analyze_tickets(self, df: pd.DataFrame, chunk_size: int = 3) -> Dict[str, Any]:
+    def analyze_tickets(self, df: pd.DataFrame, chunk_size: int = 5) -> Dict[str, Any]:
         """Perform enhanced analysis of support tickets with context preservation and pattern recognition."""
         try:
-            # Prepare data
-            analysis_df = prepare_text_for_ai(df.copy())
+            # Pre-process data with stopword removal and PII handling
+            analysis_df = prepare_text_for_ai(df.copy(), remove_stops=True)
             total_tickets = len(analysis_df)
-            max_tickets = min(30, total_tickets)  # Reduced from 50 to 30 for better token management
+            max_tickets = min(50, total_tickets)  # Increased from 30 to 50 with improved token efficiency
             
             # Run pattern detection
             patterns = self.pattern_detector.detect_patterns(analysis_df)
@@ -296,7 +398,7 @@ Provide a detailed analysis in this JSON format:
             all_insights = []
             processed_tickets = 0
             
-            # Create chunks using TokenManager
+            # Prepare tickets data
             tickets_data = []
             for _, case in analysis_df.iloc[:max_tickets].iterrows():
                 case_dict = {}
@@ -304,11 +406,60 @@ Provide a detailed analysis in this JSON format:
                     case_dict[col] = convert_value_for_json(val)
                 tickets_data.append(case_dict)
             
-            chunks = self.token_manager.create_chunks(tickets_data)
+            # Calculate importance scores for tickets
+            for ticket in tickets_data:
+                ticket['_importance_score'] = self._calculate_ticket_importance(ticket)
+            
+            # Sort tickets by importance score
+            sorted_tickets = sorted(tickets_data, key=lambda x: x.get('_importance_score', 0), reverse=True)
+            
+            # Create more efficient chunks
+            chunks = []
+            # First, ensure high-priority tickets are included
+            high_priority_tickets = [t for t in sorted_tickets if t.get('_importance_score', 0) >= 75]
+            remaining_tickets = [t for t in sorted_tickets if t.get('_importance_score', 0) < 75]
+            
+            # Create high-priority chunk(s)
+            if high_priority_tickets:
+                for i in range(0, len(high_priority_tickets), chunk_size):
+                    chunk_tickets = high_priority_tickets[i:i+chunk_size]
+                    chunk_context = {
+                        'chunk_position': len(chunks) + 1,
+                        'chunk_type': 'high_priority',
+                        'importance_range': f"{min([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}-{max([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}"
+                    }
+                    chunks.append({
+                        'items': chunk_tickets,
+                        'context': chunk_context
+                    })
+            
+            # Add remaining tickets in chunks
+            for i in range(0, len(remaining_tickets), chunk_size):
+                chunk_tickets = remaining_tickets[i:i+chunk_size]
+                chunk_context = {
+                    'chunk_position': len(chunks) + 1,
+                    'chunk_type': 'standard',
+                    'importance_range': f"{min([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}-{max([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}"
+                }
+                chunks.append({
+                    'items': chunk_tickets,
+                    'context': chunk_context
+                })
+            
+            # Update total chunks info
+            for i, chunk in enumerate(chunks):
+                chunk['context']['total_chunks'] = len(chunks)
+            
+            self.logger.info(f"Created {len(chunks)} chunks for analysis from {len(sorted_tickets)} tickets")
             
             # Process each chunk
             for chunk in chunks:
                 try:
+                    # Remove importance score before analysis
+                    for ticket in chunk['items']:
+                        if '_importance_score' in ticket:
+                            del ticket['_importance_score']
+                    
                     chunk_insights = self._analyze_chunk(chunk['items'], chunk['context'])
                     all_insights.append(chunk_insights)
                     processed_tickets += len(chunk['items'])
@@ -339,8 +490,16 @@ Provide a detailed analysis in this JSON format:
             # Check final prompt tokens
             if self.token_manager.count_tokens(final_prompt) > self.token_manager.available_tokens:
                 self.logger.warning("Final prompt too long, optimizing...")
-                # Reduce insights to most important ones
-                all_insights = all_insights[-3:]  # Keep only last 3 chunks
+                # Keep high-importance insights including first and last chunks
+                if len(all_insights) > 3:
+                    middle_insights = all_insights[1:-1]
+                    # Keep only highest impact middle insights
+                    selected_middle = sorted(middle_insights, 
+                                          key=lambda x: len(x.get('patterns', [])) + len(x.get('recommendations', [])), 
+                                          reverse=True)[:1]
+                    optimized_insights = [all_insights[0]] + selected_middle + [all_insights[-1]]
+                    all_insights = optimized_insights
+                
                 final_prompt = self._prepare_final_prompt(all_insights, optimized_context, pattern_insights)
             
             final_response = self.client.chat.completions.create(
@@ -363,8 +522,15 @@ Provide a detailed analysis in this JSON format:
                 'total_tickets': total_tickets,
                 'chunks_processed': len(all_insights),
                 'patterns_detected': len(patterns.get('issue_clusters', {})),
-                'pattern_insights_generated': pattern_insights['summary']['total_insights']
+                'pattern_insights_generated': pattern_insights.get('summary', {}).get('total_insights', 0)
             }
+            
+            # Log pattern analysis details
+            self.logger.info("Pattern analysis details", {
+                'patterns_detected': len(patterns.get('issue_clusters', {})),
+                'insights_generated': pattern_insights.get('summary', {}).get('total_insights', 0),
+                'conversion_rate': f"{pattern_insights.get('summary', {}).get('total_insights', 0)/len(patterns.get('issue_clusters', {})) if len(patterns.get('issue_clusters', {})) > 0 else 0:.2f}"
+            })
             
             return final_insights
             
@@ -378,5 +544,8 @@ Provide a detailed analysis in this JSON format:
                     'risk_areas': []
                 },
                 'recommendations': [],
-                'next_steps': ['Retry analysis with smaller dataset']
+                'metadata': {
+                    'analysis_timestamp': datetime.now().isoformat(),
+                    'error': str(e)
+                }
             } 

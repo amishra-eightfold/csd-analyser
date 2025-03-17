@@ -1,9 +1,20 @@
 """Text processing utilities for cleaning and PII removal."""
 
 import re
-from typing import Optional, Union, List, Dict
+from typing import Optional, Union, List, Dict, Set
 import pandas as pd
 from simple_salesforce import Salesforce
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+
+# Download NLTK resources if not already downloaded
+try:
+    nltk.data.find('corpora/stopwords')
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('stopwords')
+    nltk.download('punkt')
 
 def clean_text(text: str) -> str:
     """Clean text by removing URLs, special characters, and extra whitespace.
@@ -97,11 +108,41 @@ def remove_pii(text: str) -> str:
     
     return cleaned_text
 
-def prepare_text_for_ai(data: Union[str, List, Dict, 'pd.DataFrame']) -> Union[str, List, Dict, 'pd.DataFrame']:
-    """Prepare text data for AI analysis by removing PII.
+def remove_stopwords(text: str, custom_stopwords: Optional[Set[str]] = None) -> str:
+    """Remove stopwords from text to reduce token usage.
+    
+    Args:
+        text (str): Text to process
+        custom_stopwords (Set[str], optional): Additional custom stopwords
+        
+    Returns:
+        str: Text with stopwords removed
+    """
+    if not isinstance(text, str) or not text.strip():
+        return ''
+    
+    # Get standard stopwords
+    stop_words = set(stopwords.words('english'))
+    
+    # Add technical stopwords
+    stop_words.update(get_technical_stopwords())
+    
+    # Add custom stopwords if provided
+    if custom_stopwords:
+        stop_words.update(custom_stopwords)
+    
+    # Tokenize and filter
+    word_tokens = word_tokenize(text.lower())
+    filtered_text = ' '.join([word for word in word_tokens if word.lower() not in stop_words and len(word) > 1])
+    
+    return filtered_text
+
+def prepare_text_for_ai(data: Union[str, List, Dict, 'pd.DataFrame'], remove_stops: bool = True) -> Union[str, List, Dict, 'pd.DataFrame']:
+    """Prepare text data for AI analysis by removing PII and optionally stopwords.
     
     Args:
         data: Input data (can be string, list, dict, or DataFrame)
+        remove_stops: Whether to remove stopwords (default: True)
         
     Returns:
         Cleaned data with same structure as input
@@ -111,22 +152,37 @@ def prepare_text_for_ai(data: Union[str, List, Dict, 'pd.DataFrame']) -> Union[s
         cleaned_data = {}
         for key, value in data.items():
             if isinstance(value, (str, list, dict)):
-                cleaned_data[key] = prepare_text_for_ai(value)
+                cleaned_data[key] = prepare_text_for_ai(value, remove_stops)
             else:
                 cleaned_data[key] = value
         return cleaned_data
     elif isinstance(data, list):
         # Handle list input
-        return [prepare_text_for_ai(item) for item in data]
+        return [prepare_text_for_ai(item, remove_stops) for item in data]
     elif isinstance(data, str):
         # Handle string input
-        return remove_pii(data)
+        text = remove_pii(data)
+        if remove_stops:
+            # Only remove stopwords from longer text fields to preserve meaning in short fields
+            if len(text.split()) > 5:
+                return remove_stopwords(text)
+        return text
     elif str(type(data)).endswith("'pandas.core.frame.DataFrame'>"):
         # Handle DataFrame input
         cleaned_df = data.copy()
         text_columns = cleaned_df.select_dtypes(include=['object']).columns
+        
+        # Text fields likely to contain important descriptive content
+        descriptive_columns = ['Subject', 'Description', 'Comments', 'Notes', 'Root Cause']
+        
         for col in text_columns:
+            # Apply PII removal to all text columns
             cleaned_df[col] = cleaned_df[col].apply(remove_pii)
+            
+            # Apply stopword removal only to descriptive columns with remove_stops enabled
+            if remove_stops and col in descriptive_columns:
+                cleaned_df[col] = cleaned_df[col].apply(lambda x: remove_stopwords(x) if isinstance(x, str) and len(str(x).split()) > 5 else x)
+        
         return cleaned_df
     else:
         # Return as is for other types

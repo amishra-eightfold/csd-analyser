@@ -600,47 +600,136 @@ class TokenManager:
         return truncated
     
     def truncate_text(self, text: str, max_tokens: int) -> str:
-        """Truncate text to fit within max_tokens while preserving meaning."""
-        if self.count_tokens(text) <= max_tokens:
+        """Intelligently truncate text to fit within token limit.
+        
+        Args:
+            text (str): Text to truncate
+            max_tokens (int): Maximum number of tokens
+            
+        Returns:
+            str: Truncated text
+        """
+        if not text:
+            return ""
+        
+        # First check if truncation is needed
+        current_tokens = self.count_tokens(text)
+        if current_tokens <= max_tokens:
             return text
         
-        # Split into sentences and gradually build up until we hit the token limit
-        sentences = text.split('. ')
-        result = []
-        current_tokens = 0
+        # If text is too long, truncate it
+        # Calculate a good ratio to keep more of the beginning and end of text
+        beginning_ratio = 0.7  # Keep 70% from the beginning
+        end_ratio = 0.3  # Keep 30% from the end
         
-        for sentence in sentences:
-            sentence_tokens = self.count_tokens(sentence + '. ')
-            if current_tokens + sentence_tokens <= max_tokens:
-                result.append(sentence)
-                current_tokens += sentence_tokens
-            else:
-                break
+        # Calculate tokens for beginning and end
+        beginning_tokens = int(max_tokens * beginning_ratio)
+        end_tokens = max_tokens - beginning_tokens
         
-        truncated = '. '.join(result)
-        if not truncated.endswith('.'):
-            truncated += '.'
+        # Tokenize the text
+        encoding = tiktoken.encoding_for_model(self.model_name)
+        tokens = encoding.encode(text)
         
-        return truncated + ' [truncated...]'
+        # Get beginning and end tokens
+        beginning = tokens[:beginning_tokens]
+        end = tokens[-end_tokens:] if end_tokens > 0 else []
+        
+        # Decode back to text
+        beginning_text = encoding.decode(beginning)
+        end_text = encoding.decode(end)
+        
+        # Combine with ellipsis
+        if end_tokens > 0:
+            return beginning_text + " [...] " + end_text
+        else:
+            return beginning_text + " [...]"
     
     def optimize_context(self, context: Dict[str, Any], max_tokens: int) -> Dict[str, Any]:
-        """Optimize context to fit within max_tokens."""
-        if self.count_tokens(self.json_dumps(context)) <= max_tokens:
+        """Optimize context to fit within token limit while preserving important information.
+        
+        Args:
+            context (Dict[str, Any]): Context dictionary
+            max_tokens (int): Maximum tokens allowed
+            
+        Returns:
+            Dict[str, Any]: Optimized context
+        """
+        # First check if optimization is needed
+        context_str = self.json_dumps(context)
+        current_tokens = self.count_tokens(context_str)
+        
+        if current_tokens <= max_tokens:
             return context
         
-        # Prioritize certain context fields
-        priority_fields = ['metadata', 'summary', 'key_patterns']
+        # Start with a copy of the context
         optimized = {}
         
-        # Add high-priority fields first
-        for field in priority_fields:
-            if field in context:
-                optimized[field] = context[field]
-                if self.count_tokens(self.json_dumps(optimized)) > max_tokens:
-                    # If we exceed the limit, start removing fields from the end
-                    while optimized and self.count_tokens(self.json_dumps(optimized)) > max_tokens:
-                        optimized.popitem()
-                    break
+        # Define priority for different context elements
+        priority_order = [
+            'chunk_position', 'total_chunks', 'chunk_type',  # Chunk metadata (highest priority)
+            'summary_stats', 'processed_tickets',  # Summary information
+            'pattern_analysis', 'processed_chunks',  # Pattern information
+            'global_patterns', 'previous_insights',  # Historical information
+            'priority_context', 'temporal_context'  # Detailed context (lowest priority)
+        ]
+        
+        # Add highest priority items first
+        remaining_tokens = max_tokens
+        for key in priority_order:
+            if key in context and remaining_tokens > 0:
+                # Serialize this item to check its token count
+                item_str = self.json_dumps({key: context[key]})
+                item_tokens = self.count_tokens(item_str)
+                
+                if item_tokens <= remaining_tokens:
+                    # Item fits completely
+                    optimized[key] = context[key]
+                    remaining_tokens -= item_tokens
+                elif key in ['previous_insights', 'pattern_analysis', 'summary_stats']:
+                    # Try to include a reduced version for important items
+                    if key == 'previous_insights' and isinstance(context[key], list):
+                        # Keep most recent insights
+                        reduced_insights = context[key][-2:] if len(context[key]) > 2 else context[key]
+                        reduced_str = self.json_dumps({key: reduced_insights})
+                        if self.count_tokens(reduced_str) <= remaining_tokens:
+                            optimized[key] = reduced_insights
+                            remaining_tokens -= self.count_tokens(reduced_str)
+                    elif key == 'pattern_analysis' and isinstance(context[key], dict):
+                        # Keep summary and high confidence patterns
+                        reduced_patterns = {
+                            'summary': context[key].get('summary', {}),
+                            'high_confidence': context[key].get('high_confidence', [])
+                        }
+                        reduced_str = self.json_dumps({key: reduced_patterns})
+                        if self.count_tokens(reduced_str) <= remaining_tokens:
+                            optimized[key] = reduced_patterns
+                            remaining_tokens -= self.count_tokens(reduced_str)
+                    elif key == 'summary_stats' and isinstance(context[key], dict):
+                        # Keep essential stats
+                        essential_stats = {
+                            'total_tickets': context[key].get('total_tickets', 0),
+                            'priority_distribution': context[key].get('priority_distribution', {})
+                        }
+                        reduced_str = self.json_dumps({key: essential_stats})
+                        if self.count_tokens(reduced_str) <= remaining_tokens:
+                            optimized[key] = essential_stats
+                            remaining_tokens -= self.count_tokens(reduced_str)
+        
+        # Add any remaining items that weren't in the priority list
+        for key, value in context.items():
+            if key not in priority_order and key not in optimized and remaining_tokens > 0:
+                item_str = self.json_dumps({key: value})
+                item_tokens = self.count_tokens(item_str)
+                
+                if item_tokens <= remaining_tokens:
+                    optimized[key] = value
+                    remaining_tokens -= item_tokens
+        
+        # Log optimization results
+        original_tokens = self.count_tokens(self.json_dumps(context))
+        optimized_tokens = self.count_tokens(self.json_dumps(optimized))
+        reduction = (1 - (optimized_tokens / original_tokens)) * 100 if original_tokens > 0 else 0
+        self.token_logger.info(f"Context optimized: {original_tokens} → {optimized_tokens} tokens ({reduction:.1f}% reduction)")
         
         return optimized
     
