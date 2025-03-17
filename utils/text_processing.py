@@ -9,23 +9,38 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import os
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Initialize NLTK resources
 def initialize_nltk():
     """Initialize required NLTK resources."""
     resources = [
-        'punkt',
-        'stopwords',
-        'averaged_perceptron_tagger'
+        ('punkt', 'tokenizers/punkt'),
+        ('stopwords', 'corpora/stopwords'),
+        ('averaged_perceptron_tagger', 'taggers/averaged_perceptron_tagger'),
+        ('wordnet', 'corpora/wordnet')
     ]
-    for resource in resources:
+    
+    for resource_name, resource_path in resources:
         try:
-            nltk.data.find(f'tokenizers/{resource}')
+            nltk.data.find(resource_path)
         except LookupError:
-            nltk.download(resource, quiet=True)
+            try:
+                logger.info(f"Downloading NLTK resource: {resource_name}")
+                nltk.download(resource_name, quiet=True)
+            except Exception as e:
+                logger.error(f"Failed to download NLTK resource {resource_name}: {str(e)}")
+                # Continue with other resources even if one fails
+                continue
 
 # Call initialization on module import
-initialize_nltk()
+try:
+    initialize_nltk()
+except Exception as e:
+    logger.error(f"NLTK initialization failed: {str(e)}")
+    # The application can still function with reduced NLP capabilities
 
 def clean_text(text: str) -> str:
     """Clean text by removing URLs, special characters, and extra whitespace.

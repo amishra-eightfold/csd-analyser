@@ -13,23 +13,49 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import nltk
 
-# Download required NLTK data
-try:
-    nltk.download('punkt', quiet=True)
-    nltk.download('stopwords', quiet=True)
-    nltk.download('wordnet', quiet=True)
-except Exception as e:
-    logging.warning(f"Failed to download NLTK data: {str(e)}")
-
 logger = logging.getLogger(__name__)
+
+# Initialize required NLTK resources
+def initialize_nltk_resources():
+    """Initialize NLTK resources required for text analysis."""
+    resources = [
+        ('punkt', 'tokenizers/punkt'),
+        ('stopwords', 'corpora/stopwords'),
+        ('wordnet', 'corpora/wordnet'),
+        ('averaged_perceptron_tagger', 'taggers/averaged_perceptron_tagger')
+    ]
+    
+    for resource_name, resource_path in resources:
+        try:
+            nltk.data.find(resource_path)
+        except LookupError:
+            try:
+                logger.info(f"Downloading NLTK resource: {resource_name}")
+                nltk.download(resource_name, quiet=True)
+            except Exception as e:
+                logger.error(f"Failed to download NLTK resource {resource_name}: {str(e)}")
+                continue
+
+# Initialize NLTK resources on module import
+try:
+    initialize_nltk_resources()
+except Exception as e:
+    logger.error(f"NLTK initialization failed: {str(e)}")
 
 class TextAnalyzer:
     """Analyzes text content from support tickets."""
     
     def __init__(self):
         """Initialize text analyzer with NLTK components."""
-        self.stop_words = set(stopwords.words('english'))
-        self.lemmatizer = WordNetLemmatizer()
+        try:
+            self.stop_words = set(stopwords.words('english'))
+            self.lemmatizer = WordNetLemmatizer()
+        except Exception as e:
+            logger.error(f"Failed to initialize NLTK components: {str(e)}")
+            # Initialize with empty set if NLTK resources are not available
+            self.stop_words = set()
+            self.lemmatizer = None
+            
         self.vectorizer = TfidfVectorizer(
             max_features=1000,
             stop_words='english',
