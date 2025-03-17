@@ -630,11 +630,13 @@ def fetch_data():
                 Id, CaseNumber, Subject, Description,
                 Account.Account_Name__c, CreatedDate, ClosedDate, Status, Internal_Priority__c,
                 Product_Area__c, Product_Feature__c, RCA__c,
-                First_Response_Time__c, CSAT__c, IsEscalated
+                First_Response_Time__c, CSAT__c, IsEscalated, Case_Type__c
             FROM Case
             WHERE Account.Account_Name__c IN ({customer_list})
             AND CreatedDate >= {start_date.strftime('%Y-%m-%d')}T00:00:00Z
             AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
+            AND Case_Type__c = 'Support Request'
+            AND Is_Case_L1_Triaged__c = false
         """
         
         debug("Executing SOQL query", {'query': query}, category="api")
@@ -646,7 +648,26 @@ def fetch_data():
             return pd.DataFrame()
         
         debug(f"Retrieved {len(records)} records from Salesforce", category="api")
-        
+        # Dump raw records to CSV for debugging/backup
+        debug("Dumping raw records to CSV", {'record_count': len(records)}, category="data")
+        try:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'data/raw_records_{timestamp}.csv'
+            os.makedirs('data', exist_ok=True)
+            
+            # Convert records to DataFrame for easy CSV export
+            temp_df = pd.DataFrame(records)
+            temp_df.to_csv(filename, index=False)
+            debug(f"Successfully saved records to {filename}", category="data")
+        except Exception as e:
+            debug(f"Failed to save records to CSV: {str(e)}", 
+                  {'traceback': traceback.format_exc()}, 
+                  category="error")
+        # Add data validation check
+        st.write(f"Found {len(records)} tickets in total")
+        if len(records) > 0:
+            st.write("Sample ticket fields:", list(records[0].keys()))
+            
         df = pd.DataFrame(records)
         
         # Extract Account Name from nested structure
@@ -811,21 +832,127 @@ def analyze_unspecified_root_causes(df: pd.DataFrame) -> None:
         unspecified_count = len(unspecified_df)
         percentage = (unspecified_count / total_closed_tickets) * 100
         
-        st.write(f"### Unspecified Root Cause Analysis (Closed Tickets Only)")
+        st.write("### Unspecified Root Cause Analysis (Closed Tickets Only)")
         st.write(f"Found {unspecified_count} closed tickets ({percentage:.1f}%) with unspecified root causes")
+        
+        # Always show the ticket details table
+        st.write("#### Tickets Missing Root Cause")
+        ticket_details = unspecified_df[['CaseNumber', 'Subject', 'Status', 'Priority', 'Created Date', 'Closed Date']].copy()
+        # Convert timezone-aware dates to naive for display
+        for col in ['Created Date', 'Closed Date']:
+            if col in ticket_details.columns and ticket_details[col].dt.tz is not None:
+                ticket_details[col] = ticket_details[col].dt.tz_localize(None)
+        st.dataframe(ticket_details)
+        
+        # Log to debug
+        debug("Tickets with unspecified root causes:", {
+            'total_unspecified': unspecified_count,
+            'ticket_numbers': unspecified_df['CaseNumber'].tolist(),
+            'ticket_details': unspecified_df[['CaseNumber', 'Subject', 'Status', 'Priority', 'Created Date']].to_dict('records')
+        })
         
         # Group by priority
         st.write("\nDistribution by Priority:")
         priority_dist = unspecified_df['Priority'].value_counts()
         st.dataframe(priority_dist)
         
+        # Create trend analysis visualization
+        st.write("\n### Root Cause Trend Analysis")
+        
+        try:
+            # Convert dates to timezone-naive for Excel compatibility and create month periods
+            df_closed = df_closed.copy()
+            unspecified_df = unspecified_df.copy()
+            
+            # Ensure Created Date is datetime
+            df_closed['Created Date'] = pd.to_datetime(df_closed['Created Date'])
+            unspecified_df['Created Date'] = pd.to_datetime(unspecified_df['Created Date'])
+            
+            # Remove timezone if present
+            if df_closed['Created Date'].dt.tz is not None:
+                df_closed['Created Date'] = df_closed['Created Date'].dt.tz_localize(None)
+            if unspecified_df['Created Date'].dt.tz is not None:
+                unspecified_df['Created Date'] = unspecified_df['Created Date'].dt.tz_localize(None)
+            
+            # Create month periods
+            df_closed['Month'] = df_closed['Created Date'].dt.to_period('M')
+            unspecified_df['Month'] = unspecified_df['Created Date'].dt.to_period('M')
+            
+            # Calculate monthly percentages of unspecified root causes
+            monthly_stats = pd.DataFrame()
+            monthly_stats['Total'] = df_closed.groupby('Month').size()
+            monthly_stats['Unspecified'] = unspecified_df.groupby('Month').size()
+            monthly_stats['Percentage'] = (monthly_stats['Unspecified'] / monthly_stats['Total'] * 100).round(1)
+            monthly_stats = monthly_stats.fillna(0)
+            
+            # Create trend visualization
+            fig_trend = go.Figure()
+            
+            # Add bar chart for counts
+            fig_trend.add_trace(go.Bar(
+                name='Unspecified Root Causes',
+                x=monthly_stats.index.astype(str),
+                y=monthly_stats['Unspecified'],
+                marker_color=VIRIDIS_PALETTE[0]
+            ))
+            
+            # Add line for percentage
+            fig_trend.add_trace(go.Scatter(
+                name='Percentage of Total',
+                x=monthly_stats.index.astype(str),
+                y=monthly_stats['Percentage'],
+                yaxis='y2',
+                line=dict(color=VIRIDIS_PALETTE[2], width=2),
+                mode='lines+markers'
+            ))
+            
+            fig_trend.update_layout(
+                title='Unspecified Root Causes Trend',
+                xaxis_title='Month',
+                yaxis_title='Number of Tickets',
+                yaxis2=dict(
+                    title='Percentage of Total Tickets',
+                    overlaying='y',
+                    side='right',
+                    ticksuffix='%'
+                ),
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
+            )
+            
+            st.plotly_chart(fig_trend)
+            
+            debug("Root cause trend analysis completed", {
+                'months_analyzed': len(monthly_stats),
+                'avg_percentage': monthly_stats['Percentage'].mean(),
+                'trend': 'increasing' if monthly_stats['Percentage'].iloc[-1] > monthly_stats['Percentage'].iloc[0] else 'decreasing'
+            })
+            
+        except Exception as e:
+            st.error(f"Error generating root cause trend analysis: {str(e)}")
+            debug(f"Error in root cause trend analysis: {str(e)}", 
+                  {'traceback': traceback.format_exc()}, 
+                  category="error")
+            if st.session_state.debug_mode:
+                st.exception(e)
+
         # Export options in columns
         col1, col2, col3 = st.columns(3)
         
         with col1:
             # Export summary to CSV
             csv_buffer = BytesIO()
-            unspecified_df.to_csv(csv_buffer, index=False, encoding='utf-8')
+            # Convert timezone-aware datetimes to naive for CSV export
+            export_df = unspecified_df.copy()
+            for col in export_df.select_dtypes(include=['datetime64[ns, UTC]']).columns:
+                export_df[col] = export_df[col].dt.tz_localize(None)
+            export_df.to_csv(csv_buffer, index=False, encoding='utf-8')
             csv_buffer.seek(0)
             st.download_button(
                 label="Download Summary CSV",
@@ -848,8 +975,14 @@ def analyze_unspecified_root_causes(df: pd.DataFrame) -> None:
                 # Write priority distribution
                 priority_dist.to_frame('Count').to_excel(writer, sheet_name='Priority Distribution')
                 
-                # Write raw data
-                unspecified_df.to_excel(writer, sheet_name='Raw Data', index=False)
+                # Write trend analysis
+                monthly_stats.to_excel(writer, sheet_name='Monthly Trends')
+                
+                # Write raw data - ensure datetime columns are timezone-naive
+                export_df = unspecified_df.copy()
+                for col in export_df.select_dtypes(include=['datetime64[ns, UTC]']).columns:
+                    export_df[col] = export_df[col].dt.tz_localize(None)
+                export_df.to_excel(writer, sheet_name='Raw Data', index=False)
             
             excel_buffer.seek(0)
             st.download_button(
@@ -862,7 +995,11 @@ def analyze_unspecified_root_causes(df: pd.DataFrame) -> None:
         with col3:
             # Export all raw data
             all_data_buffer = BytesIO()
-            df.to_csv(all_data_buffer, index=False, encoding='utf-8')
+            # Convert timezone-aware datetimes to naive for CSV export
+            export_df = df.copy()
+            for col in export_df.select_dtypes(include=['datetime64[ns, UTC]']).columns:
+                export_df[col] = export_df[col].dt.tz_localize(None)
+            export_df.to_csv(all_data_buffer, index=False, encoding='utf-8')
             all_data_buffer.seek(0)
             st.download_button(
                 label="Download All Raw Data",
@@ -893,14 +1030,17 @@ def analyze_unspecified_root_causes(df: pd.DataFrame) -> None:
                 st.write(f"- Average CSAT: {unspecified_df['CSAT'].mean():.2f}")
             
             # Log to debug
-            debug("Unspecified Root Cause Analysis Summary (Closed Tickets):")
-            debug(f"Total closed tickets: {total_closed_tickets}")
-            debug(f"Unspecified root cause tickets: {unspecified_count}")
-            debug(f"Percentage: {percentage:.1f}%")
-            debug("Priority distribution:", priority_dist.to_dict())
+            debug("Unspecified Root Cause Analysis Summary (Closed Tickets):", {
+                'total_closed': total_closed_tickets,
+                'unspecified_count': unspecified_count,
+                'percentage': percentage,
+                'priority_distribution': priority_dist.to_dict(),
+                'monthly_trend': monthly_stats.to_dict()
+            })
             
     except Exception as e:
         st.error(f"Error analyzing unspecified root causes: {str(e)}")
+        debug(f"Error in root cause analysis: {str(e)}", {'traceback': traceback.format_exc()}, category="error")
         if st.session_state.debug_mode:
             st.exception(e)
 
@@ -1139,6 +1279,93 @@ def display_visualizations(df, customers):
             st.warning("No tickets found with both valid priority and resolution time data.")
             debug("No valid tickets for resolution time analysis", category="error")
         
+        # Add First Response Time Analysis
+        st.write("---")
+        st.subheader("First Response Time Analysis")
+        debug("Starting first response time analysis")
+        
+        try:
+            # Calculate first response time in hours
+            df['First Response Hours'] = (df['First Response Time'] - df['Created Date']).dt.total_seconds() / 3600
+            
+            # Filter valid response times
+            valid_response_df = df[
+                (df['First Response Hours'].notna()) & 
+                (df['First Response Hours'] > 0) &
+                (df['Highest_Priority'].notna()) & 
+                (~df['Highest_Priority'].isin(['Unspecified', '', ' ', None]))
+            ]
+            
+            if len(valid_response_df) > 0:
+                # Create box plot for response times
+                fig_response = go.Figure()
+                
+                # Get all unique priorities and sort them
+                all_priorities = sorted(valid_response_df['Highest_Priority'].unique())
+                debug("Unique priorities for response time plotting", {
+                    'priorities': all_priorities,
+                    'priority_counts': {p: len(valid_response_df[valid_response_df['Highest_Priority'] == p]) for p in all_priorities}
+                })
+                
+                for priority in all_priorities:
+                    priority_data = valid_response_df[valid_response_df['Highest_Priority'] == priority]
+                    if len(priority_data) > 0:
+                        fig_response.add_trace(go.Box(
+                            y=priority_data['First Response Hours'],
+                            name=f'Priority {priority}',
+                            marker_color=PRIORITY_COLORS.get(priority, VIRIDIS_PALETTE[0]),
+                            boxpoints='outliers'
+                        ))
+                
+                fig_response.update_layout(
+                    title='First Response Time Distribution by Highest Priority',
+                    yaxis_title='Response Time (Hours)',
+                    showlegend=True,
+                    boxmode='group'
+                )
+                
+                st.plotly_chart(fig_response)
+                
+                # Display summary statistics
+                st.write("### First Response Time Summary")
+                response_stats = valid_response_df.groupby('Highest_Priority').agg({
+                    'First Response Hours': ['count', 'mean', 'median']
+                }).round(2)
+                response_stats.columns = ['Count', 'Mean Hours', 'Median Hours']
+                st.write(response_stats)
+                
+                # Display data quality metrics
+                st.write("### Data Quality Metrics")
+                total_tickets = len(df)
+                missing_response = df['First Response Hours'].isna().sum()
+                invalid_response = (df['First Response Hours'] <= 0).sum() if 'First Response Hours' in df.columns else 0
+                
+                quality_metrics = {
+                    'total_tickets': total_tickets,
+                    'missing_response': missing_response,
+                    'invalid_response': invalid_response,
+                    'valid_tickets': len(valid_response_df),
+                    'valid_percentage': (len(valid_response_df)/total_tickets*100)
+                }
+                
+                st.write(f"- Total tickets: {total_tickets}")
+                st.write(f"- Missing response times: {missing_response}")
+                st.write(f"- Invalid response times (<=0): {invalid_response}")
+                st.write(f"- Valid tickets for analysis: {len(valid_response_df)} ({(len(valid_response_df)/total_tickets*100):.1f}%)")
+                
+                debug("First response time analysis completed", quality_metrics)
+            else:
+                st.warning("No tickets found with both valid priority and first response time data.")
+                debug("No valid tickets for first response time analysis", category="error")
+                
+        except Exception as e:
+            st.error("Error generating first response time analysis")
+            debug(f"Error in first response time analysis: {str(e)}", 
+                  {'traceback': traceback.format_exc()}, 
+                  category="error")
+            if st.session_state.debug_mode:
+                st.exception(e)
+        
         # Add CSAT Analysis
         st.write("---")
         st.subheader("Customer Satisfaction Analysis")
@@ -1310,147 +1537,18 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
         st.subheader("Pattern Evolution Analysis")
         
         # Ensure we have the required columns
-        required_columns = ['Created Date', 'Resolution Time (Days)', 'CSAT']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            st.warning(f"Missing required columns for pattern analysis: {', '.join(missing_columns)}")
-            debug("Missing required columns", {'missing': missing_columns}, category="error")
-            return
-
-        # Prepare data for pattern analysis
-        df['Created Date'] = pd.to_datetime(df['Created Date'])
-        df['Month'] = df['Created Date'].dt.to_period('M')
+        required_columns = ['Created Date', 'Resolution Time (Days)', 'CSAT', 'Root Cause']
         
-        # Calculate monthly metrics with proper handling of NaN values
-        monthly_data = df.groupby('Month').agg({
-            'Id': 'count',  # Count of tickets
-            'Resolution Time (Days)': lambda x: x.mean() if x.notna().any() else 0,  # Mean resolution time, 0 if all NaN
-            'CSAT': lambda x: x.mean() if x.notna().any() else 0  # Mean CSAT, 0 if all NaN
-        }).reset_index()
-        
-        monthly_data = monthly_data.rename(columns={
-            'Id': 'Ticket Count',
-            'Resolution Time (Days)': 'Avg Resolution Time',
-            'CSAT': 'Avg CSAT'
-        })
-        
-        # Sort by Month to ensure proper ordering
-        monthly_data = monthly_data.sort_values('Month')
-        
-        # Convert Month to string for plotting
-        monthly_data['Month_Str'] = monthly_data['Month'].astype(str)
-        
-        # Fill any remaining NaN values with 0
-        monthly_data = monthly_data.fillna(0)
-
-        # Check data length and adjust analysis
-        data_months = len(monthly_data)
-        debug(f"Monthly data prepared", {'months_available': data_months})
-        
-        if data_months < 2:  # Minimum required for basic trend analysis
-            st.warning("Insufficient data for pattern evolution analysis. Please select a longer date range (minimum 2 months of data required).")
-            debug("Insufficient data for pattern analysis", {'months': data_months}, category="error")
-            return
-            
-        # Calculate trends and patterns
-        st.write("### Trend Analysis")
-        
-        for column in ['Ticket Count', 'Avg Resolution Time', 'Avg CSAT']:
-            # Create visualization
-            fig = go.Figure()
-            
-            # Add actual data
-            fig.add_trace(go.Scatter(
-                x=monthly_data['Month_Str'],
-                y=monthly_data[column],
-                mode='lines+markers',
-                name='Actual',
-                line=dict(color='blue')
-            ))
-            
-            # Calculate trend
-            x = np.arange(len(monthly_data))
-            y = monthly_data[column].values
-            z = np.polyfit(x, y, 1)
-            p = np.poly1d(z)
-            
-            # Add trend line
-            fig.add_trace(go.Scatter(
-                x=monthly_data['Month_Str'],
-                y=p(x),
-                mode='lines',
-                name='Trend',
-                line=dict(color='red', dash='dash')
-            ))
-            
-            # Calculate simple moving average if enough data points
-            if len(monthly_data) >= 2:
-                window = min(3, len(monthly_data))
-                ma = monthly_data[column].rolling(window=window, center=True).mean()
-                
-                # Add moving average
-                fig.add_trace(go.Scatter(
-                    x=monthly_data['Month_Str'],
-                    y=ma,
-                    mode='lines',
-                    name=f'{window}-Month Moving Average',
-                    line=dict(color='green', dash='dot')
-                ))
-            
-            # Update layout
-            fig.update_layout(
-                title=f'{column} Pattern Evolution',
-                xaxis_title='Month',
-                yaxis_title=column,
-                showlegend=True,
-                hovermode='x unified'
-            )
-            
-            st.plotly_chart(fig)
-            debug(f"Generated trend analysis for {column}", {
-                'trend_slope': z[0],
-                'data_points': len(monthly_data)
-            })
-
-        # Calculate correlations
-        st.write("### Metric Correlations")
-        corr_matrix = monthly_data[['Ticket Count', 'Avg Resolution Time', 'Avg CSAT']].corr()
-        
-        # Create correlation heatmap
-        fig_corr = go.Figure(data=go.Heatmap(
-            z=corr_matrix.values,
-            x=corr_matrix.columns,
-            y=corr_matrix.columns,
-            colorscale='RdBu',
-            zmin=-1,
-            zmax=1,
-            text=np.round(corr_matrix.values, 2),
-            texttemplate='%{text}',
-            textfont={"size": 10},
-            hoverongaps=False
-        ))
-        
-        fig_corr.update_layout(
-            title='Correlation Matrix',
-            width=600,
-            height=600
-        )
-        
-        st.plotly_chart(fig_corr)
-        
-        # Display correlation insights
-        st.markdown("#### Correlation Insights")
-        correlations = []
-        for i in range(len(corr_matrix.columns)):
-            for j in range(i+1, len(corr_matrix.columns)):
-                col1, col2 = corr_matrix.columns[i], corr_matrix.columns[j]
-                corr = corr_matrix.iloc[i, j]
-                strength = "strong" if abs(corr) > 0.7 else "moderate" if abs(corr) > 0.4 else "weak"
-                direction = "positive" if corr > 0 else "negative"
-                correlations.append(f"- {col1} and {col2}: {strength} {direction} correlation ({corr:.2f})")
-        
-        for insight in correlations:
-            st.markdown(insight)
+        if all(col in df.columns for col in required_columns):
+            # Call the dedicated function for pattern evolution analysis
+            debug("Calling pattern evolution analysis function")
+            display_pattern_evolution(df)
+        else:
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.warning(f"Cannot display pattern evolution analysis. Missing columns: {', '.join(missing_cols)}")
+            debug("Missing columns for pattern evolution analysis", {
+                'missing_columns': missing_cols
+            }, category="warning")
 
         # AI Analysis Section
         if enable_ai_analysis:
@@ -1784,6 +1882,189 @@ def export_data(df: pd.DataFrame, format: str, customers: List[str]) -> None:
             
     except Exception as e:
         st.error(f"Error exporting data: {str(e)}")
+        if st.session_state.debug_mode:
+            st.exception(e)
+
+def display_pattern_evolution(df: pd.DataFrame) -> None:
+    """Display pattern evolution analysis including root cause trends."""
+    try:
+        st.write("## Pattern Evolution Analysis")
+        
+        # Ensure required columns are present
+        required_columns = ['Created Date', 'Resolution Time (Days)', 'CSAT', 'Priority', 'Root Cause', 'Status']
+        if not all(col in df.columns for col in required_columns):
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error(f"Missing required columns for pattern analysis: {', '.join(missing_cols)}")
+            return
+            
+        # Filter for closed cases
+        closed_statuses = ['Closed', 'Resolved', 'Completed']
+        df_closed = df[df['Status'].isin(closed_statuses)].copy()
+        
+        if len(df_closed) == 0:
+            st.warning("No closed cases found for pattern analysis.")
+            return
+            
+        # Further filter out unspecified root causes
+        df_closed = df_closed[~df_closed['Root Cause'].isin(['Not Specified', 'Not specified', 'not specified', None, np.nan])]
+        
+        if len(df_closed) == 0:
+            st.warning("No closed cases found with specified root causes.")
+            return
+            
+        # Prepare data for pattern analysis
+        df_closed['Created Date'] = pd.to_datetime(df_closed['Created Date'])
+        df_closed['Month'] = df_closed['Created Date'].dt.to_period('M')
+        
+        # Calculate monthly metrics
+        monthly_metrics = pd.DataFrame()
+        monthly_metrics['Ticket Count'] = df_closed.groupby('Month').size()
+        monthly_metrics['Avg Resolution Time'] = df_closed.groupby('Month')['Resolution Time (Days)'].mean()
+        monthly_metrics['Avg CSAT'] = df_closed.groupby('Month')['CSAT'].mean()
+        
+        # Handle NaN values
+        monthly_metrics = monthly_metrics.fillna(0)
+        
+        # Root Cause Trend Analysis
+        st.write("### Root Cause Distribution Over Time (Closed Cases Only)")
+        try:
+            # Calculate monthly root cause distribution
+            root_cause_monthly = pd.crosstab(
+                df_closed['Month'], 
+                df_closed['Root Cause'], 
+                normalize='index'
+            ) * 100
+            
+            # Create line chart
+            fig_root_cause = go.Figure()
+            
+            # Add a line for each root cause
+            for column in root_cause_monthly.columns:
+                fig_root_cause.add_trace(go.Scatter(
+                    name=column,
+                    x=root_cause_monthly.index.astype(str),
+                    y=root_cause_monthly[column],
+                    mode='lines+markers',  # Add markers for better visibility
+                    line=dict(width=2),  # Slightly thicker lines
+                    marker=dict(size=6),  # Reasonable marker size
+                    hovertemplate="%{y:.1f}%<extra>%{fullData.name}</extra>"
+                ))
+            
+            fig_root_cause.update_layout(
+                title='Root Cause Distribution Trend (Closed Cases with Specified Root Causes)',
+                xaxis_title='Month',
+                yaxis_title='Percentage of Tickets',
+                yaxis=dict(
+                    ticksuffix='%',
+                    range=[0, 100]  # Fix y-axis range from 0 to 100%
+                ),
+                hovermode='x unified'  # Show all values for a given x-coordinate
+            )
+            
+            st.plotly_chart(fig_root_cause)
+            
+            # Summary statistics
+            st.write("#### Root Cause Summary (Closed Cases with Specified Root Causes)")
+            total_tickets = len(df_closed)
+            root_cause_summary = df_closed['Root Cause'].value_counts()
+            root_cause_percentages = (root_cause_summary / total_tickets * 100).round(1)
+            
+            summary_df = pd.DataFrame({
+                'Count': root_cause_summary,
+                'Percentage': root_cause_percentages
+            })
+            st.dataframe(summary_df)
+            
+            # Add context about filtered data
+            total_closed = len(df[df['Status'].isin(closed_statuses)])
+            st.info(f"""
+                Data Summary:
+                - Total closed cases: {total_closed}
+                - Cases with specified root causes: {total_tickets} ({(total_tickets/total_closed*100):.1f}%)
+                - Cases excluded (unspecified root causes): {total_closed - total_tickets} ({((total_closed-total_tickets)/total_closed*100):.1f}%)
+            """)
+            
+            debug("Root cause pattern analysis completed", {
+                'total_closed_tickets': total_closed,
+                'tickets_with_root_causes': total_tickets,
+                'excluded_tickets': total_closed - total_tickets,
+                'total_root_causes': len(root_cause_summary),
+                'top_root_cause': root_cause_summary.index[0],
+                'top_root_cause_percentage': root_cause_percentages.iloc[0]
+            })
+            
+            # Add analysis for unspecified root causes by month
+            unspecified_count = total_closed - total_tickets
+            if unspecified_count > 0:
+                st.write("#### Unspecified Root Causes Analysis")
+                
+                # Filter for unspecified root causes
+                unspecified_df = df_with_unspecified[df_with_unspecified['Root Cause'].isin(['Not Specified', 'Not specified', 'not specified', None, np.nan])]
+                
+                # Group by month
+                monthly_unspecified = unspecified_df.groupby('Month').size()
+                monthly_total = df_with_unspecified.groupby('Month').size()
+                monthly_pct = (monthly_unspecified / monthly_total * 100).round(1)
+                
+                # Create dataframe for display
+                unspecified_trend = pd.DataFrame({
+                    'Total Cases': monthly_total,
+                    'Unspecified Root Causes': monthly_unspecified,
+                    'Percentage': monthly_pct
+                })
+                
+                # Create chart showing unspecified root causes trend
+                fig_unspecified = go.Figure()
+                
+                fig_unspecified.add_trace(go.Scatter(
+                    x=monthly_pct.index.astype(str),
+                    y=monthly_pct.values,
+                    name='Unspecified Root Causes',
+                    mode='lines+markers',
+                    line=dict(width=2, color='red'),
+                    marker=dict(size=8),
+                    hovertemplate="%{y:.1f}%<extra>Unspecified Root Causes</extra>"
+                ))
+                
+                fig_unspecified.update_layout(
+                    title='Unspecified Root Causes Trend (Closed Cases)',
+                    xaxis_title='Month',
+                    yaxis_title='Percentage of Tickets',
+                    yaxis=dict(
+                        ticksuffix='%',
+                        range=[0, 100]
+                    ),
+                    showlegend=True,
+                    hovermode='x unified'
+                )
+                
+                st.plotly_chart(fig_unspecified)
+                st.dataframe(unspecified_trend)
+                
+                # Add recommendations
+                if monthly_pct.iloc[-1] > 20:  # If latest month has > 20% unspecified
+                    st.warning("""
+                        **High percentage of unspecified root causes detected in recent months.**
+                        
+                        Recommendations:
+                        1. Review ticket closure process to ensure root causes are being properly documented
+                        2. Consider implementing a validation rule in Salesforce to require root cause before closure
+                        3. Provide additional training to support team on root cause analysis importance
+                    """)
+            
+        except Exception as e:
+            st.error(f"Error generating root cause analysis: {str(e)}")
+            debug(f"Error in root cause analysis: {str(e)}", 
+                {'traceback': traceback.format_exc()}, 
+                category="error")
+            if st.session_state.debug_mode:
+                st.exception(e)
+        
+    except Exception as e:
+        st.error(f"Error in pattern evolution analysis: {str(e)}")
+        debug(f"Error in pattern evolution analysis: {str(e)}", 
+              {'traceback': traceback.format_exc()}, 
+              category="error")
         if st.session_state.debug_mode:
             st.exception(e)
 
