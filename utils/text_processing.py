@@ -7,14 +7,25 @@ from simple_salesforce import Salesforce
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
+import os
+import numpy as np
 
-# Download NLTK resources if not already downloaded
-try:
-    nltk.data.find('corpora/stopwords')
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('stopwords')
-    nltk.download('punkt')
+# Initialize NLTK resources
+def initialize_nltk():
+    """Initialize required NLTK resources."""
+    resources = [
+        'punkt',
+        'stopwords',
+        'averaged_perceptron_tagger'
+    ]
+    for resource in resources:
+        try:
+            nltk.data.find(f'tokenizers/{resource}')
+        except LookupError:
+            nltk.download(resource, quiet=True)
+
+# Call initialization on module import
+initialize_nltk()
 
 def clean_text(text: str) -> str:
     """Clean text by removing URLs, special characters, and extra whitespace.
