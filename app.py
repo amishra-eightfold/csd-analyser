@@ -637,6 +637,7 @@ def fetch_data():
             AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
             AND Case_Type__c = 'Support Request'
             AND Is_Case_L1_Triaged__c = false
+            AND RecordTypeId = '0123m000000U8CCAA0'
         """
         
         debug("Executing SOQL query", {'query': query}, category="api")
@@ -1905,7 +1906,10 @@ def display_pattern_evolution(df: pd.DataFrame) -> None:
             st.warning("No closed cases found for pattern analysis.")
             return
             
-        # Further filter out unspecified root causes
+        # Create a copy of df_closed for unspecified analysis
+        df_with_unspecified = df_closed.copy()
+            
+        # Further filter out unspecified root causes for main analysis
         df_closed = df_closed[~df_closed['Root Cause'].isin(['Not Specified', 'Not specified', 'not specified', None, np.nan])]
         
         if len(df_closed) == 0:
@@ -1997,6 +2001,10 @@ def display_pattern_evolution(df: pd.DataFrame) -> None:
             unspecified_count = total_closed - total_tickets
             if unspecified_count > 0:
                 st.write("#### Unspecified Root Causes Analysis")
+                
+                # Prepare data for unspecified analysis
+                df_with_unspecified['Created Date'] = pd.to_datetime(df_with_unspecified['Created Date'])
+                df_with_unspecified['Month'] = df_with_unspecified['Created Date'].dt.to_period('M')
                 
                 # Filter for unspecified root causes
                 unspecified_df = df_with_unspecified[df_with_unspecified['Root Cause'].isin(['Not Specified', 'Not specified', 'not specified', None, np.nan])]
