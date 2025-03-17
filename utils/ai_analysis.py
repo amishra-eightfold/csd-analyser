@@ -70,6 +70,30 @@ class AIAnalyzer:
         self.pattern_analyzer = PatternAnalyzer()
         self.logger = logging.getLogger(__name__)
         
+        # Initialize pattern tracking
+        self.detected_patterns = []
+        self.pattern_confidences = defaultdict(float)
+        self.pattern_frequencies = defaultdict(int)
+        
+    def _track_pattern(self, pattern: str, confidence: float = 0.0):
+        """Track a detected pattern with its confidence score."""
+        if pattern not in self.detected_patterns:
+            self.detected_patterns.append(pattern)
+        self.pattern_confidences[pattern] = max(self.pattern_confidences[pattern], confidence)
+        self.pattern_frequencies[pattern] += 1
+        
+    def _get_pattern_summary(self) -> Dict[str, Any]:
+        """Get summary of tracked patterns with confidence levels."""
+        return {
+            'patterns': self.detected_patterns,
+            'confidences': dict(self.pattern_confidences),
+            'frequencies': dict(self.pattern_frequencies),
+            'total_patterns': len(self.detected_patterns),
+            'high_confidence': [p for p, c in self.pattern_confidences.items() if c >= 0.8],
+            'medium_confidence': [p for p, c in self.pattern_confidences.items() if 0.5 <= c < 0.8],
+            'low_confidence': [p for p, c in self.pattern_confidences.items() if c < 0.5]
+        }
+
     def _prepare_chunk_prompt(self, chunk_data: List[Dict], context: Dict[str, Any]) -> str:
         """Prepare a detailed prompt for chunk analysis."""
         prompt = f"""Analyze these support tickets in the context of previous findings and detected patterns.
@@ -367,20 +391,42 @@ Provide a detailed analysis in this JSON format:
     def analyze_tickets(self, df: pd.DataFrame, chunk_size: int = 5) -> Dict[str, Any]:
         """Perform enhanced analysis of support tickets with context preservation and pattern recognition."""
         try:
+            # Reset pattern tracking for new analysis
+            self.detected_patterns = []
+            self.pattern_confidences.clear()
+            self.pattern_frequencies.clear()
+            
             # Pre-process data with stopword removal and PII handling
             analysis_df = prepare_text_for_ai(df.copy(), remove_stops=True)
             total_tickets = len(analysis_df)
-            max_tickets = min(50, total_tickets)  # Increased from 30 to 50 with improved token efficiency
             
-            # Run pattern detection
+            # Increase max tickets based on available tokens
+            available_token_capacity = self.token_manager.available_tokens * 0.8  # Use 80% of available tokens
+            avg_tokens_per_ticket = 500  # Conservative estimate
+            max_possible_tickets = int(available_token_capacity / avg_tokens_per_ticket)
+            max_tickets = min(max_possible_tickets, total_tickets)
+            
+            self.logger.info(f"Processing up to {max_tickets} tickets out of {total_tickets} total")
+            
+            # Run initial pattern detection on full dataset
             patterns = self.pattern_detector.detect_patterns(analysis_df)
             pattern_insights = self.pattern_analyzer.analyze_patterns(patterns)
+            
+            # Track detected patterns
+            if 'issue_clusters' in patterns:
+                for cluster in patterns['issue_clusters']:
+                    pattern_name = cluster.get('pattern', '')
+                    confidence = cluster.get('confidence', 0.0)
+                    if pattern_name:
+                        self._track_pattern(pattern_name, confidence)
             
             # Add pattern insights to context
             for insight_type, insights in pattern_insights.items():
                 if isinstance(insights, list):
                     for insight in insights:
                         self.context_manager.add_pattern_insight(insight)
+                        if 'pattern' in insight:
+                            self._track_pattern(insight['pattern'], insight.get('confidence', 0.5))
             
             # Calculate summary statistics
             summary_stats = {
@@ -391,18 +437,24 @@ Provide a detailed analysis in this JSON format:
                 },
                 'priority_distribution': analysis_df['Priority'].value_counts().to_dict(),
                 'product_areas': analysis_df['Product Area'].value_counts().to_dict(),
-                'avg_resolution_time': analysis_df['Resolution Time (Days)'].mean()
+                'avg_resolution_time': analysis_df['Resolution Time (Days)'].mean(),
+                'pattern_summary': self._get_pattern_summary()
             }
             
             # Process in chunks using TokenManager
             all_insights = []
             processed_tickets = 0
             
-            # Prepare tickets data
+            # Prepare tickets data with enhanced preprocessing
             tickets_data = []
             for _, case in analysis_df.iloc[:max_tickets].iterrows():
                 case_dict = {}
                 for col, val in case.items():
+                    # Apply additional preprocessing for text fields
+                    if col in ['Subject', 'Description', 'Comments']:
+                        val = clean_text(str(val))  # Clean text
+                        if len(val.split()) > 5:  # Only remove stopwords from longer text
+                            val = remove_stopwords(val)
                     case_dict[col] = convert_value_for_json(val)
                 tickets_data.append(case_dict)
             
@@ -419,27 +471,29 @@ Provide a detailed analysis in this JSON format:
             high_priority_tickets = [t for t in sorted_tickets if t.get('_importance_score', 0) >= 75]
             remaining_tickets = [t for t in sorted_tickets if t.get('_importance_score', 0) < 75]
             
-            # Create high-priority chunk(s)
+            # Process high-priority tickets first
             if high_priority_tickets:
                 for i in range(0, len(high_priority_tickets), chunk_size):
                     chunk_tickets = high_priority_tickets[i:i+chunk_size]
                     chunk_context = {
                         'chunk_position': len(chunks) + 1,
                         'chunk_type': 'high_priority',
-                        'importance_range': f"{min([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}-{max([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}"
+                        'importance_range': f"{min([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}-{max([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}",
+                        'pattern_context': self._get_pattern_summary()
                     }
                     chunks.append({
                         'items': chunk_tickets,
                         'context': chunk_context
                     })
             
-            # Add remaining tickets in chunks
+            # Process remaining tickets
             for i in range(0, len(remaining_tickets), chunk_size):
                 chunk_tickets = remaining_tickets[i:i+chunk_size]
                 chunk_context = {
                     'chunk_position': len(chunks) + 1,
                     'chunk_type': 'standard',
-                    'importance_range': f"{min([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}-{max([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}"
+                    'importance_range': f"{min([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}-{max([t.get('_importance_score', 0) for t in chunk_tickets]):.1f}",
+                    'pattern_context': self._get_pattern_summary()
                 }
                 chunks.append({
                     'items': chunk_tickets,
@@ -452,7 +506,7 @@ Provide a detailed analysis in this JSON format:
             
             self.logger.info(f"Created {len(chunks)} chunks for analysis from {len(sorted_tickets)} tickets")
             
-            # Process each chunk
+            # Process each chunk with enhanced pattern detection
             for chunk in chunks:
                 try:
                     # Remove importance score before analysis
@@ -460,11 +514,25 @@ Provide a detailed analysis in this JSON format:
                         if '_importance_score' in ticket:
                             del ticket['_importance_score']
                     
+                    # Add current pattern context
+                    chunk['context']['current_patterns'] = self._get_pattern_summary()
+                    
+                    # Analyze chunk
                     chunk_insights = self._analyze_chunk(chunk['items'], chunk['context'])
+                    
+                    # Extract and track new patterns from chunk insights
+                    if 'patterns' in chunk_insights:
+                        for pattern in chunk_insights['patterns']:
+                            pattern_name = pattern.get('pattern', '')
+                            confidence = float(pattern.get('confidence', '0.5').split()[0])  # Handle "0.8 High" format
+                            if pattern_name:
+                                self._track_pattern(pattern_name, confidence)
+                    
                     all_insights.append(chunk_insights)
                     processed_tickets += len(chunk['items'])
                     
                     self.logger.info(f"Processed chunk {chunk['context']['chunk_position']} of {chunk['context']['total_chunks']}")
+                    
                 except Exception as chunk_error:
                     self.logger.error(f"Error processing chunk: {str(chunk_error)}")
                     continue
@@ -477,30 +545,12 @@ Provide a detailed analysis in this JSON format:
                 'summary_stats': summary_stats,
                 'pattern_analysis': pattern_insights,
                 'processed_chunks': len(all_insights),
-                'processed_tickets': processed_tickets
+                'processed_tickets': processed_tickets,
+                'pattern_summary': self._get_pattern_summary()
             }
             
-            # Optimize final prompt context
-            max_context_tokens = int(self.token_manager.chunk_tokens * 0.4)  # Reserve 40% for final context
-            optimized_context = self.token_manager.optimize_context(final_context, max_context_tokens)
-            
             # Generate final analysis
-            final_prompt = self._prepare_final_prompt(all_insights, optimized_context, pattern_insights)
-            
-            # Check final prompt tokens
-            if self.token_manager.count_tokens(final_prompt) > self.token_manager.available_tokens:
-                self.logger.warning("Final prompt too long, optimizing...")
-                # Keep high-importance insights including first and last chunks
-                if len(all_insights) > 3:
-                    middle_insights = all_insights[1:-1]
-                    # Keep only highest impact middle insights
-                    selected_middle = sorted(middle_insights, 
-                                          key=lambda x: len(x.get('patterns', [])) + len(x.get('recommendations', [])), 
-                                          reverse=True)[:1]
-                    optimized_insights = [all_insights[0]] + selected_middle + [all_insights[-1]]
-                    all_insights = optimized_insights
-                
-                final_prompt = self._prepare_final_prompt(all_insights, optimized_context, pattern_insights)
+            final_prompt = self._prepare_final_prompt(all_insights, final_context, pattern_insights)
             
             final_response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -521,15 +571,16 @@ Provide a detailed analysis in this JSON format:
                 'tickets_analyzed': processed_tickets,
                 'total_tickets': total_tickets,
                 'chunks_processed': len(all_insights),
-                'patterns_detected': len(patterns.get('issue_clusters', {})),
-                'pattern_insights_generated': pattern_insights.get('summary', {}).get('total_insights', 0)
+                'patterns_detected': len(self.detected_patterns),
+                'pattern_insights_generated': len([p for p in self.detected_patterns if self.pattern_confidences[p] >= 0.5])
             }
             
             # Log pattern analysis details
             self.logger.info("Pattern analysis details", {
-                'patterns_detected': len(patterns.get('issue_clusters', {})),
-                'insights_generated': pattern_insights.get('summary', {}).get('total_insights', 0),
-                'conversion_rate': f"{pattern_insights.get('summary', {}).get('total_insights', 0)/len(patterns.get('issue_clusters', {})) if len(patterns.get('issue_clusters', {})) > 0 else 0:.2f}"
+                'patterns_detected': len(self.detected_patterns),
+                'high_confidence_patterns': len([p for p in self.detected_patterns if self.pattern_confidences[p] >= 0.8]),
+                'medium_confidence_patterns': len([p for p in self.detected_patterns if 0.5 <= self.pattern_confidences[p] < 0.8]),
+                'low_confidence_patterns': len([p for p in self.detected_patterns if self.pattern_confidences[p] < 0.5])
             })
             
             return final_insights
