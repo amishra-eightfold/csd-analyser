@@ -630,12 +630,12 @@ def fetch_data():
                 Id, CaseNumber, Subject, Description,
                 Account.Account_Name__c, CreatedDate, ClosedDate, Status, Internal_Priority__c,
                 Product_Area__c, Product_Feature__c, RCA__c,
-                First_Response_Time__c, CSAT__c, IsEscalated, Case_Type__c
+                First_Response_Time__c, CSAT__c, IsEscalated, Case_Type__c, Type
             FROM Case
             WHERE Account.Account_Name__c IN ({customer_list})
             AND CreatedDate >= {start_date.strftime('%Y-%m-%d')}T00:00:00Z
             AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
-            AND Case_Type__c = 'Support Request'
+
             AND Is_Case_L1_Triaged__c = false
             AND RecordTypeId = '0123m000000U8CCAA0'
         """
@@ -649,26 +649,7 @@ def fetch_data():
             return pd.DataFrame()
         
         debug(f"Retrieved {len(records)} records from Salesforce", category="api")
-        # Dump raw records to CSV for debugging/backup
-        debug("Dumping raw records to CSV", {'record_count': len(records)}, category="data")
-        try:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f'data/raw_records_{timestamp}.csv'
-            os.makedirs('data', exist_ok=True)
-            
-            # Convert records to DataFrame for easy CSV export
-            temp_df = pd.DataFrame(records)
-            temp_df.to_csv(filename, index=False)
-            debug(f"Successfully saved records to {filename}", category="data")
-        except Exception as e:
-            debug(f"Failed to save records to CSV: {str(e)}", 
-                  {'traceback': traceback.format_exc()}, 
-                  category="error")
-        # Add data validation check
-        st.write(f"Found {len(records)} tickets in total")
-        if len(records) > 0:
-            st.write("Sample ticket fields:", list(records[0].keys()))
-            
+        
         df = pd.DataFrame(records)
         
         # Extract Account Name from nested structure
@@ -1142,7 +1123,7 @@ def display_visualizations(df, customers):
         
         monthly_trends['Month'] = pd.to_datetime(monthly_trends['Month'])
         monthly_trends = monthly_trends.sort_values('Month')
-        monthly_trends['Month'] = monthly_trends['Month'].dt.strftime('%Y-%m')
+        monthly_trends['Month'] = monthly_trends['Month'].dt.strftime('%b')  # Changed from '%Y-%m' to '%b'
         
         debug("Monthly trends data prepared", {
             'months_available': len(monthly_trends),
@@ -1180,28 +1161,31 @@ def display_visualizations(df, customers):
         st.subheader("Resolution Time Analysis")
         debug("Starting resolution time analysis")
         
-        df['resolution_time_days'] = (df['Closed Date'] - df['Created Date']).dt.total_seconds() / (24 * 3600)
-        df['Month'] = df['Created Date'].dt.strftime('%Y-%m')
+        # Filter out Service Requests
+        analysis_df = df[df['Case_Type__c'] != 'Service Request'].copy()
+        
+        analysis_df['resolution_time_days'] = (analysis_df['Closed Date'] - analysis_df['Created Date']).dt.total_seconds() / (24 * 3600)
+        analysis_df['Month'] = analysis_df['Created Date'].dt.strftime('%Y-%m')
         
         # Debug logging for priorities
         debug("Priority data for resolution time analysis", {
-            'all_priorities': df['Highest_Priority'].value_counts().to_dict(),
-            'internal_priorities': df['Priority'].value_counts().to_dict()
+            'all_priorities': analysis_df['Highest_Priority'].value_counts().to_dict(),
+            'internal_priorities': analysis_df['Priority'].value_counts().to_dict()
         })
         
         # Filter out tickets with unspecified priority and invalid resolution times
-        valid_priority_df = df[
-            (df['resolution_time_days'].notna()) & 
-            (df['resolution_time_days'] > 0) &  # Ensure positive resolution time
-            (df['Highest_Priority'].notna()) & 
-            (~df['Highest_Priority'].isin(['Unspecified', '', ' ', None]))
+        valid_priority_df = analysis_df[
+            (analysis_df['resolution_time_days'].notna()) & 
+            (analysis_df['resolution_time_days'] > 0) &  # Ensure positive resolution time
+            (analysis_df['Highest_Priority'].notna()) & 
+            (~analysis_df['Highest_Priority'].isin(['Unspecified', '', ' ', None]))
         ]
         
         # Debug logging for valid priorities
         debug("Valid priority data after filtering", {
             'valid_priorities': valid_priority_df['Highest_Priority'].value_counts().to_dict(),
             'valid_records': len(valid_priority_df),
-            'total_records': len(df)
+            'total_records': len(analysis_df)
         })
         
         if len(valid_priority_df) > 0:
@@ -1252,11 +1236,11 @@ def display_visualizations(df, customers):
             
             # Display data quality metrics
             st.write("### Data Quality Metrics")
-            total_tickets = len(df)
-            missing_resolution = df['resolution_time_days'].isna().sum()
-            invalid_resolution = (df['resolution_time_days'] <= 0).sum() if 'resolution_time_days' in df.columns else 0
-            missing_priority = df['Highest_Priority'].isna().sum()
-            invalid_priority = df['Highest_Priority'].isin(['Unspecified', '', ' ']).sum()
+            total_tickets = len(analysis_df)
+            missing_resolution = analysis_df['resolution_time_days'].isna().sum()
+            invalid_resolution = (analysis_df['resolution_time_days'] <= 0).sum() if 'resolution_time_days' in analysis_df.columns else 0
+            missing_priority = analysis_df['Highest_Priority'].isna().sum()
+            invalid_priority = analysis_df['Highest_Priority'].isin(['Unspecified', '', ' ']).sum()
             
             quality_metrics = {
                 'total_tickets': total_tickets,
@@ -1286,15 +1270,16 @@ def display_visualizations(df, customers):
         debug("Starting first response time analysis")
         
         try:
-            # Calculate first response time in hours
-            df['First Response Hours'] = (df['First Response Time'] - df['Created Date']).dt.total_seconds() / 3600
+            # Filter out Service Requests and calculate first response time in hours
+            response_df = analysis_df.copy()
+            response_df['First Response Hours'] = (response_df['First Response Time'] - response_df['Created Date']).dt.total_seconds() / 3600
             
             # Filter valid response times
-            valid_response_df = df[
-                (df['First Response Hours'].notna()) & 
-                (df['First Response Hours'] > 0) &
-                (df['Highest_Priority'].notna()) & 
-                (~df['Highest_Priority'].isin(['Unspecified', '', ' ', None]))
+            valid_response_df = response_df[
+                (response_df['First Response Hours'].notna()) & 
+                (response_df['First Response Hours'] > 0) &
+                (response_df['Highest_Priority'].notna()) & 
+                (~response_df['Highest_Priority'].isin(['Unspecified', '', ' ', None]))
             ]
             
             if len(valid_response_df) > 0:
@@ -1337,9 +1322,9 @@ def display_visualizations(df, customers):
                 
                 # Display data quality metrics
                 st.write("### Data Quality Metrics")
-                total_tickets = len(df)
-                missing_response = df['First Response Hours'].isna().sum()
-                invalid_response = (df['First Response Hours'] <= 0).sum() if 'First Response Hours' in df.columns else 0
+                total_tickets = len(response_df)
+                missing_response = response_df['First Response Hours'].isna().sum()
+                invalid_response = (response_df['First Response Hours'] <= 0).sum() if 'First Response Hours' in response_df.columns else 0
                 
                 quality_metrics = {
                     'total_tickets': total_tickets,
@@ -1433,6 +1418,9 @@ def display_visualizations(df, customers):
                 fill_value=0
             )
             
+            # Truncate column names (Product Features)
+            resolution_pivot.columns = [truncate_string(col, 20) for col in resolution_pivot.columns]
+            
             fig_resolution_heatmap = go.Figure(data=go.Heatmap(
                 z=resolution_pivot.values,
                 x=resolution_pivot.columns,
@@ -1462,6 +1450,9 @@ def display_visualizations(df, customers):
                 aggfunc='count',
                 fill_value=0
             )
+            
+            # Truncate column names (Product Features)
+            volume_pivot.columns = [truncate_string(col, 20) for col in volume_pivot.columns]
             
             fig_volume_heatmap = go.Figure(data=go.Heatmap(
                 z=volume_pivot.values,
@@ -1754,32 +1745,39 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             st.write("DataFrame info:", df.info())
 
 def export_analysis():
-    """Export analysis data in various formats."""
+    """Export analysis data to selected format."""
     try:
-        # Get current data
-        df = fetch_data()
+        # Fetch data
+        result = fetch_data()
+        
+        # Check if result is a tuple (df, history_df) or just df
+        if isinstance(result, tuple):
+            df, _ = result  # Unpack tuple but only use main df
+        else:
+            df = result  # Use result directly if it's just the df
+            
         if df is None or df.empty:
             st.error("No data available to export")
             return
             
-        # Create export format selector
+        # Create format selector
         format_options = ["Excel", "CSV", "PowerPoint"]
-        export_format = st.sidebar.selectbox(
-            "Select Export Format",
-            options=format_options
-        )
+        selected_format = st.selectbox("Select export format:", format_options)
         
-        # Export data in selected format
-        export_data(df, export_format, st.session_state.selected_customers)
+        # Get selected customers for sheet creation
+        customers = df['Account_Name'].unique().tolist()
+        
+        # Export data
+        export_data(df, selected_format, customers)
         
     except Exception as e:
-        st.error(f"Error during export: {str(e)}")
+        st.error(f"Error exporting data: {str(e)}")
         if st.session_state.debug_mode:
             st.exception(e)
 
 def export_data(df: pd.DataFrame, format: str, customers: List[str]) -> None:
     """
-    Export data to the selected format using BaseExporter.
+    Export data to the selected format.
     
     Args:
         df (pd.DataFrame): DataFrame to export
@@ -1787,97 +1785,88 @@ def export_data(df: pd.DataFrame, format: str, customers: List[str]) -> None:
         customers (List[str]): List of selected customers
     """
     try:
-        # Initialize exporter
-        exporter = BaseExporter(df)
+        # Create a copy of the dataframe to avoid modifying the original
+        export_df = df.copy()
         
-        # Generate timestamp for filename
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        # Convert timezone-aware datetime columns to timezone-naive
+        datetime_columns = export_df.select_dtypes(include=['datetime64[ns, UTC]']).columns
+        for col in datetime_columns:
+            export_df[col] = export_df[col].dt.tz_localize(None)
         
         if format == "Excel":
-            # Prepare sheets for Excel export
-            sheets = {}
-            
-            # Summary sheet data
-            summary_data = {
-                'Customer': [],
-                'Total Tickets': [],
-                'Avg Response Time (hrs)': [],
-                'Avg Resolution Time (days)': [],
-                'Avg CSAT': []
-            }
-            
-            for customer in customers:
-                customer_df = df[df['Account_Name'] == customer]
-                summary_data['Customer'].append(customer)
-                summary_data['Total Tickets'].append(len(customer_df))
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # Summary sheet
+                summary_data = {
+                    'Customer': [],
+                    'Total Tickets': [],
+                    'Avg Response Time (hrs)': [],
+                    'Avg Resolution Time (days)': [],
+                    'Avg CSAT': []
+                }
                 
-                # Response Time
-                if 'First_Response_Time__c' in customer_df.columns:
-                    resp_time = (customer_df['First_Response_Time__c'] - customer_df['CreatedDate']).dt.total_seconds().mean() / 3600
-                    summary_data['Avg Response Time (hrs)'].append(round(resp_time, 2) if pd.notna(resp_time) else 'N/A')
-                else:
-                    summary_data['Avg Response Time (hrs)'].append('N/A')
+                for customer in customers:
+                    customer_df = export_df[export_df['Account_Name'] == customer]
+                    summary_data['Customer'].append(customer)
+                    summary_data['Total Tickets'].append(len(customer_df))
+                    
+                    # Response Time
+                    if 'First_Response_Time__c' in customer_df.columns:
+                        resp_time = (customer_df['First_Response_Time__c'] - customer_df['CreatedDate']).dt.total_seconds().mean() / 3600
+                        summary_data['Avg Response Time (hrs)'].append(round(resp_time, 2) if pd.notna(resp_time) else 'N/A')
+                    else:
+                        summary_data['Avg Response Time (hrs)'].append('N/A')
+                    
+                    # Resolution Time
+                    if 'ClosedDate' in customer_df.columns:
+                        res_time = (customer_df['ClosedDate'] - customer_df['CreatedDate']).dt.total_seconds().mean() / (24 * 3600)
+                        summary_data['Avg Resolution Time (days)'].append(round(res_time, 2) if pd.notna(res_time) else 'N/A')
+                    else:
+                        summary_data['Avg Resolution Time (days)'].append('N/A')
+                    
+                    # CSAT
+                    if 'CSAT__c' in customer_df.columns:
+                        avg_csat = customer_df['CSAT__c'].mean()
+                        summary_data['Avg CSAT'].append(round(avg_csat, 2) if pd.notna(avg_csat) else 'N/A')
+                    else:
+                        summary_data['Avg CSAT'].append('N/A')
                 
-                # Resolution Time
-                if 'ClosedDate' in customer_df.columns:
-                    res_time = (customer_df['ClosedDate'] - customer_df['CreatedDate']).dt.total_seconds().mean() / (24 * 3600)
-                    summary_data['Avg Resolution Time (days)'].append(round(res_time, 2) if pd.notna(res_time) else 'N/A')
-                else:
-                    summary_data['Avg Resolution Time (days)'].append('N/A')
+                # Write summary sheet
+                pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
                 
-                # CSAT
-                if 'CSAT__c' in customer_df.columns:
-                    avg_csat = customer_df['CSAT__c'].mean()
-                    summary_data['Avg CSAT'].append(round(avg_csat, 2) if pd.notna(avg_csat) else 'N/A')
-                else:
-                    summary_data['Avg CSAT'].append('N/A')
-                
-                # Add customer-specific sheet
-                sheets[customer[:31]] = customer_df  # Excel sheet names limited to 31 chars
+                # Write detailed data sheets
+                for customer in customers:
+                    customer_df = export_df[export_df['Account_Name'] == customer]
+                    sheet_name = customer[:31]  # Excel sheet names limited to 31 chars
+                    customer_df.to_excel(writer, sheet_name=sheet_name, index=False)
             
-            # Add summary sheet
-            sheets['Summary'] = summary_data
-            
-            # Export to Excel
-            output = exporter.to_excel(
-                filename=f"support_analysis_{timestamp}.xlsx",
-                sheets=sheets,
-                include_summary=True
-            )
-            
-            # Offer download
+            # Reset buffer position and offer download
+            output.seek(0)
             st.download_button(
                 label="Download Excel Report",
                 data=output.getvalue(),
-                file_name=f"support_analysis_{timestamp}.xlsx",
+                file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             
         elif format == "CSV":
-            # Export to CSV
-            output = exporter.to_csv(filename=f"support_analysis_{timestamp}.csv")
-            
-            # Offer download
+            output = BytesIO()
+            export_df.to_csv(output, index=False)
+            output.seek(0)  # Reset buffer position
             st.download_button(
                 label="Download CSV Report",
                 data=output.getvalue(),
-                file_name=f"support_analysis_{timestamp}.csv",
+                file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv"
             )
             
         elif format == "PowerPoint":
-            # Export to PowerPoint with custom title
-            output = exporter.to_powerpoint(
-                filename=f"support_analysis_{timestamp}.pptx",
-                title="Support Ticket Analysis",
-                include_charts=True
-            )
-            
-            # Offer download
+            pptx_data = generate_powerpoint(export_df, len(export_df['Account_Name'].unique()), 
+                                          export_df['CSAT__c'].mean(), export_df['IsEscalated'].mean() * 100)
             st.download_button(
-                label="Download PowerPoint Report",
-                data=output.getvalue(),
-                file_name=f"support_analysis_{timestamp}.pptx",
+                label="Download PowerPoint",
+                data=pptx_data,
+                file_name=f"support_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
             )
             

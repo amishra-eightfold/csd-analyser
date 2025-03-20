@@ -3,177 +3,167 @@
 import os
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 import streamlit as st
 import json
 from pathlib import Path
+import pandas as pd
 
 class DebugLogger:
-    """Centralized debug logging functionality."""
+    """Centralized debug logging with UI display capabilities."""
     
-    def __init__(self):
-        """Initialize debug logger."""
-        self.log_dir = Path("logs")
-        self.log_dir.mkdir(exist_ok=True)
+    def __init__(self, max_entries=1000):
+        self.log_entries = []
+        self.max_entries = max_entries
         
-        # Initialize log files
-        self.app_log_file = self.log_dir / "app_debug.log"
-        self.error_log_file = self.log_dir / "error_debug.log"
-        self.api_log_file = self.log_dir / "api_debug.log"
-        
-        # Configure logging
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        
-        # Set up file handlers
-        self.setup_file_handler(self.app_log_file, "app")
-        self.setup_file_handler(self.error_log_file, "error")
-        self.setup_file_handler(self.api_log_file, "api")
-        
-        # Initialize debug container in session state
-        if 'debug_container' not in st.session_state:
-            st.session_state.debug_container = []
+    def _sanitize_data(self, data):
+        """Sanitize data to ensure it's JSON serializable."""
+        if data is None:
+            return None
             
-    def setup_file_handler(self, log_file: Path, logger_name: str):
-        """Set up a file handler for a specific log file."""
-        handler = logging.FileHandler(log_file)
-        handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'
-        ))
-        logger = logging.getLogger(f"csd_analyzer.{logger_name}")
-        logger.addHandler(handler)
-        logger.setLevel(logging.DEBUG)
-        
-    def log(self, message: str, data: Any = None, category: str = "app"):
-        """
-        Log a debug message with optional data.
-        
-        Args:
-            message (str): Debug message
-            data (Any, optional): Additional data to log
-            category (str): Log category ("app", "error", or "api")
-        """
-        if not hasattr(st.session_state, 'debug_mode') or not st.session_state.debug_mode:
-            return
+        if isinstance(data, (str, int, float, bool)):
+            return data
             
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Format the debug message
-        if data is not None:
-            if isinstance(data, dict):
-                data_str = "\n  " + "\n  ".join([f"{k}: {v}" for k, v in data.items()])
-            else:
-                data_str = str(data)
-            log_message = f"[DEBUG] {timestamp} - {message}:{data_str}"
-        else:
-            log_message = f"[DEBUG] {timestamp} - {message}"
-        
-        # Get appropriate logger
-        logger = logging.getLogger(f"csd_analyzer.{category}")
-        
-        # Log to file
-        logger.debug(log_message)
-        
-        # Add to session state container
-        if not hasattr(st.session_state, 'debug_container'):
-            st.session_state.debug_container = []
-        
-        st.session_state.debug_container.append({
-            'timestamp': timestamp,
-            'category': category,
-            'message': message,
-            'data': data
-        })
-        
-        # Keep only last 1000 messages
-        if len(st.session_state.debug_container) > 1000:
-            st.session_state.debug_container = st.session_state.debug_container[-1000:]
+        if isinstance(data, (datetime, pd.Timestamp)):
+            return str(data)
             
-    def get_logs(self, category: Optional[str] = None) -> str:
-        """
-        Get logs as a formatted string.
-        
-        Args:
-            category (Optional[str]): Filter logs by category
+        if isinstance(data, pd.Series):
+            return data.to_dict()
             
-        Returns:
-            str: Formatted log content
-        """
-        logs = []
+        if isinstance(data, pd.DataFrame):
+            return {
+                'shape': data.shape,
+                'columns': list(data.columns),
+                'sample': data.head().to_dict() if not data.empty else {}
+            }
+            
+        if isinstance(data, (list, tuple)):
+            return [self._sanitize_data(item) for item in data]
+            
+        if isinstance(data, dict):
+            return {
+                str(k): self._sanitize_data(v)
+                for k, v in data.items()
+            }
+            
+        if isinstance(data, (pd.Period, pd.Interval)):
+            return str(data)
+            
+        if hasattr(data, '__dict__'):
+            return self._sanitize_data(data.__dict__)
+            
+        # For any other type, convert to string
+        try:
+            return str(data)
+        except:
+            return f"<non-serializable object of type {type(data).__name__}>"
+    
+    def log(self, message: str, data: Any = None, category: str = "info"):
+        """Add a log entry with optional data and category."""
+        try:
+            sanitized_data = self._sanitize_data(data)
+            
+            entry = {
+                'timestamp': datetime.now().isoformat(),
+                'message': str(message),
+                'data': sanitized_data,
+                'category': category
+            }
+            
+            self.log_entries.append(entry)
+            
+            # Trim log if it exceeds max entries
+            if len(self.log_entries) > self.max_entries:
+                self.log_entries = self.log_entries[-self.max_entries:]
+                
+        except Exception as e:
+            # Fallback logging if something goes wrong
+            fallback_entry = {
+                'timestamp': datetime.now().isoformat(),
+                'message': f"Error logging message: {str(message)}. Error: {str(e)}",
+                'data': None,
+                'category': 'error'
+            }
+            self.log_entries.append(fallback_entry)
+    
+    def get_logs(self, category: Optional[str] = None) -> List[Dict]:
+        """Get all logs, optionally filtered by category."""
         if category:
-            log_file = getattr(self, f"{category}_log_file")
-            if log_file.exists():
-                logs.append(f"=== {category.upper()} LOGS ===")
-                logs.append(log_file.read_text())
-        else:
-            for cat in ['app', 'error', 'api']:
-                log_file = getattr(self, f"{cat}_log_file")
-                if log_file.exists():
-                    logs.append(f"=== {cat.upper()} LOGS ===")
-                    logs.append(log_file.read_text())
-                    logs.append("\n")
-        
-        return "\n".join(logs)
-        
-    def clear_logs(self, category: Optional[str] = None):
-        """
-        Clear log files and debug container.
-        
-        Args:
-            category (Optional[str]): Clear specific category logs
-        """
-        if category:
-            log_file = getattr(self, f"{category}_log_file")
-            if log_file.exists():
-                log_file.write_text("")
-        else:
-            for cat in ['app', 'error', 'api']:
-                log_file = getattr(self, f"{cat}_log_file")
-                if log_file.exists():
-                    log_file.write_text("")
-        
-        st.session_state.debug_container = []
-        
+            return [entry for entry in self.log_entries if entry['category'] == category]
+        return self.log_entries
+    
+    def clear_logs(self):
+        """Clear all log entries."""
+        self.log_entries = []
+    
     def display_debug_ui(self):
-        """Display debug UI with log viewer and controls."""
-        if not st.session_state.debug_mode:
-            return
+        """Display debug information in the Streamlit UI."""
+        try:
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("### Debug Logs")
             
-        st.sidebar.markdown("---")
-        st.sidebar.header("Debug Controls")
-        
-        # Log category filter
-        category = st.sidebar.selectbox(
-            "Log Category",
-            ["All", "App", "Error", "API"],
-            key="debug_category"
-        )
-        
-        # Clear logs button
-        if st.sidebar.button("Clear Logs"):
-            self.clear_logs(category.lower() if category != "All" else None)
-            st.success(f"Cleared {category} logs")
-        
-        # Download logs button
-        log_content = self.get_logs(category.lower() if category != "All" else None)
-        st.sidebar.download_button(
-            "Download Logs",
-            log_content,
-            file_name=f"debug_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-            mime="text/plain"
-        )
-        
-        # Display logs in main area
-        with st.expander("Debug Log", expanded=True):
-            if st.session_state.debug_container:
-                for entry in st.session_state.debug_container:
-                    if category == "All" or category.lower() == entry['category']:
-                        st.code(
-                            f"[{entry['timestamp']}] ({entry['category'].upper()}) {entry['message']}" +
-                            (f"\n{json.dumps(entry['data'], indent=2)}" if entry['data'] else ""),
-                            language="text"
-                        )
-            else:
-                st.info("No debug messages yet.") 
+            # Add log filtering options
+            categories = list(set(entry['category'] for entry in self.log_entries))
+            selected_category = st.sidebar.selectbox(
+                "Filter by category",
+                ["All"] + categories
+            )
+            
+            # Add search box
+            search_term = st.sidebar.text_input("Search logs", "").lower()
+            
+            # Filter logs
+            filtered_logs = self.log_entries
+            if selected_category != "All":
+                filtered_logs = [
+                    entry for entry in filtered_logs 
+                    if entry['category'] == selected_category
+                ]
+            
+            if search_term:
+                filtered_logs = [
+                    entry for entry in filtered_logs
+                    if search_term in entry['message'].lower() or
+                    (entry['data'] and search_term in str(entry['data']).lower())
+                ]
+            
+            # Display log count
+            st.sidebar.markdown(f"Showing {len(filtered_logs)} of {len(self.log_entries)} logs")
+            
+            # Add clear logs button
+            if st.sidebar.button("Clear Logs"):
+                self.clear_logs()
+                st.sidebar.success("Logs cleared!")
+                return
+            
+            # Display logs
+            for entry in reversed(filtered_logs):
+                try:
+                    # Create a unique key for each expander
+                    expander_key = f"{entry['timestamp']}_{entry['category']}"
+                    
+                    with st.sidebar.expander(
+                        f"[{entry['category'].upper()}] {entry['message'][:50]}...",
+                        key=expander_key
+                    ):
+                        st.markdown(f"**Time:** {entry['timestamp']}")
+                        st.markdown(f"**Category:** {entry['category']}")
+                        st.markdown("**Message:**")
+                        st.markdown(entry['message'])
+                        
+                        if entry['data']:
+                            st.markdown("**Data:**")
+                            try:
+                                # Try to display as JSON
+                                st.code(json.dumps(entry['data'], indent=2), language='json')
+                            except:
+                                # Fallback to string representation
+                                st.code(str(entry['data']))
+                                
+                except Exception as e:
+                    st.sidebar.error(f"Error displaying log entry: {str(e)}")
+                    
+        except Exception as e:
+            st.sidebar.error(f"Error in debug UI: {str(e)}")
+            if hasattr(st, 'session_state') and st.session_state.get('debug_mode'):
+                st.sidebar.exception(e) 
