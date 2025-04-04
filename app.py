@@ -19,6 +19,10 @@ import re
 import os
 import html
 from auth import handle_auth, logout, get_current_user
+from project_api_key import setup_project_api_key, direct_chat_completion  # Import our project API key setup
+
+# Set up project API key environment before anything else
+setup_project_api_key()
 
 # Set Seaborn and Matplotlib style
 sns.set_theme(style="whitegrid")
@@ -930,9 +934,9 @@ def generate_ai_insights(data):
         
         debug("OpenAI API key found")
         
-        # Set up OpenAI client
+        # Set up OpenAI client - with project-scoped key setup already done
         try:
-            client = openai.OpenAI(api_key=openai_api_key)
+            client = openai.OpenAI()  # No need to pass api_key, it's in the environment
             debug("OpenAI client initialized successfully")
         except Exception as e:
             st.error(f"Error initializing OpenAI client: {str(e)}")
@@ -964,8 +968,9 @@ def generate_ai_insights(data):
         
         debug("Data prepared for OpenAI", f"Summary contains {len(case_summary)} keys, {len(case_samples)} samples")
         
-        # Prepare the prompt
-        prompt = f"""
+        # Prepare messages for API call
+        system_message = "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights. Your response must be valid JSON."
+        user_prompt = f"""
         Analyze the following support ticket data and provide insights:
         
         Summary Statistics:
@@ -998,6 +1003,11 @@ def generate_ai_insights(data):
         Just return the raw JSON object.
         """
         
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_prompt}
+        ]
+        
         # Call OpenAI API
         try:
             debug("Calling OpenAI API")
@@ -1006,17 +1016,39 @@ def generate_ai_insights(data):
             # Add a clear message that API call is in progress
             st.info("🧠 Calling OpenAI API to analyze ticket data... This may take a moment.")
             
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are an expert support ticket analyst. Analyze the provided data and extract meaningful insights. Your response must be valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.5,
-                max_tokens=2000
-                # Removed response_format parameter which is not supported by the model
-            )
-            debug("OpenAI API call successful")
+            # First try the standard client
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4",
+                    messages=messages,
+                    temperature=0.5,
+                    max_tokens=2000
+                )
+                
+                # Extract the content from the response
+                ai_response = response.choices[0].message.content
+                debug("OpenAI API call successful with standard client")
+            except Exception as e:
+                debug(f"Standard OpenAI client failed: {str(e)}. Trying direct API call...")
+                
+                # If the standard client fails, try the direct API call
+                try:
+                    direct_response = direct_chat_completion(
+                        model="gpt-4",
+                        messages=messages,
+                        temperature=0.5,
+                        max_tokens=2000
+                    )
+                    
+                    # Extract the content from the direct response
+                    ai_response = direct_response['choices'][0]['message']['content']
+                    debug("OpenAI API call successful with direct API call")
+                except Exception as direct_error:
+                    st.error(f"Error calling OpenAI API (both methods failed): {str(e)}\nDirect API error: {str(direct_error)}")
+                    debug("OpenAI API call error (both methods)", f"Standard: {str(e)}, Direct: {str(direct_error)}")
+                    st.session_state.ai_analysis_in_progress = False
+                    return None
+            
             st.session_state.ai_analysis_in_progress = False
         except Exception as e:
             st.error(f"Error calling OpenAI API: {str(e)}")
@@ -1024,8 +1056,8 @@ def generate_ai_insights(data):
             st.session_state.ai_analysis_in_progress = False
             return None
         
-        # Extract and parse the response
-        ai_response = response.choices[0].message.content
+        # Save the raw response to an HTML file and process it
+        # ... rest of the function handling the response ...
         debug("OpenAI response received", ai_response[:100] + "..." if len(ai_response) > 100 else ai_response)
         
         # Save the raw response to an HTML file
