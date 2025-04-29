@@ -22,6 +22,15 @@ class SalesforceClient:
         """Check if connected to Salesforce."""
         return self._connected and self._client is not None
     
+    def authenticate(self) -> bool:
+        """
+        Authenticate with Salesforce.
+        
+        Returns:
+            bool: True if authentication successful, False otherwise
+        """
+        return self.connect()
+    
     def connect(self) -> bool:
         """
         Establish connection to Salesforce.
@@ -115,6 +124,10 @@ class SalesforceClient:
                 WHERE Account.Account_Name__c IN ({customer_list})
                 AND CreatedDate >= {start_date.strftime('%Y-%m-%d')}T00:00:00Z
                 AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
+                AND IsCaseL1Triaged=false
+                AND RecordTypeId= '0123m000000U8CCAA0'
+                AND Case_Type__c != 'Service Request'
+                AND Case_Owner__c != 'Support'
             """
             
             records = self.execute_query(query)

@@ -1,57 +1,103 @@
-# Customer Support Data Analyzer
+# CSD Analyser
 
-A Streamlit-based dashboard for analyzing customer support ticket data. This tool provides comprehensive visualizations and insights from support ticket data, including trends, patterns, and key metrics.
+A Streamlit application for analyzing customer support ticket data from Salesforce.
 
 ## Features
 
-- Interactive data filtering and visualization
-- Support for CSV and Excel input files
-- Comprehensive analysis including:
-  - Overview statistics
-  - Account analysis
-  - Monthly trends
-  - Priority and escalation analysis
-  - Product area analysis
-  - Root cause analysis
-- Group ID prediction for missing values
-- Product feature prediction
-- Export capabilities:
-  - Excel export of filtered data
-  - PowerPoint presentation with all visualizations
+- Interactive data visualization
+- Customer support ticket analysis
+- CSAT trend analysis
+- Response time analysis
+- Root cause analysis
+- Pattern evolution analysis
+- AI-powered insights
+- Export capabilities (Excel, PowerPoint, CSV)
+- PII protection
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/ldominic-eightfold/csd-analyser.git
+git clone https://github.com/yourusername/csd-analyser.git
 cd csd-analyser
 ```
 
 2. Create and activate a virtual environment:
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # On Windows, use: .venv\Scripts\activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
-3. Install required packages:
+3. Install the package:
 ```bash
-pip install -r requirements.txt
+pip install -e .
+```
+
+## Configuration
+
+1. Set up your environment variables:
+```bash
+export SALESFORCE_USERNAME="your_username"
+export SALESFORCE_PASSWORD="your_password"
+export SALESFORCE_SECURITY_TOKEN="your_token"
+export OPENAI_API_KEY="your_api_key"
+```
+
+2. Or create a `.env` file:
+```
+SALESFORCE_USERNAME=your_username
+SALESFORCE_PASSWORD=your_password
+SALESFORCE_SECURITY_TOKEN=your_token
+OPENAI_API_KEY=your_api_key
 ```
 
 ## Usage
 
-1. Run the Streamlit app:
+1. Start the Streamlit application:
 ```bash
 streamlit run app.py
 ```
 
-2. Open your web browser and navigate to http://localhost:8501
+2. Open your browser and navigate to `http://localhost:8501`
 
-3. Upload your data file (CSV or Excel) containing support ticket information
+3. Select customers and date range to analyze
 
-4. Use the sidebar filters to analyze specific data segments
+4. Use the various analysis features:
+   - Ticket volume analysis
+   - Response time analysis
+   - CSAT analysis
+   - Root cause analysis
+   - Pattern evolution
+   - AI insights
 
-5. Export your analysis as Excel or PowerPoint presentation
+5. Export your analysis in various formats:
+   - Excel reports
+   - PowerPoint presentations
+   - CSV data exports
+
+## Development
+
+1. Install development dependencies:
+```bash
+pip install -e ".[test]"
+```
+
+2. Run tests:
+```bash
+pytest
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run the tests
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Required Data Format
 

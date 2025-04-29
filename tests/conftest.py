@@ -8,60 +8,47 @@ from unittest.mock import MagicMock
 @pytest.fixture
 def sample_case_data():
     """Create sample case data for testing."""
-    return pd.DataFrame({
+    data = {
         'Id': ['case1', 'case2'],
         'CaseNumber': ['00001', '00002'],
         'Subject': ['Test Case 1', 'Test Case 2'],
-        'Description': ['Description 1', 'Description 2'],
-        'Account_Name': ['Customer1', 'Customer1'],
-        'Created Date': [
-            datetime.now() - timedelta(days=5),
-            datetime.now() - timedelta(days=3)
-        ],
-        'Closed Date': [
-            datetime.now() - timedelta(days=2),
-            None
-        ],
+        'Description': ['Test description 1', 'Test description 2'],
+        'Internal_Priority__c': ['P1', 'P2'],
+        'Product_Area__c': ['Backend', 'Frontend'],
+        'Product_Feature__c': ['API', 'UI'],
+        'RCA__c': ['Bug', 'Configuration'],
+        'CreatedDate': [pd.Timestamp('2025-03-28 09:01:24'), pd.Timestamp('2025-03-30 09:01:24')],
+        'ClosedDate': [pd.Timestamp('2025-03-29 09:01:24'), None],
         'Status': ['Closed', 'Open'],
-        'Priority': ['P1', 'P2'],
-        'Product Area': ['Area1', 'Area2'],
-        'Product Feature': ['Feature1', 'Feature2'],
-        'Root Cause': ['Bug', 'Not Specified'],
-        'First Response Time': [
-            datetime.now() - timedelta(days=4),
-            datetime.now() - timedelta(days=2)
-        ],
-        'CSAT': [4.0, None],
+        'First_Response_Time__c': [1.5, None],
+        'CSAT__c': [3.0, None],
         'IsEscalated': [True, False],
-        'Resolution Time (Days)': [3.0, None]
-    })
+        'Resolution_Time_Days__c': [3.0, None]
+    }
+    return pd.DataFrame(data)
 
 @pytest.fixture
 def sample_comment_data():
     """Create sample comment data for testing."""
-    return pd.DataFrame({
+    data = {
         'Id': ['comment1', 'comment2'],
         'ParentId': ['case1', 'case2'],
         'CommentBody': ['Test comment 1', 'Test comment 2'],
-        'CreatedDate': [
-            datetime.now() - timedelta(days=4),
-            datetime.now() - timedelta(days=2)
-        ]
-    })
+        'CreatedDate': [pd.Timestamp('2025-03-28 09:01:24'), pd.Timestamp('2025-03-30 09:01:24')]
+    }
+    return pd.DataFrame(data)
 
 @pytest.fixture
 def sample_email_data():
     """Create sample email data for testing."""
-    return pd.DataFrame({
+    data = {
         'Id': ['email1', 'email2'],
         'ParentId': ['case1', 'case2'],
         'Subject': ['RE: Test Case 1', 'RE: Test Case 2'],
         'TextBody': ['Email body 1', 'Email body 2'],
-        'CreatedDate': [
-            datetime.now() - timedelta(days=4),
-            datetime.now() - timedelta(days=2)
-        ]
-    })
+        'CreatedDate': [pd.Timestamp('2025-03-28 09:01:24'), pd.Timestamp('2025-03-30 09:01:24')]
+    }
+    return pd.DataFrame(data)
 
 @pytest.fixture
 def mock_openai_response():
@@ -133,3 +120,10 @@ def mock_salesforce():
     mock = MagicMock()
     mock.query.return_value = mock_salesforce_response
     return mock
+
+@pytest.fixture
+def mock_salesforce_auth(mocker):
+    """Mock Salesforce authentication."""
+    mock_auth = mocker.patch('app.core.salesforce.SalesforceClient.authenticate')
+    mock_auth.return_value = True
+    return mock_auth

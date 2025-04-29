@@ -124,20 +124,17 @@ def test_full_analysis_flow(
                 )
                 
                 # Test data fetching
-                cases_df = fetch_data()
+                cases_df = fetch_data(
+                    customers=['Customer1'],
+                    start_date=datetime.now() - timedelta(days=30),
+                    end_date=datetime.now()
+                )['cases']
                 assert not cases_df.empty
                 assert len(cases_df) == 2  # We expect 2 cases for Customer1
                 assert all(cases_df['Account_Name'] == 'Customer1')
                 
-                # Test detailed analysis with AI analysis enabled
-                detailed_stats = display_detailed_analysis(
-                    cases_df,
-                    enable_ai_analysis=True,
-                    enable_pii_processing=False
-                )
-                
-                # Test AI insights
-                insights = generate_ai_insights(cases_df, mock_openai)
+                # Test AI insights generation
+                insights = generate_ai_insights(cases_df)
                 assert isinstance(insights, dict)
                 assert insights['status'] == 'success'
                 assert 'insights' in insights
@@ -149,6 +146,9 @@ def test_full_analysis_flow(
                 assert 'recommendations' in insights_data
                 assert 'summary' in insights_data
                 assert 'metadata' in insights_data
+                
+                # Test visualization
+                display_detailed_analysis(insights, cases_df)
                 
                 # Verify no errors were shown
                 mock_error.assert_not_called() 

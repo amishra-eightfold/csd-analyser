@@ -166,7 +166,36 @@ class TestAIAnalyzer(unittest.TestCase):
         
         self.assertIn("error", result)
         self.assertIn("executive_summary", result)
-        self.assertEqual(result["executive_summary"]["key_findings"], ["Analysis failed"])
+        self.assertEqual(result["executive_summary"]["key_findings"][0], "Analysis failed: API Error")
+        
+    def test_calculate_ticket_importance(self):
+        """Test ticket importance calculation with various input types."""
+        # Test with valid dictionary
+        valid_ticket = {
+            'Priority': 'P1',
+            'IsEscalated': True,
+            'Resolution Time (Days)': 10.0,
+            'CSAT': 3,
+            'Root Cause': 'Product Bug',
+            'Status': 'Closed'
+        }
+        score = self.analyzer._calculate_ticket_importance(valid_ticket)
+        self.assertGreater(score, 0)
+        self.assertLessEqual(score, 100)
+
+        # Test with string input (should not raise error)
+        string_input = "test string"
+        score = self.analyzer._calculate_ticket_importance(string_input)
+        self.assertEqual(score, 50.0)  # Should return base score
+
+        # Test with empty dictionary
+        empty_dict = {}
+        score = self.analyzer._calculate_ticket_importance(empty_dict)
+        self.assertEqual(score, 50.0)  # Should return base score
+
+        # Test with None
+        score = self.analyzer._calculate_ticket_importance(None)
+        self.assertEqual(score, 50.0)  # Should return base score
         
 if __name__ == '__main__':
     unittest.main() 

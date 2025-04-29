@@ -8,6 +8,7 @@ import streamlit as st
 import json
 from pathlib import Path
 import pandas as pd
+import numpy as np
 
 class DebugLogger:
     """Centralized debug logging with UI display capabilities."""
@@ -21,6 +22,17 @@ class DebugLogger:
         if data is None:
             return None
             
+        # Handle numpy data types
+        if isinstance(data, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64,
+                           np.uint8, np.uint16, np.uint32, np.uint64)):
+            return int(data)
+        if isinstance(data, (np.float_, np.float16, np.float32, np.float64)):
+            return float(data)
+        if isinstance(data, np.bool_):
+            return bool(data)
+        if isinstance(data, np.ndarray):
+            return self._sanitize_data(data.tolist())
+            
         if isinstance(data, (str, int, float, bool)):
             return data
             
@@ -28,13 +40,13 @@ class DebugLogger:
             return str(data)
             
         if isinstance(data, pd.Series):
-            return data.to_dict()
+            return self._sanitize_data(data.to_dict())
             
         if isinstance(data, pd.DataFrame):
             return {
-                'shape': data.shape,
+                'shape': self._sanitize_data(data.shape),
                 'columns': list(data.columns),
-                'sample': data.head().to_dict() if not data.empty else {}
+                'sample': self._sanitize_data(data.head().to_dict()) if not data.empty else {}
             }
             
         if isinstance(data, (list, tuple)):
@@ -137,15 +149,12 @@ class DebugLogger:
                 return
             
             # Display logs
-            for entry in reversed(filtered_logs):
+            for i, entry in enumerate(reversed(filtered_logs)):
                 try:
-                    # Create a unique key for each expander
-                    expander_key = f"{entry['timestamp']}_{entry['category']}"
+                    # Create a unique label for each expander
+                    expander_label = f"[{entry['category'].upper()}] {entry['message'][:50]}..."
                     
-                    with st.sidebar.expander(
-                        f"[{entry['category'].upper()}] {entry['message'][:50]}...",
-                        key=expander_key
-                    ):
+                    with st.sidebar.expander(expander_label):
                         st.markdown(f"**Time:** {entry['timestamp']}")
                         st.markdown(f"**Category:** {entry['category']}")
                         st.markdown("**Message:**")

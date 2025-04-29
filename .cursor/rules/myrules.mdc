@@ -15,7 +15,67 @@ alwaysApply: true
 ---
 
 # Development Rules and Guidelines
+   + ## PRD Adherence
+   + 1. Before implementing any new feature or modification:
+   +    - Verify against PRD requirements
+   +    - Check if functionality already exists
+   +    - Stay within defined technical requirements
+   +    - Respect performance constraints defined in PRD
+   + 2. Feature Scope Control:
+   +    - No implementation of features not listed in PRD
+   +    - No modification of core feature behaviors without explicit request
+   +    - Maintain existing feature priorities as defined in PRD
+   +    - Follow defined data flow patterns
 
+   + ## Code Consistency
+   + 1. Before Adding New Code:
+   +    - Search existing codebase for similar functionality
+   +    - Review related components for potential impacts
+   +    - Verify against existing architectural patterns
+   +    - Check for duplicate functionality
+   + 2. Code Modification Protocol:
+   +    - Read and understand affected code sections completely
+   +    - Preserve existing function signatures where possible
+   +    - Maintain existing error handling patterns
+   +    - Respect established data structures
+
+   + ## Integration Rules
+   + 1. Before Making Changes:
+   +    - Verify dependencies between components
+   +    - Understand existing data flow
+   +    - Preserve established API contracts
+   +    - Maintain existing security measures
+   + 2. Testing Requirements:
+   +    - Verify changes don't break existing tests
+   +    - Maintain test coverage requirements
+   +    - Follow established testing patterns
+   +    - Verify PII handling remains intact
+
+   + ## Implementation Process
+   + 1. For Each Code Change:
+   +    - Step 1: Search for existing implementation
+   +    - Step 2: Review related components
+   +    - Step 3: Verify against PRD requirements
+   +    - Step 4: Check impact on existing features
+   +    - Step 5: Implement with minimal disruption
+   +    - Step 6: Verify against development rules
+   + 2. Documentation Requirements:
+   +    - Update relevant documentation
+   +    - Maintain consistency with existing docs
+   +    - Follow established comment patterns
+   +    - Preserve existing docstrings
+
+   + ## Quality Control
+   + 1. Before Completing Implementation:
+   +    - Verify PEP 8 compliance
+   +    - Check type hints are complete
+   +    - Verify docstrings are updated
+   +    - Confirm no duplicate code introduced
+   + 2. Performance Verification:
+   +    - Respect query response times
+   +    - Maintain visualization performance
+   +    - Verify export generation times
+   +    - Check AI analysis processing limits
 ## Code Style and Structure
 1. Prefer Python as the primary programming language
 2. Refactor code if any file exceeds 500 lines
@@ -25,7 +85,7 @@ alwaysApply: true
 
 ## Code Quality and Safety
 1. Ensure no existing functionality is broken when refactoring
-2. Review codebase for logic duplication before committing code
+2. Review codebase for logic duplication before creating or committing code
 3. Reuse code wherever possible through proper abstraction
 4. Write unit tests for new functionality
 5. Maintain test coverage above 80%
@@ -35,6 +95,7 @@ alwaysApply: true
 2. Keep README.md up to date with new changes
 3. Document any complex algorithms or business logic
 4. Include examples for non-obvious code usage
+5. Update the [myrules.mdc](mdc:csd-analyser/csd-analyser/csd-analyser/csd-analyser/csd-analyser/csd-analyser/csd-analyser/csd-analyser/.cursor/rules/myrules.mdc) file and the [PRD](mdc:csd-analyser/csd-analyser/csd-analyser/csd-analyser/csd-analyser/csd-analyser/csd-analyser/csd-analyser/PRD) when new functionality is tested and verified to work
 
 ## Performance and Security
 1. Optimize database queries and data processing

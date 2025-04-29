@@ -10,18 +10,10 @@ import os
 import pandas as pd
 
 class CustomJSONEncoder(json.JSONEncoder):
-    """Custom JSON encoder to handle non-serializable objects."""
+    """Custom JSON encoder to handle pandas Timestamp objects."""
     def default(self, obj):
-        if isinstance(obj, (pd.Timestamp, datetime)):
-            return obj.isoformat()
-        elif isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif pd.isna(obj):
-            return None
+        if isinstance(obj, pd.Timestamp):
+            return obj.strftime('%Y-%m-%d %H:%M:%S')
         return super().default(obj)
 
 # Set up logging
@@ -73,6 +65,7 @@ class TokenInfo:
     processing_time: float = 0.0  # Processing time in seconds
     compression_ratio: float = 1.0  # Ratio of compressed to original tokens
     chunk_size: int = 0  # Number of items in the chunk
+    original_tokens: int = 0
 
 @dataclass
 class TokenUsageStats:
@@ -101,62 +94,77 @@ def convert_value_for_json(value: Any) -> Any:
         return str(value)
 
 class TokenManager:
-    """Manages token usage and chunking with enhanced context preservation."""
+    """Manages token usage and chunking for OpenAI API calls."""
     
-    # Model token limits
-    MODEL_LIMITS = {
-        'gpt-3.5-turbo': 4096,
-        'gpt-4': 8192,
-        'gpt-4-32k': 32768
-    }
-    
-    # Reserve tokens for system message and response
-    SYSTEM_TOKENS = 200
-    RESPONSE_TOKENS = 1000
-    
-    # Token costs per 1K tokens (in USD)
-    TOKEN_COSTS = {
-        'gpt-3.5-turbo': {'input': 0.0015, 'output': 0.002},
-        'gpt-4': {'input': 0.03, 'output': 0.06},
-        'gpt-4-32k': {'input': 0.06, 'output': 0.12}
-    }
-    
-    def __init__(self, model_name: str = 'gpt-3.5-turbo'):
-        """Initialize TokenManager with model settings."""
-        self.model_name = model_name
-        self.model_limit = self.MODEL_LIMITS.get(model_name, 4096)
-        self.available_tokens = self.model_limit - self.SYSTEM_TOKENS - self.RESPONSE_TOKENS
-        self.chunk_tokens = int(self.available_tokens * 0.7)  # Leave room for context
+    def __init__(self, model: str = "gpt-3.5-turbo"):
+        self.model = model
+        self.encoder = tiktoken.encoding_for_model(model)
+        self.max_tokens = 4096  # Default for gpt-3.5-turbo
+        self.chunk_tokens = int(self.max_tokens * 0.8)  # Use 80% of max tokens
+        self.available_tokens = self.max_tokens
         
-        # Initialize token tracking
-        self.total_tokens_processed = 0
-        self.total_cost = 0.0
-        self.request_count = 0
-        self.peak_tokens = 0
-        self.peak_cost = 0.0
+    def create_chunks(self, 
+                     data: List[Dict], 
+                     size: int = 3,
+                     include_context: bool = True,
+                     overlap: int = 1) -> List[Dict]:
+        """
+        Create chunks of data suitable for API processing.
         
-        # Initialize performance tracking
-        self.compression_ratios = []
-        self.processing_times = []
+        Args:
+            data: List of dictionaries containing the data to chunk
+            size: Number of items per chunk (default: 3)
+            include_context: Whether to include context information (default: True)
+            overlap: Number of items to overlap between chunks (default: 1)
+            
+        Returns:
+            List of dictionaries containing chunked data with context
+        """
+        if not data:
+            return []
+            
+        if size < 1:
+            raise ValueError("Chunk size must be at least 1")
+            
+        if overlap >= size:
+            raise ValueError("Overlap must be less than chunk size")
+            
+        chunks = []
+        i = 0
         
-        # Initialize encoder
-        self.encoder = tiktoken.encoding_for_model(model_name)
-        
-        # Initialize JSON encoder
-        self.json_encoder = CustomJSONEncoder()
-        
-        # Get loggers
-        self.token_logger = logging.getLogger('token_usage')
-        self.performance_logger = logging.getLogger('token_performance')
-        self.cost_logger = logging.getLogger('token_cost')
-        
-        # Log initialization
-        self.token_logger.info(
-            f"Initialized TokenManager with model {model_name}\n"
-            f"Token limit: {self.model_limit}\n"
-            f"Available tokens: {self.available_tokens}"
-        )
-    
+        while i < len(data):
+            # Calculate chunk boundaries
+            chunk_end = min(i + size, len(data))
+            chunk_data = data[i:chunk_end]
+            
+            # Create chunk with context
+            chunk = {
+                'items': chunk_data,
+                'context': {
+                    'chunk_position': len(chunks) + 1,
+                    'total_items': len(data),
+                    'chunk_size': len(chunk_data),
+                    'start_index': i,
+                    'end_index': chunk_end - 1,
+                    'global_stats': self.extract_metadata_context(data) if include_context else {}
+                } if include_context else {}
+            }
+            
+            # Add chunk metadata
+            if include_context:
+                chunk['context'].update({
+                    'has_previous': i > 0,
+                    'has_next': chunk_end < len(data),
+                    'total_chunks': (len(data) + size - 1) // size
+                })
+            
+            chunks.append(chunk)
+            
+            # Move to next chunk, considering overlap
+            i = chunk_end - overlap if chunk_end < len(data) else chunk_end
+            
+        return chunks
+
     def get_usage_stats(self) -> TokenUsageStats:
         """Get current token usage statistics."""
         stats = TokenUsageStats(
@@ -241,43 +249,54 @@ class TokenManager:
             f"Performance Metrics - Context: {context}\n"
             f"Processing Time: {token_info.processing_time:.3f}s\n"
             f"Compression Ratio: {token_info.compression_ratio:.2f}\n"
-            f"Token Utilization: {(token_info.total_tokens/self.model_limit)*100:.1f}%"
+            f"Token Utilization: {(token_info.total_tokens/self.max_tokens)*100:.1f}%"
         )
     
-    def get_token_info(self, chunk_with_context: Tuple[List[Dict[str, Any]], Dict[str, Any]], context: str = "") -> TokenInfo:
+    def get_token_info(self, chunk: Dict[str, Any], context: str = "") -> TokenInfo:
         """Get token usage information for a chunk with enhanced metrics."""
         import time
         start_time = time.time()
+
+        # Handle both dictionary and tuple formats for backward compatibility
+        if isinstance(chunk, tuple):
+            items, context_data = chunk
+        else:
+            items = chunk['items']
+            context_data = chunk['context']
+
+        # Calculate content tokens
+        content_tokens = sum(self.count_tokens(json.dumps(item, cls=CustomJSONEncoder)) for item in items)
         
-        chunk, context_data = chunk_with_context
+        # Calculate original tokens if available
+        original_tokens = sum(item.get('original_token_count', 0) for item in items)
         
-        # Calculate token counts using custom JSON encoder
-        content_tokens = sum(self.count_tokens(self.json_dumps(item)) for item in chunk)
-        context_tokens = self.count_tokens(self.json_dumps(context_data))
-        total_tokens = content_tokens + context_tokens + self.SYSTEM_TOKENS
+        # Calculate context tokens
+        context_tokens = self.count_tokens(json.dumps(context_data, cls=CustomJSONEncoder))
         
-        # Calculate compression ratio if content was compressed
-        original_tokens = content_tokens
-        if hasattr(chunk, 'original_token_count'):
-            original_tokens = chunk.original_token_count
-        compression_ratio = content_tokens / max(1, original_tokens)
+        # Calculate metadata tokens (e.g., field names, structure)
+        metadata_tokens = self.count_tokens(json.dumps({
+            'field_names': list(items[0].keys()) if items else [],
+            'structure_info': {
+                'num_items': len(items),
+                'context_type': type(context_data).__name__
+            }
+        }, cls=CustomJSONEncoder))
         
-        # Create token info with enhanced metrics
-        token_info = TokenInfo(
-            total_tokens=total_tokens,
+        # Calculate total tokens
+        total_tokens = content_tokens + context_tokens + metadata_tokens
+        
+        # Get processing time
+        processing_time = time.time() - start_time
+        
+        return TokenInfo(
+            chunk_size=len(items),
             content_tokens=content_tokens,
-            metadata_tokens=context_tokens,
-            context_tokens=self.SYSTEM_TOKENS,
-            cost_estimate=self.calculate_cost(total_tokens),
-            processing_time=time.time() - start_time,
-            compression_ratio=compression_ratio,
-            chunk_size=len(chunk)
+            context_tokens=context_tokens,
+            total_tokens=total_tokens,
+            original_tokens=original_tokens,
+            processing_time=processing_time,
+            metadata_tokens=metadata_tokens
         )
-        
-        # Log the information
-        self.log_token_usage(token_info, context)
-        
-        return token_info
 
     def count_tokens(self, text: str) -> int:
         """Count tokens in a text string."""
@@ -318,24 +337,46 @@ class TokenManager:
     def extract_metadata_context(self, items: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Extract relevant metadata context from items."""
         metadata = {
-            'product_areas': set(),
-            'features': set(),
-            'priorities': set(),
-            'root_causes': set(),
+            'product_areas': [],
+            'features': [],
+            'priorities': [],
+            'root_causes': [],
             'date_range': {'start': None, 'end': None},
-            'key_relationships': {}
+            'key_relationships': {},
+            'global_stats': {
+                'total_items': len(items),
+                'priority_distribution': {},
+                'product_area_distribution': {},
+                'feature_distribution': {},
+                'unique_product_areas': 0,
+                'unique_features': 0,
+                'unique_priorities': 0,
+                'unique_root_causes': 0
+            }
         }
         
+        # Use sets temporarily for collecting unique values
+        unique_product_areas = set()
+        unique_features = set()
+        unique_priorities = set()
+        unique_root_causes = set()
+        
         for item in items:
-            # Collect unique values
+            # Collect unique values using sets
             if 'Product_Area__c' in item:
-                metadata['product_areas'].add(item['Product_Area__c'])
+                unique_product_areas.add(item['Product_Area__c'])
+                metadata['global_stats']['product_area_distribution'][item['Product_Area__c']] = \
+                    metadata['global_stats']['product_area_distribution'].get(item['Product_Area__c'], 0) + 1
             if 'Product_Feature__c' in item:
-                metadata['features'].add(item['Product_Feature__c'])
+                unique_features.add(item['Product_Feature__c'])
+                metadata['global_stats']['feature_distribution'][item['Product_Feature__c']] = \
+                    metadata['global_stats']['feature_distribution'].get(item['Product_Feature__c'], 0) + 1
             if 'Internal_Priority__c' in item:
-                metadata['priorities'].add(item['Internal_Priority__c'])
+                unique_priorities.add(item['Internal_Priority__c'])
+                metadata['global_stats']['priority_distribution'][item['Internal_Priority__c']] = \
+                    metadata['global_stats']['priority_distribution'].get(item['Internal_Priority__c'], 0) + 1
             if 'RCA__c' in item:
-                metadata['root_causes'].add(item['RCA__c'])
+                unique_root_causes.add(item['RCA__c'])
             
             # Track date range
             if 'CreatedDate' in item:
@@ -356,11 +397,17 @@ class TokenManager:
                     'priority': item.get('Internal_Priority__c')
                 }
         
-        # Convert sets to lists for JSON serialization
-        metadata['product_areas'] = list(metadata['product_areas'])
-        metadata['features'] = list(metadata['features'])
-        metadata['priorities'] = list(metadata['priorities'])
-        metadata['root_causes'] = list(metadata['root_causes'])
+        # Convert sets to sorted lists for consistent output
+        metadata['product_areas'] = sorted(list(unique_product_areas))
+        metadata['features'] = sorted(list(unique_features))
+        metadata['priorities'] = sorted(list(unique_priorities))
+        metadata['root_causes'] = sorted(list(unique_root_causes))
+        
+        # Update unique counts in global stats
+        metadata['global_stats']['unique_product_areas'] = len(metadata['product_areas'])
+        metadata['global_stats']['unique_features'] = len(metadata['features'])
+        metadata['global_stats']['unique_priorities'] = len(metadata['priorities'])
+        metadata['global_stats']['unique_root_causes'] = len(metadata['root_causes'])
         
         # Convert datetime objects to strings
         if metadata['date_range']['start']:
@@ -401,340 +448,128 @@ class TokenManager:
         
         return groups
     
-    def create_chunks(self, items: List[Dict[str, Any]], context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        """Create optimized chunks from items while preserving context.
-        
-        Args:
-            items: List of dictionaries containing item data
-            context: Optional context dictionary to include with each chunk
-            
-        Returns:
-            List of chunks with preserved context
-        """
-        if not items:
+    def _calculate_priority_score(self, item: Dict[str, Any]) -> float:
+        """Calculate priority score for an item."""
+        score = 0.0
+
+        # Base priority score
+        priority_map = {'P0': 4.0, 'P1': 3.0, 'P2': 2.0, 'P3': 1.0}
+        priority = item.get('Internal_Priority__c')
+        score += priority_map.get(priority, 0.0)
+
+        # Add score for escalated cases
+        if item.get('IsEscalated'):
+            score += 2.0
+
+        # Add score for customer satisfaction
+        csat = item.get('CSAT__c')
+        if csat is not None:
+            score += max(0, 5 - csat)  # Lower CSAT means higher priority
+
+        # Add score for response time
+        response_time = item.get('First_Response_Time__c')
+        if response_time is not None:
+            score += min(response_time / 24, 2.0)  # Cap at 2 points for response time
+
+        return score
+
+    def _get_priority_distribution(self, items: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Get priority distribution for a list of items."""
+        distribution = {}
+        for item in items:
+            priority = item.get('Internal_Priority__c')
+            if priority:
+                distribution[priority] = distribution.get(priority, 0) + 1
+        return distribution
+
+    def optimize_chunk_content(self, chunk: List[Dict[str, Any]], max_tokens: int) -> List[Dict[str, Any]]:
+        """Optimize chunk content while preserving essential information."""
+        if not chunk:
             return []
-        
-        # Calculate global stats
-        global_stats = {
-            'total_items': len(items),
-            'unique_product_areas': len(set(item.get('Product_Area__c', '') for item in items)),
-            'unique_features': len(set(item.get('Product_Feature__c', '') for item in items)),
-            'unique_priorities': len(set(item.get('Internal_Priority__c', '') for item in items)),
-            'unique_root_causes': len(set(item.get('RCA__c', '') for item in items)),
-            'date_range': {
-                'start': min(item.get('CreatedDate', '') for item in items),
-                'end': max(item.get('CreatedDate', '') for item in items)
-            }
-        }
-        
-        # Sort items by priority and date
-        sorted_items = sorted(
-            items,
-            key=lambda x: (
-                self._get_priority_score(x.get('Internal_Priority__c', '')),
-                x.get('CreatedDate', '')
-            ),
-            reverse=True
-        )
-        
-        # Initialize chunks
-        chunks = []
-        current_chunk = []
-        current_chunk_tokens = 0
-        
-        # Process each item
-        for item in sorted_items:
-            # Calculate item tokens including context
-            item_context = {
-                'global_stats': global_stats,
-                'chunk_position': len(chunks) + 1,
-                'total_chunks': '[to be updated]',
-                'chunk_stats': self._get_chunk_stats(current_chunk + [item])
-            }
             
-            # Merge with provided context
-            if context:
-                item_context.update(context)
-            
-            # Calculate total tokens for item with context
-            total_tokens = self.count_tokens(self.json_dumps({
-                'items': current_chunk + [item],
-                'context': item_context
-            }))
-            
-            if total_tokens <= self.chunk_tokens:
-                # Item fits in current chunk
-                current_chunk.append(item)
-                current_chunk_tokens = total_tokens
-            else:
-                if not current_chunk:
-                    # Single item is too large, truncate it
-                    truncated_item = self.truncate_item(item)
-                    if truncated_item:
-                        current_chunk.append(truncated_item)
-                
-                # Finalize current chunk if not empty
-                if current_chunk:
-                    chunks.append({
-                        'items': current_chunk,
-                        'context': {
-                            'global_stats': global_stats,
-                            'chunk_position': len(chunks) + 1,
-                            'total_chunks': '[to be updated]',
-                            'chunk_stats': self._get_chunk_stats(current_chunk)
-                        }
-                    })
-                
-                # Start new chunk
-                current_chunk = []
-                current_chunk_tokens = 0
-                
-                # Try to add current item to new chunk
-                if item not in current_chunk:  # Skip if it was truncated and added above
-                    total_tokens = self.count_tokens(self.json_dumps({
-                        'items': [item],
-                        'context': item_context
-                    }))
-                    
-                    if total_tokens <= self.chunk_tokens:
-                        current_chunk.append(item)
-                        current_chunk_tokens = total_tokens
-                    else:
-                        # Truncate item if too large
-                        truncated_item = self.truncate_item(item)
-                        if truncated_item:
-                            current_chunk.append(truncated_item)
-                            current_chunk_tokens = self.count_tokens(self.json_dumps({
-                                'items': current_chunk,
-                                'context': item_context
-                            }))
+        # Define essential fields that must be preserved
+        essential_fields = {'Id', 'Internal_Priority__c', 'Subject', 'CreatedDate'}
         
-        # Add final chunk if not empty
-        if current_chunk:
-            chunks.append({
-                'items': current_chunk,
-                'context': {
-                    'global_stats': global_stats,
-                    'chunk_position': len(chunks) + 1,
-                    'total_chunks': '[to be updated]',
-                    'chunk_stats': self._get_chunk_stats(current_chunk)
-                }
-            })
+        # Calculate current token usage
+        current_tokens = sum(self.count_tokens(json.dumps(item)) for item in chunk)
         
-        # Update total chunks
-        for chunk in chunks:
-            chunk['context']['total_chunks'] = len(chunks)
-        
-        # Log chunking metrics
-        self.token_logger.info(
-            f"Chunking Metrics:\n"
-            f"Total items: {len(items)}\n"
-            f"Total chunks: {len(chunks)}\n"
-            f"Average items per chunk: {len(items) / len(chunks) if chunks else 0:.2f}\n"
-            f"Max chunk tokens: {self.chunk_tokens}"
-        )
-        
-        return chunks
-    
-    def _get_priority_score(self, priority: str) -> int:
-        """Get numeric score for priority sorting."""
-        priority_scores = {'P0': 4, 'P1': 3, 'P2': 2, 'P3': 1}
-        return priority_scores.get(priority, 0)
-    
-    def _get_chunk_stats(self, chunk: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Get statistics for a specific chunk."""
-        return {
-            'size': len(chunk),
-            'priorities': list(set(item.get('Internal_Priority__c') for item in chunk if item.get('Internal_Priority__c'))),
-            'product_areas': list(set(item.get('Product_Area__c') for item in chunk if item.get('Product_Area__c'))),
-            'features': list(set(item.get('Product_Feature__c') for item in chunk if item.get('Product_Feature__c')))
-        }
-    
-    def split_large_group(self, group: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
-        """Split a large group into smaller chunks that fit within token limits."""
-        result = []
-        current_chunk = []
-        current_tokens = 0
-        
-        for item in group:
-            item_tokens = self.count_tokens(self.json_dumps(item))
-            
-            # If the item itself is too large, truncate it
-            if item_tokens > self.chunk_tokens:
-                truncated_item = self.truncate_item(item)
-                item_tokens = self.count_tokens(self.json_dumps(truncated_item))
-                if current_tokens + item_tokens <= self.chunk_tokens:
-                    current_chunk.append(truncated_item)
-                    current_tokens += item_tokens
-                else:
-                    if current_chunk:
-                        result.append(current_chunk)
-                    current_chunk = [truncated_item]
-                    current_tokens = item_tokens
-            else:
-                if current_tokens + item_tokens <= self.chunk_tokens:
-                    current_chunk.append(item)
-                    current_tokens += item_tokens
-                else:
-                    if current_chunk:
-                        result.append(current_chunk)
-                    current_chunk = [item]
-                    current_tokens = item_tokens
-        
-        if current_chunk:
-            result.append(current_chunk)
-        
-        return result
-    
-    def truncate_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Truncate large text fields in an item to fit within token limits."""
-        truncated = item.copy()
-        text_fields = ['Description', 'Subject', 'Comments']
-        
-        for field in text_fields:
-            if field in truncated and isinstance(truncated[field], str):
-                field_tokens = self.count_tokens(truncated[field])
-                if field_tokens > self.chunk_tokens // 2:  # Allow half the chunk size for a single field
-                    truncated[field] = self.truncate_text(truncated[field], self.chunk_tokens // 2)
-        
-        return truncated
-    
-    def truncate_text(self, text: str, max_tokens: int) -> str:
-        """Intelligently truncate text to fit within token limit.
-        
-        Args:
-            text (str): Text to truncate
-            max_tokens (int): Maximum number of tokens
-            
-        Returns:
-            str: Truncated text
-        """
-        if not text:
-            return ""
-        
-        # First check if truncation is needed
-        current_tokens = self.count_tokens(text)
+        # If already within limit, return as is
         if current_tokens <= max_tokens:
-            return text
-        
-        # If text is too long, truncate it
-        # Calculate a good ratio to keep more of the beginning and end of text
-        beginning_ratio = 0.7  # Keep 70% from the beginning
-        end_ratio = 0.3  # Keep 30% from the end
-        
-        # Calculate tokens for beginning and end
-        beginning_tokens = int(max_tokens * beginning_ratio)
-        end_tokens = max_tokens - beginning_tokens
-        
-        # Tokenize the text
-        encoding = tiktoken.encoding_for_model(self.model_name)
-        tokens = encoding.encode(text)
-        
-        # Get beginning and end tokens
-        beginning = tokens[:beginning_tokens]
-        end = tokens[-end_tokens:] if end_tokens > 0 else []
-        
-        # Decode back to text
-        beginning_text = encoding.decode(beginning)
-        end_text = encoding.decode(end)
-        
-        # Combine with ellipsis
-        if end_tokens > 0:
-            return beginning_text + " [...] " + end_text
-        else:
-            return beginning_text + " [...]"
-    
-    def optimize_context(self, context: Dict[str, Any], max_tokens: int) -> Dict[str, Any]:
-        """Optimize context to fit within token limit while preserving important information.
-        
-        Args:
-            context (Dict[str, Any]): Context dictionary
-            max_tokens (int): Maximum tokens allowed
+            return chunk
             
-        Returns:
-            Dict[str, Any]: Optimized context
-        """
-        # First check if optimization is needed
-        context_str = self.json_dumps(context)
-        current_tokens = self.count_tokens(context_str)
-        
-        if current_tokens <= max_tokens:
-            return context
-        
-        # Start with a copy of the context
-        optimized = {}
-        
-        # Define priority for different context elements
-        priority_order = [
-            'chunk_position', 'total_chunks', 'chunk_type',  # Chunk metadata (highest priority)
-            'summary_stats', 'processed_tickets',  # Summary information
-            'pattern_analysis', 'processed_chunks',  # Pattern information
-            'global_patterns', 'previous_insights',  # Historical information
-            'priority_context', 'temporal_context'  # Detailed context (lowest priority)
-        ]
-        
-        # Add highest priority items first
-        remaining_tokens = max_tokens
-        for key in priority_order:
-            if key in context and remaining_tokens > 0:
-                # Serialize this item to check its token count
-                item_str = self.json_dumps({key: context[key]})
-                item_tokens = self.count_tokens(item_str)
+        optimized_chunk = []
+        for item in chunk:
+            # Start with essential fields
+            optimized_item = {k: item[k] for k in essential_fields if k in item}
+            
+            # Add other fields if space allows
+            remaining_fields = set(item.keys()) - essential_fields
+            for field in remaining_fields:
+                temp_item = optimized_item.copy()
+                temp_item[field] = item[field]
                 
-                if item_tokens <= remaining_tokens:
-                    # Item fits completely
-                    optimized[key] = context[key]
-                    remaining_tokens -= item_tokens
-                elif key in ['previous_insights', 'pattern_analysis', 'summary_stats']:
-                    # Try to include a reduced version for important items
-                    if key == 'previous_insights' and isinstance(context[key], list):
-                        # Keep most recent insights
-                        reduced_insights = context[key][-2:] if len(context[key]) > 2 else context[key]
-                        reduced_str = self.json_dumps({key: reduced_insights})
-                        if self.count_tokens(reduced_str) <= remaining_tokens:
-                            optimized[key] = reduced_insights
-                            remaining_tokens -= self.count_tokens(reduced_str)
-                    elif key == 'pattern_analysis' and isinstance(context[key], dict):
-                        # Keep summary and high confidence patterns
-                        reduced_patterns = {
-                            'summary': context[key].get('summary', {}),
-                            'high_confidence': context[key].get('high_confidence', [])
-                        }
-                        reduced_str = self.json_dumps({key: reduced_patterns})
-                        if self.count_tokens(reduced_str) <= remaining_tokens:
-                            optimized[key] = reduced_patterns
-                            remaining_tokens -= self.count_tokens(reduced_str)
-                    elif key == 'summary_stats' and isinstance(context[key], dict):
-                        # Keep essential stats
-                        essential_stats = {
-                            'total_tickets': context[key].get('total_tickets', 0),
-                            'priority_distribution': context[key].get('priority_distribution', {})
-                        }
-                        reduced_str = self.json_dumps({key: essential_stats})
-                        if self.count_tokens(reduced_str) <= remaining_tokens:
-                            optimized[key] = essential_stats
-                            remaining_tokens -= self.count_tokens(reduced_str)
-        
-        # Add any remaining items that weren't in the priority list
-        for key, value in context.items():
-            if key not in priority_order and key not in optimized and remaining_tokens > 0:
-                item_str = self.json_dumps({key: value})
-                item_tokens = self.count_tokens(item_str)
+                # Check if adding this field would exceed token limit
+                temp_tokens = sum(self.count_tokens(json.dumps(i)) for i in optimized_chunk)
+                temp_tokens += self.count_tokens(json.dumps(temp_item))
                 
-                if item_tokens <= remaining_tokens:
-                    optimized[key] = value
-                    remaining_tokens -= item_tokens
+                if temp_tokens <= max_tokens:
+                    optimized_item = temp_item
+                else:
+                    break
+            
+            optimized_chunk.append(optimized_item)
+            
+            # Check if we've exceeded max tokens
+            current_tokens = sum(self.count_tokens(json.dumps(i)) for i in optimized_chunk)
+            if current_tokens > max_tokens:
+                # Remove last item and stop
+                optimized_chunk.pop()
+                break
         
-        # Log optimization results
-        original_tokens = self.count_tokens(self.json_dumps(context))
-        optimized_tokens = self.count_tokens(self.json_dumps(optimized))
-        reduction = (1 - (optimized_tokens / original_tokens)) * 100 if original_tokens > 0 else 0
-        self.token_logger.info(f"Context optimized: {original_tokens} → {optimized_tokens} tokens ({reduction:.1f}% reduction)")
-        
-        return optimized
-    
+        return optimized_chunk
+
     def calculate_cost(self, token_count: int, is_output: bool = False) -> float:
         """Calculate cost for token usage."""
         pricing = self.TOKEN_COSTS.get(self.model_name, self.TOKEN_COSTS['gpt-3.5-turbo'])
         rate = pricing['output'] if is_output else pricing['input']
         return (token_count / 1000) * rate 
+
+    def optimize_context(self, context: Dict[str, Any], max_tokens: int) -> Dict[str, Any]:
+        """Optimize context to fit within token limits."""
+        if not context:
+            return {}
+
+        # Create a copy of the context to avoid modifying the original
+        optimized = context.copy()
+
+        # Calculate current token count
+        current_tokens = self.count_tokens(json.dumps(optimized, cls=CustomJSONEncoder))
+
+        # If already within limit, return as is
+        if current_tokens <= max_tokens:
+            return optimized
+
+        # Define priority order for context fields
+        priority_fields = [
+            'previous_insights',
+            'global_stats',
+            'key_relationships',
+            'product_areas',
+            'features',
+            'priorities',
+            'root_causes',
+            'date_range'
+        ]
+
+        # Remove fields in reverse priority order until within token limit
+        for field in reversed(priority_fields):
+            if field in optimized:
+                temp = optimized.copy()
+                del temp[field]
+                new_tokens = self.count_tokens(json.dumps(temp, cls=CustomJSONEncoder))
+                if new_tokens <= max_tokens:
+                    return temp
+                optimized = temp
+
+        # If still over limit, return minimal context
+        return {'previous_insights': context.get('previous_insights', [])} 
