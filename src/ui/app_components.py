@@ -82,6 +82,11 @@ def setup_application_sidebar():
         value=False,
         help="Remove sensitive information before analysis"
     )
+    settings['include_history_data'] = st.sidebar.checkbox(
+        "Include History Data",
+        value=True,
+        help="Load case history data for priority and status time analysis"
+    )
     
     # Export Section in Sidebar
     st.sidebar.markdown("---")

@@ -134,12 +134,12 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             
             # Ticket volume chart
             volume_chart = create_ticket_volume_chart(main_analysis_df, time_unit)
-            st.plotly_chart(volume_chart, use_container_width=True)
+            st.plotly_chart(volume_chart, use_container_width=True, key="main_volume_chart")
             
             # Priority distribution
             st.subheader("Priority Distribution (Excluding Service Requests)")
             priority_chart = create_priority_distribution_chart(main_analysis_df)
-            st.plotly_chart(priority_chart, use_container_width=True)
+            st.plotly_chart(priority_chart, use_container_width=True, key="main_priority_chart")
     
     # Resolution Analysis Tab
     with tabs[1]:
@@ -150,17 +150,17 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             
             # Resolution time by priority
             resolution_chart = create_resolution_time_chart(main_analysis_df)
-            st.plotly_chart(resolution_chart, use_container_width=True)
+            st.plotly_chart(resolution_chart, use_container_width=True, key="main_resolution_chart")
             
             # Add Priority Time Analysis
             if 'history_df' in st.session_state and not st.session_state.history_df.empty:
                 st.subheader("Priority Time Analysis (Closed Tickets Only)")
                 priority_time_chart = create_priority_time_chart(main_analysis_df, st.session_state.history_df)
-                st.plotly_chart(priority_time_chart, use_container_width=True)
+                st.plotly_chart(priority_time_chart, use_container_width=True, key="main_priority_time_chart")
                 
                 st.subheader("Status Time Analysis")
                 status_time_chart = create_status_time_chart(main_analysis_df, st.session_state.history_df)
-                st.plotly_chart(status_time_chart, use_container_width=True)
+                st.plotly_chart(status_time_chart, use_container_width=True, key="main_status_time_chart")
             else:
                 st.info("Case history data not available. Please enable 'Include History Data' in the sidebar and reload data to see Priority and Status Time Analysis.")
             
@@ -173,7 +173,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                 
                 # Create and display first response time chart
                 first_response_chart = create_first_response_time_chart(main_analysis_df, response_hours)
-                st.plotly_chart(first_response_chart, use_container_width=True)
+                st.plotly_chart(first_response_chart, use_container_width=True, key="main_response_time_chart")
                 
                 # Display SLA statistics if we have valid data
                 if stats['valid_records'] > 0:
@@ -208,7 +208,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             if 'CSAT' in main_analysis_df.columns and not main_analysis_df.dropna(subset=['CSAT']).empty:
                 st.subheader("Customer Satisfaction (Excluding Service Requests)")
                 csat_chart = create_csat_distribution_chart(main_analysis_df)
-                st.plotly_chart(csat_chart, use_container_width=True)
+                st.plotly_chart(csat_chart, use_container_width=True, key="main_csat_chart")
     
     # Categorization Tab
     with tabs[2]:
@@ -219,7 +219,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             
             if 'Product_Area__c' in main_analysis_df.columns:
                 product_chart = create_product_area_chart(main_analysis_df)
-                st.plotly_chart(product_chart, use_container_width=True)
+                st.plotly_chart(product_chart, use_container_width=True, key="main_product_chart")
             else:
                 st.info("Product area information not available in the data.")
             
@@ -228,13 +228,13 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             
             if 'RCA__c' in main_analysis_df.columns:
                 root_cause_chart = create_root_cause_chart(main_analysis_df)
-                st.plotly_chart(root_cause_chart, use_container_width=True)
+                st.plotly_chart(root_cause_chart, use_container_width=True, key="main_root_cause_chart")
                 
                 # Add root cause by product area heatmap if both fields exist
                 if 'Product_Area__c' in main_analysis_df.columns:
                     st.subheader("Root Cause by Product Area (Excluding Service Requests)")
                     heatmap = create_root_cause_product_heatmap(main_analysis_df)
-                    st.plotly_chart(heatmap, use_container_width=True)
+                    st.plotly_chart(heatmap, use_container_width=True, key="main_heatmap_chart")
             else:
                 st.info("Root cause information not available in the data.")
                 
@@ -254,7 +254,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                     hole=0.4
                 )
                 fig.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="main_status_pie_chart")
             else:
                 st.info("Status information not available in the data.")
     
@@ -312,7 +312,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             
             # Ticket volume chart for service requests
             sr_volume_chart = create_ticket_volume_chart(service_requests_df, sr_time_unit)
-            st.plotly_chart(sr_volume_chart, use_container_width=True)
+            st.plotly_chart(sr_volume_chart, use_container_width=True, key="sr_volume_chart")
             
             # Service Request Resolution Time Analysis
             st.subheader("Service Request Resolution Time")
@@ -360,7 +360,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                                 yaxis_title="Density",
                                 showlegend=True
                             )
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key="sr_dist_chart")
                         else:
                             st.warning("Not enough data points to create a distribution plot.")
                     except Exception as plot_error:
@@ -372,7 +372,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                             labels={"x": "Resolution Time (Days)"},
                             title="Resolution Time Histogram for Service Requests"
                         )
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key="sr_hist_chart")
                     
                     # Compare with non-service requests
                     closed_main = main_analysis_df[main_analysis_df['Status'] == 'Closed'].copy()
@@ -408,7 +408,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                                 showlegend=True
                             )
                             
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key="sr_comparison_chart")
                             
                             # Calculate statistical comparison
                             sr_mean = valid_resolution_data.mean()
@@ -433,13 +433,25 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             if 'history_df' in st.session_state and not st.session_state.history_df.empty:
                 # Filter history data for Service Requests only
                 sr_case_ids = service_requests_df['Id'].unique()
-                sr_history_df = st.session_state.history_df[st.session_state.history_df['ParentId'].isin(sr_case_ids)].copy()
+                
+                # Check which column name is used for the case ID in history data
+                case_id_column = None
+                for col_name in ['ParentId', 'CaseId']:
+                    if col_name in st.session_state.history_df.columns:
+                        case_id_column = col_name
+                        break
+                
+                if case_id_column is None:
+                    st.error("Case ID column not found in history data. Expected 'ParentId' or 'CaseId'.")
+                    sr_history_df = pd.DataFrame()
+                else:
+                    sr_history_df = st.session_state.history_df[st.session_state.history_df[case_id_column].isin(sr_case_ids)].copy()
                 
                 if not sr_history_df.empty:
                     sr_closed = service_requests_df[service_requests_df['Status'] == 'Closed'].copy()
                     if not sr_closed.empty:
                         priority_time_chart = create_priority_time_chart(sr_closed, sr_history_df)
-                        st.plotly_chart(priority_time_chart, use_container_width=True)
+                        st.plotly_chart(priority_time_chart, use_container_width=True, key="sr_priority_time_chart")
                         
                         # Compare with non-service requests
                         st.subheader("Priority Time Comparison")
@@ -456,14 +468,14 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                             with col1:
                                 st.subheader("Service Requests")
                                 priority_sr_chart = create_priority_time_chart(sr_closed, sr_history_df)
-                                st.plotly_chart(priority_sr_chart, use_container_width=True)
+                                st.plotly_chart(priority_sr_chart, use_container_width=True, key="sr_priority_chart_col1")
                             
                             with col2:
                                 st.subheader("Support Tickets")
                                 main_case_ids = main_closed['Id'].unique()
-                                main_history_df = st.session_state.history_df[st.session_state.history_df['ParentId'].isin(main_case_ids)].copy()
+                                main_history_df = st.session_state.history_df[st.session_state.history_df[case_id_column].isin(main_case_ids)].copy()
                                 priority_main_chart = create_priority_time_chart(main_closed, main_history_df)
-                                st.plotly_chart(priority_main_chart, use_container_width=True)
+                                st.plotly_chart(priority_main_chart, use_container_width=True, key="main_priority_chart_col2")
                     else:
                         st.info("No closed service requests available for priority change analysis.")
                 else:
@@ -477,11 +489,24 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             if 'history_df' in st.session_state and not st.session_state.history_df.empty:
                 # Filter history data for Service Requests only
                 sr_case_ids = service_requests_df['Id'].unique()
-                sr_history_df = st.session_state.history_df[st.session_state.history_df['ParentId'].isin(sr_case_ids)].copy()
+                
+                # Check which column name is used for the case ID in history data (reuse from above if already determined)
+                if not 'case_id_column' in locals() or case_id_column is None:
+                    case_id_column = None
+                    for col_name in ['ParentId', 'CaseId']:
+                        if col_name in st.session_state.history_df.columns:
+                            case_id_column = col_name
+                            break
+                
+                if case_id_column is None:
+                    st.error("Case ID column not found in history data. Expected 'ParentId' or 'CaseId'.")
+                    sr_history_df = pd.DataFrame()
+                else:
+                    sr_history_df = st.session_state.history_df[st.session_state.history_df[case_id_column].isin(sr_case_ids)].copy()
                 
                 if not sr_history_df.empty:
                     status_time_chart = create_status_time_chart(service_requests_df, sr_history_df)
-                    st.plotly_chart(status_time_chart, use_container_width=True)
+                    st.plotly_chart(status_time_chart, use_container_width=True, key="sr_status_time_chart")
                     
                     # Identify bottlenecks
                     try:
@@ -500,19 +525,29 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                         if not status_changes.empty:
                             # Group by case to calculate time in each status
                             for case_id in sr_case_ids:
-                                case_changes = status_changes[status_changes['ParentId'] == case_id].sort_values('CreatedDate')
+                                case_changes = status_changes[status_changes[case_id_column] == case_id].sort_values('CreatedDate')
                                 if len(case_changes) > 1:
                                     for i in range(len(case_changes) - 1):
                                         current_status = case_changes.iloc[i][new_value_field]
                                         current_time = case_changes.iloc[i]['CreatedDate']
                                         next_time = case_changes.iloc[i+1]['CreatedDate']
                                         
-                                        duration_hours = (next_time - current_time).total_seconds() / 3600
-                                        
-                                        if current_status not in status_times:
-                                            status_times[current_status] = []
-                                        
-                                        status_times[current_status].append(duration_hours)
+                                        try:
+                                            # Ensure timestamps are datetime objects, not strings
+                                            if isinstance(current_time, str):
+                                                current_time = pd.to_datetime(current_time)
+                                            if isinstance(next_time, str):
+                                                next_time = pd.to_datetime(next_time)
+                                            
+                                            duration_hours = (next_time - current_time).total_seconds() / 3600
+                                            
+                                            if current_status not in status_times:
+                                                status_times[current_status] = []
+                                            
+                                            status_times[current_status].append(duration_hours)
+                                        except Exception as e:
+                                            st.warning(f"Error processing time data for status '{current_status}': {str(e)}")
+                                            continue
                             
                             # Calculate averages and identify bottlenecks
                             bottlenecks = []
@@ -548,7 +583,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                                     xaxis_title="Status",
                                     yaxis_title="Average Time (Days)"
                                 )
-                                st.plotly_chart(fig, use_container_width=True)
+                                st.plotly_chart(fig, use_container_width=True, key="sr_bottleneck_chart")
                     except Exception as e:
                         st.error(f"Error analyzing status durations: {str(e)}")
                         debug(f"Error analyzing status durations: {str(e)}", 

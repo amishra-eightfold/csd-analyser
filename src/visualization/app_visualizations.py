@@ -135,7 +135,8 @@ def create_ticket_volume_chart(df: pd.DataFrame, time_unit: str = 'month') -> go
     volume_df.rename(columns={'index': 'Date'}, inplace=True)
     
     # Format dates for display
-    volume_df['Date'] = volume_df['Date'].dt.strftime(date_format)
+    if 'Date' in volume_df.columns and pd.api.types.is_datetime64_any_dtype(volume_df['Date']):
+        volume_df['Date'] = volume_df['Date'].dt.strftime(date_format)
     
     # Calculate month-over-month percentage changes
     if len(volume_df) > 1:
@@ -155,6 +156,16 @@ def create_ticket_volume_chart(df: pd.DataFrame, time_unit: str = 'month') -> go
     
     # Create figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Check if Date column exists in the DataFrame
+    if 'Date' not in volume_df.columns:
+        # Return empty figure if Date column is missing
+        fig.update_layout(
+            title="Ticket Volume (Date Format Error)",
+            xaxis_title="Date",
+            yaxis_title="Number of Tickets"
+        )
+        return fig
     
     # Add created tickets bar
     fig.add_trace(
@@ -250,7 +261,7 @@ def create_ticket_volume_chart(df: pd.DataFrame, time_unit: str = 'month') -> go
     )
     
     # Add annotations for latest values
-    if len(volume_df) > 0:
+    if len(volume_df) > 0 and 'Date' in volume_df.columns:
         latest = volume_df.iloc[-1]
         
         # Add annotation for latest created tickets

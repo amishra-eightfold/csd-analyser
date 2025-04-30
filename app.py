@@ -96,6 +96,8 @@ def initialize_session_state() -> None:
         st.session_state.enable_ai_analysis = False
     if 'debug_logger' not in st.session_state:
         st.session_state.debug_logger = DebugLogger()
+    if 'history_df' not in st.session_state:
+        st.session_state.history_df = pd.DataFrame()
 
 def setup_salesforce_connection() -> bool:
     """
@@ -215,10 +217,14 @@ def main() -> None:
         cases_df, comments_df, history_df = fetch_data(
             start_date=start_date,
             end_date=end_date,
-            selected_customers=selected_customers
+            selected_customers=selected_customers,
+            include_history=settings.get('include_history_data', True)
         )
         
         if cases_df is not None and not cases_df.empty:
+            # Store history data in session state
+            st.session_state.history_df = history_df
+            
             # Process PII if enabled
             if st.session_state.enable_pii_processing:
                 cases_df = process_pii_in_dataframe(cases_df)
@@ -235,9 +241,11 @@ def main() -> None:
             with col1:
                 st.metric("Total Tickets", summary.get('total_tickets', 0))
             with col2:
-                st.metric("Avg. Resolution Time", f"{summary.get('avg_resolution_time', 0):.1f} days")
+                resolution_time = summary.get('avg_resolution_time')
+                st.metric("Avg. Resolution Time", f"{resolution_time:.1f} days" if resolution_time is not None else "No data")
             with col3:
-                st.metric("CSAT", f"{summary.get('avg_csat', 0):.1f}")
+                csat_value = summary.get('avg_csat')
+                st.metric("CSAT", f"{csat_value:.1f}" if csat_value is not None else "No data")
             with col4:
                 st.metric("Open Tickets", summary.get('open_tickets', 0))
             
@@ -286,15 +294,15 @@ def display_data_table(df: pd.DataFrame, enable_pii_processing: bool = False) ->
         with col3:
             filter_product = st.multiselect(
                 "Product Area",
-                options=df['Product Area'].unique(),
-                default=df['Product Area'].unique()
+                options=df['Product_Area__c'].unique(),
+                default=df['Product_Area__c'].unique()
             )
         
         # Apply filters
         filtered_df = df[
             (df['Status'].isin(filter_status)) &
             (df['Priority'].isin(filter_priority)) &
-            (df['Product Area'].isin(filter_product))
+            (df['Product_Area__c'].isin(filter_product))
         ]
         
         # Display filtered data
