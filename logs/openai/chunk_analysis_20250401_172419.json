@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:24:19.888792",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Not Specified Root Cause\",\n      \"Net New Configuration Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\",\n      \"Net New Configuration\",\n      \"Not Specified\",\n      \"Redirected to Customer Admin\",\n      \"Merged Status\",\n      \"Low Resolution Time\",\n      \"High Resolution Time\"\n    ],\n    \"confidences\": {\n      \"Sync issue with SuccessFactors\": 0.3,\n      \"Incorrect role assignment in Career Hub\": 0.3,\n      \"Not Specified Root Cause\": 0.9,\n      \"Net New Configuration Root Cause\": 0.3,\n      \"Recurrent 'Not Specified' Root Cause\": 0.9,\n      \"No EF Support Action\": 0.3,\n      \"Gap in Product Understanding\": 0.3,\n      \"API sync failure\": 0.3,\n      \"User Error\": 0.3,\n      \"No Customer Response\": 0.3,\n      \"Net New Configuration\": 0.3,\n      \"Not Specified\": 0.9,\n      \"Redirected to Customer Admin\": 0.3,\n      \"Merged Status\": 0.6,\n      \"Low Resolution Time\": 0.6,\n      \"High Resolution Time\": 0.6\n    },\n    \"frequencies\": {\n      \"Sync issue with SuccessFactors\": 2,\n      \"Incorrect role assignment in Career Hub\": 1,\n      \"Not Specified Root Cause\": 21,\n      \"Net New Configuration Root Cause\": 1,\n      \"Recurrent 'Not Specified' Root Cause\": 1,\n      \"No EF Support Action\": 4,\n      \"Gap in Product Understanding\": 11,\n      \"API sync failure\": 1,\n      \"User Error\": 4,\n      \"No Customer Response\": 3,\n      \"Net New Configuration\": 5,\n      \"Not Specified\": 8,\n      \"Redirected to Customer Admin\": 2,\n      \"Merged Status\": 14,\n      \"Low Resolution Time\": 11,\n      \"High Resolution Time\": 2\n    },\n    \"total_patterns\": 16,\n    \"high_confidence\": [\n      \"Not Specified Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\",\n      \"Not Specified\"\n    ],\n    \"medium_confidence\": [\n      \"Merged Status\",\n      \"Low Resolution Time\",\n      \"High Resolution Time\"\n    ],\n    \"low_confidence\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Net New Configuration Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\",\n      \"Net New Configuration\",\n      \"Redirected to Customer Admin\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4Y1EQAU\",\n    \"Subject\": \"request id case 0005047327 submitted\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"5008V00001w4Y19QAE\",\n    \"Subject\": \"request case 0005047327 submitted\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"5008V00001w4XeeQAE\",\n    \"Subject\": \"request case 0005045533 submitted\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The three tickets analyzed share the same patterns: 'Merged Status', 'Low Resolution Time', and 'Not Specified' as root cause. No new patterns were identified in these tickets.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\"pattern\": \"Merged Status\", \"confidence\": \"medium\"},\n        {\"pattern\": \"Low Resolution Time\", \"confidence\": \"medium\"},\n        {\"pattern\": \"Not Specified\", \"confidence\": \"high\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate 'Not Specified' Root Cause\",\n            \"description\": \"There is a high frequency of tickets with 'Not Specified' as the root cause. It is recommended to investigate these cases to identify if there is a common underlying issue that is not being captured properly.\",\n            \"priority\": \"High\",\n            \"impact\": \"Understanding the root cause can help in reducing the recurrence of similar issues and improve the product or service.\"\n        },\n        {\n            \"title\": \"Review Merging Process\",\n            \"description\": \"A medium frequency of tickets have a 'Merged Status'. It is recommended to review the process of merging tickets to ensure it is being done correctly and it's not causing any confusion or miscommunication with the customers.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Improving the merging process can enhance customer communication and satisfaction.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1067,
+      "completion_tokens": 305,
+      "total_tokens": 1372
+    }
+  }
+}

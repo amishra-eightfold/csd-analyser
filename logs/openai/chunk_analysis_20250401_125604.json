@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:56:04.579599",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"Whitelist BNY domains\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.9,\n      \"CareerHub BNYMellon issues\": 0.9,\n      \"Whitelist BNY domains\": 0.6\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 2,\n      \"Whitelist BNY domains\": 1\n    },\n    \"total_patterns\": 3,\n    \"high_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"medium_confidence\": [\n      \"Whitelist BNY domains\"\n    ],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVdyCIAS\",\n    \"Subject\": \"support careerhub bnymellon 1742909882 unable update profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVTlIIAW\",\n    \"Subject\": \"rejection email getting sent\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVTghIAG\",\n    \"Subject\": \"unexpected behavior in interview center\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n  \"chunk_summary\": {\n    \"main_findings\": \"The support tickets show a recurrence of the 'CareerHub BNYMellon issues' pattern, with one ticket mentioning a problem with updating a profile. There are two new potential patterns: 'Rejection email issues' and 'Unexpected behavior in interview center'.\",\n    \"new_patterns\": [\"Rejection email issues\", \"Unexpected behavior in interview center\"]\n  },\n  \"patterns\": [\n    {\n      \"pattern\": \"CareerHub BNYMellon issues\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"pattern\": \"Rejection email issues\",\n      \"confidence\": \"low\"\n    },\n    {\n      \"pattern\": \"Unexpected behavior in interview center\",\n      \"confidence\": \"low\"\n    }\n  ],\n  \"recommendations\": [\n    {\n      \"title\": \"Investigate CareerHub BNYMellon Issues\",\n      \"description\": \"This pattern continues to be a recurring issue. It may be beneficial to investigate further to find a root cause and potentially develop a permanent solution.\",\n      \"priority\": \"high\",\n      \"impact\": \"High impact due to high frequency of this issue.\"\n    },\n    {\n      \"title\": \"Monitor New Patterns\",\n      \"description\": \"Two potential new patterns have emerged: 'Rejection email issues' and 'Unexpected behavior in interview center'. These should be monitored to see if they develop into recurring issues.\",\n      \"priority\": \"medium\",\n      \"impact\": \"Potential medium impact if these issues become more frequent.\"\n    }\n  ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 575,
+      "completion_tokens": 321,
+      "total_tokens": 896
+    }
+  }
+}

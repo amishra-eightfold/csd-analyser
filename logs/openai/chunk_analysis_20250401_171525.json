@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:15:25.772027",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"Wrong Reporting Manager issues\",\n      \"Whitelist BNY domains\",\n      \"Interview Center issues\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.6,\n      \"CareerHub BNYMellon issues\": 0.6,\n      \"Wrong Reporting Manager issues\": 0.3,\n      \"Whitelist BNY domains\": 0.3,\n      \"Interview Center issues\": 0.3\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 3,\n      \"Wrong Reporting Manager issues\": 2,\n      \"Whitelist BNY domains\": 1,\n      \"Interview Center issues\": 1\n    },\n    \"total_patterns\": 5,\n    \"high_confidence\": [],\n    \"medium_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"low_confidence\": [\n      \"Wrong Reporting Manager issues\",\n      \"Whitelist BNY domains\",\n      \"Interview Center issues\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVTghIAG\",\n    \"Subject\": \"unexpected behavior in interview center\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVQEtIAO\",\n    \"Subject\": \"support bnymellon 1742287070 location incorrect\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 6.172106481481482,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"User Error\"\n  },\n  {\n    \"Id\": \"500Kj00001cVOx5IAG\",\n    \"Subject\": \"update email address contract recruiters\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main findings include an increase in Interview Center issues and a new pattern related to incorrect location details in BNY Mellon support. There is also a new pattern related to updating email addresses for contract recruiters.\",\n        \"new_patterns\": [\"Incorrect location details in BNY Mellon support\", \"Update email addresses for contract recruiters\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Interview Center issues\",\n            \"confidence\": \"medium\"\n        },\n        {\n            \"pattern\": \"Incorrect location details in BNY Mellon support\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Update email addresses for contract recruiters\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate Interview Center Issues\",\n            \"description\": \"There is an increase in Interview Center issues. It is recommended to investigate the cause of these issues to prevent further tickets on this matter.\",\n            \"priority\": \"High\",\n            \"impact\": \"High\"\n        },\n        {\n            \"title\": \"Review Location Details in BNY Mellon Support\",\n            \"description\": \"A new pattern emerged related to incorrect location details in BNY Mellon support. This should be reviewed to ensure accurate location information in the system.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Medium\"\n        },\n        {\n            \"title\": \"Resolve Email Address Update Issues\",\n            \"description\": \"A new pattern related to difficulties in updating email addresses for contract recruiters has emerged. This should be resolved to ensure smooth communication and operation.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Medium\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 646,
+      "completion_tokens": 351,
+      "total_tokens": 997
+    }
+  }
+}

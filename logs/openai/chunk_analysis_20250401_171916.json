@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:19:16.497638",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Not Specified Root Cause\",\n      \"Net New Configuration Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\",\n      \"Net New Configuration\"\n    ],\n    \"confidences\": {\n      \"Sync issue with SuccessFactors\": 0.3,\n      \"Incorrect role assignment in Career Hub\": 0.3,\n      \"Not Specified Root Cause\": 0.9,\n      \"Net New Configuration Root Cause\": 0.3,\n      \"Recurrent 'Not Specified' Root Cause\": 0.9,\n      \"No EF Support Action\": 0.3,\n      \"Gap in Product Understanding\": 0.3,\n      \"API sync failure\": 0.3,\n      \"User Error\": 0.3,\n      \"No Customer Response\": 0.3,\n      \"Net New Configuration\": 0.3\n    },\n    \"frequencies\": {\n      \"Sync issue with SuccessFactors\": 2,\n      \"Incorrect role assignment in Career Hub\": 1,\n      \"Not Specified Root Cause\": 10,\n      \"Net New Configuration Root Cause\": 1,\n      \"Recurrent 'Not Specified' Root Cause\": 1,\n      \"No EF Support Action\": 4,\n      \"Gap in Product Understanding\": 4,\n      \"API sync failure\": 1,\n      \"User Error\": 2,\n      \"No Customer Response\": 2,\n      \"Net New Configuration\": 1\n    },\n    \"total_patterns\": 11,\n    \"high_confidence\": [\n      \"Not Specified Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\"\n    ],\n    \"medium_confidence\": [],\n    \"low_confidence\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Net New Configuration Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\",\n      \"Net New Configuration\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4wiaQAA\",\n    \"Subject\": \"scheduling template visibility\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"5008V00001w4vRTQAY\",\n    \"Subject\": \"request id case 0005090013 resolved\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"5008V00001w4rc6QAA\",\n    \"Subject\": \"unable access career hub\",\n    \"Priority\": \"P2\",\n    \"Status\": \"On-hold\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"User Error\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The three new tickets have the following root causes: 'Gap in Product Understanding', 'Not Specified', and 'User Error'. These are all patterns that we have seen before.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Gap in Product Understanding\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Not Specified Root Cause\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"User Error\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Increase Product Understanding\",\n            \"description\": \"There seems to be a recurring 'Gap in Product Understanding'. It's recommended to create more comprehensive user guides and training sessions to help users understand the product better.\",\n            \"priority\": \"High\",\n            \"impact\": \"Reducing the number of tickets related to product understanding could significantly improve customer satisfaction and reduce support workload.\"\n        },\n        {\n            \"title\": \"Investigate 'Not Specified' Root Causes\",\n            \"description\": \"There's a high frequency of 'Not Specified' root causes. It's recommended to investigate these cases further to understand the underlying issues.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Identifying the actual root causes could help in finding long-term solutions and prevent similar issues in the future.\"\n        },\n        {\n            \"title\": \"Improve Error Messages\",\n            \"description\": \"There are several tickets related to 'User Error'. It's recommended to improve error messages to guide users to correct their mistakes.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Improving error messages could reduce the number of tickets related to user errors and improve user experience.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 870,
+      "completion_tokens": 379,
+      "total_tokens": 1249
+    }
+  }
+}

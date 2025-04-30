@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:20:27.263218",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Not Specified Root Cause\",\n      \"Net New Configuration Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\",\n      \"Net New Configuration\",\n      \"Not Specified\",\n      \"Redirected to Customer Admin\"\n    ],\n    \"confidences\": {\n      \"Sync issue with SuccessFactors\": 0.3,\n      \"Incorrect role assignment in Career Hub\": 0.3,\n      \"Not Specified Root Cause\": 0.9,\n      \"Net New Configuration Root Cause\": 0.3,\n      \"Recurrent 'Not Specified' Root Cause\": 0.9,\n      \"No EF Support Action\": 0.3,\n      \"Gap in Product Understanding\": 0.3,\n      \"API sync failure\": 0.3,\n      \"User Error\": 0.3,\n      \"No Customer Response\": 0.3,\n      \"Net New Configuration\": 0.3,\n      \"Not Specified\": 0.9,\n      \"Redirected to Customer Admin\": 0.3\n    },\n    \"frequencies\": {\n      \"Sync issue with SuccessFactors\": 2,\n      \"Incorrect role assignment in Career Hub\": 1,\n      \"Not Specified Root Cause\": 11,\n      \"Net New Configuration Root Cause\": 1,\n      \"Recurrent 'Not Specified' Root Cause\": 1,\n      \"No EF Support Action\": 4,\n      \"Gap in Product Understanding\": 7,\n      \"API sync failure\": 1,\n      \"User Error\": 4,\n      \"No Customer Response\": 2,\n      \"Net New Configuration\": 2,\n      \"Not Specified\": 4,\n      \"Redirected to Customer Admin\": 2\n    },\n    \"total_patterns\": 13,\n    \"high_confidence\": [\n      \"Not Specified Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\",\n      \"Not Specified\"\n    ],\n    \"medium_confidence\": [],\n    \"low_confidence\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Net New Configuration Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\",\n      \"Net New Configuration\",\n      \"Redirected to Customer Admin\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4ng8QAA\",\n    \"Subject\": \"status request id case 0004807180 changed pending\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"5008V00001w4mCdQAI\",\n    \"Subject\": \"request id case 0005036845 resolved\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"5008V00001w4lmBQAQ\",\n    \"Subject\": \"request case 0005090013 submitted\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 4.6296296296296294e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"All three tickets have a 'Not Specified' root cause, and they all have 'Merged' status. The resolution time for all tickets is very low, and their priority is 'P2'. CSAT is not available for any of them.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Not Specified Root Cause\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"Merged Status\",\n            \"confidence\": \"medium\"\n        },\n        {\n            \"pattern\": \"Low Resolution Time\",\n            \"confidence\": \"medium\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate 'Not Specified' Root Cause\",\n            \"description\": \"A significant number of tickets have a 'Not Specified' root cause. This could indicate a lack of information or understanding about the issue. It is recommended to investigate these cases further to identify the actual root causes and address them.\",\n            \"priority\": \"High\",\n            \"impact\": \"Understanding the actual root causes can help improve the product, enhance customer service, and reduce the number of future tickets.\"\n        },\n        {\n            \"title\": \"Review 'Merged' Status Tickets\",\n            \"description\": \"All tickets in this chunk have a 'Merged' status. It would be beneficial to review these cases to ensure that all related issues have been resolved and no important details have been overlooked in the merging process.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Proper handling of merged tickets can improve customer satisfaction and prevent potential recurring issues.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 973,
+      "completion_tokens": 349,
+      "total_tokens": 1322
+    }
+  }
+}

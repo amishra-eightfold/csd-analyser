@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:19:02.853507",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Not Specified Root Cause\",\n      \"Net New Configuration Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\"\n    ],\n    \"confidences\": {\n      \"Sync issue with SuccessFactors\": 0.3,\n      \"Incorrect role assignment in Career Hub\": 0.3,\n      \"Not Specified Root Cause\": 0.9,\n      \"Net New Configuration Root Cause\": 0.3,\n      \"Recurrent 'Not Specified' Root Cause\": 0.9,\n      \"No EF Support Action\": 0.3,\n      \"Gap in Product Understanding\": 0.3,\n      \"API sync failure\": 0.3,\n      \"User Error\": 0.3,\n      \"No Customer Response\": 0.3\n    },\n    \"frequencies\": {\n      \"Sync issue with SuccessFactors\": 2,\n      \"Incorrect role assignment in Career Hub\": 1,\n      \"Not Specified Root Cause\": 10,\n      \"Net New Configuration Root Cause\": 1,\n      \"Recurrent 'Not Specified' Root Cause\": 1,\n      \"No EF Support Action\": 4,\n      \"Gap in Product Understanding\": 3,\n      \"API sync failure\": 1,\n      \"User Error\": 2,\n      \"No Customer Response\": 2\n    },\n    \"total_patterns\": 10,\n    \"high_confidence\": [\n      \"Not Specified Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\"\n    ],\n    \"medium_confidence\": [],\n    \"low_confidence\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Net New Configuration Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVNxCIAW\",\n    \"Subject\": \"inactive period trigger project dormant notifications\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVNmhIAG\",\n    \"Subject\": \"make project end date field mandatory field\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Net New Configuration\"\n  },\n  {\n    \"Id\": \"5008V00001w4wiaQAA\",\n    \"Subject\": \"scheduling template visibility\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"In this batch of tickets, the main root causes were 'Gap in Product Understanding' and 'Net New Configuration'. This suggests that users are struggling to understand certain aspects of the product and that there may be new configurations that are not well understood or documented.\",\n        \"new_patterns\": [\"Net New Configuration\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Gap in Product Understanding\", \n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Net New Configuration\", \n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Product Training\",\n            \"description\": \"Consider implementing additional training or documentation to help users better understand the product. This may help to reduce the number of tickets related to 'Gap in Product Understanding'.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"High\"\n        },\n        {\n            \"title\": \"Document New Configurations\",\n            \"description\": \"Ensure that any new configurations are well documented and communicated to users. This may help to reduce the number of tickets related to 'Net New Configuration'.\",\n            \"priority\": \"High\",\n            \"impact\": \"Medium\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 827,
+      "completion_tokens": 263,
+      "total_tokens": 1090
+    }
+  }
+}

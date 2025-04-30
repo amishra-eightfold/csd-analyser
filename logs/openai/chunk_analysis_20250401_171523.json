@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:15:23.914010",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync back issue\",\n      \"Role assignment error\",\n      \"Case resolution\"\n    ],\n    \"confidences\": {\n      \"Sync back issue\": 0.3,\n      \"Role assignment error\": 0.3,\n      \"Case resolution\": 0.3\n    },\n    \"frequencies\": {\n      \"Sync back issue\": 1,\n      \"Role assignment error\": 1,\n      \"Case resolution\": 1\n    },\n    \"total_patterns\": 3,\n    \"high_confidence\": [],\n    \"medium_confidence\": [],\n    \"low_confidence\": [\n      \"Sync back issue\",\n      \"Role assignment error\",\n      \"Case resolution\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVikSIAS\",\n    \"Subject\": \"request id case 0005182379 resolved\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVihTIAS\",\n    \"Subject\": \"incorrect name in ef\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Net New Configuration\"\n  },\n  {\n    \"Id\": \"500Kj00001cVggiIAC\",\n    \"Subject\": \"request case 0005182379 submitted\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 4.6296296296296294e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main insights derived from the analysis of the tickets are that two tickets are related to 'Case resolution' as they are marked as 'Merged' and 'Solved'. The second ticket seems to have a 'Sync back issue' as it mentions 'incorrect name in ef', which could be a data synchronization problem. 'Role assignment error' pattern was not found in these tickets.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Case resolution\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"Sync back issue\",\n            \"confidence\": \"medium\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve Case Resolution Process\",\n            \"description\": \"The case resolution process seems to be efficient as the resolution time is quite low. However, the root cause is not specified, which might lead to recurring issues. It's recommended to improve the process of root cause analysis.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"High\"\n        },\n        {\n            \"title\": \"Investigate Data Synchronization Issues\",\n            \"description\": \"There seems to be a potential data synchronization issue as indicated by 'incorrect name in ef'. It's recommended to investigate this further to prevent data integrity issues.\",\n            \"priority\": \"High\",\n            \"impact\": \"Medium\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 299,
+      "total_tokens": 855
+    }
+  }
+}

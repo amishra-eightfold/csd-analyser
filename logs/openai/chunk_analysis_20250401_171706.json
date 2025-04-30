@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:17:06.812296",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Not Specified Root Cause\",\n      \"Net New Configuration Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\"\n    ],\n    \"confidences\": {\n      \"Sync issue with SuccessFactors\": 0.3,\n      \"Incorrect role assignment in Career Hub\": 0.3,\n      \"Not Specified Root Cause\": 0.6,\n      \"Net New Configuration Root Cause\": 0.3,\n      \"Recurrent 'Not Specified' Root Cause\": 0.9\n    },\n    \"frequencies\": {\n      \"Sync issue with SuccessFactors\": 1,\n      \"Incorrect role assignment in Career Hub\": 1,\n      \"Not Specified Root Cause\": 1,\n      \"Net New Configuration Root Cause\": 1,\n      \"Recurrent 'Not Specified' Root Cause\": 1\n    },\n    \"total_patterns\": 5,\n    \"high_confidence\": [\n      \"Recurrent 'Not Specified' Root Cause\"\n    ],\n    \"medium_confidence\": [\n      \"Not Specified Root Cause\"\n    ],\n    \"low_confidence\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Net New Configuration Root Cause\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVgT5IAK\",\n    \"Subject\": \"release advancement production environment v2025_q1\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 0.945162037037037,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVg8CIAS\",\n    \"Subject\": \"accepted meeting invites reflecting outlook\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVbMbIAK\",\n    \"Subject\": \"request id case 0004977575 resolved\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 4.6296296296296294e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The 'Not Specified Root Cause' pattern is recurring in all the three analyzed tickets. This indicates a trend in unresolved or unidentified issues. The tickets' priority is consistently at 'P2', indicating moderate urgency. None of the tickets have a CSAT score, indicating a lack of customer feedback.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Not Specified Root Cause\",\n            \"confidence\": \"high\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve Root Cause Identification\",\n            \"description\": \"There is a high frequency of 'Not Specified Root Cause' in the tickets. This indicates that the issues are not being adequately diagnosed. Investing in better diagnostic tools or training for support staff may help in improving the root cause identification process.\",\n            \"priority\": \"High\",\n            \"impact\": \"Improving root cause identification could lead to more effective issue resolution, potentially improving customer satisfaction and reducing resolution time.\"\n        },\n        {\n            \"title\": \"Implement CSAT Scoring\",\n            \"description\": \"None of the tickets have a CSAT score, indicating a lack of customer feedback. Implementing a system for gathering customer feedback could provide valuable insights into the effectiveness of the support provided.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Gathering customer feedback can help identify areas for improvement in the support process, potentially leading to higher customer satisfaction.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 689,
+      "completion_tokens": 314,
+      "total_tokens": 1003
+    }
+  }
+}

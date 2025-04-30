@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T22:26:16.789012",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Product Understanding Gap\",\n      \"Configuration Implementation Miss\",\n      \"No EF Support Action\"\n    ],\n    \"confidences\": {\n      \"Product Understanding Gap\": 0.6,\n      \"Configuration Implementation Miss\": 0.6,\n      \"No EF Support Action\": 0.3\n    },\n    \"frequencies\": {\n      \"Product Understanding Gap\": 1,\n      \"Configuration Implementation Miss\": 1,\n      \"No EF Support Action\": 1\n    },\n    \"total_patterns\": 3,\n    \"high_confidence\": [],\n    \"medium_confidence\": [\n      \"Product Understanding Gap\",\n      \"Configuration Implementation Miss\"\n    ],\n    \"low_confidence\": [\n      \"No EF Support Action\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4fRXQAY\",\n    \"Subject\": \"hiring manager internal candidate access\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 3.247476851851852,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  },\n  {\n    \"Id\": \"5008V00001w4dM9QAI\",\n    \"Subject\": \"hiring manager permissions\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 4.9861458333333335,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main findings from the analyzed tickets show that the 'Configuration Implementation Miss' pattern is still persistent. Both tickets have this as the root cause, suggesting a recurring issue.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Configuration Implementation Miss\",\n            \"confidence\": \"medium\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Review Configuration Implementation Process\",\n            \"description\": \"Given the recurrence of the 'Configuration Implementation Miss' pattern, it is recommended to review the current configuration implementation process. Identify the areas where misses are occurring and establish a plan to address these gaps.\",\n            \"priority\": \"High\",\n            \"impact\": \"Reducing the occurrence of this pattern could significantly decrease the number of related support tickets, improving customer satisfaction and reducing resolution times.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 481,
+      "completion_tokens": 188,
+      "total_tokens": 669
+    }
+  }
+}

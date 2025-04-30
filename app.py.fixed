@@ -1,0 +1,1962 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import numpy as np
+from io import BytesIO
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from PIL import Image
+from wordcloud import WordCloud, STOPWORDS
+import matplotlib.pyplot as plt
+import seaborn as sns
+from salesforce_config import init_salesforce, execute_soql_query
+import openai
+from openai import OpenAI
+import time
+import json
+import re
+import os
+import html
+import traceback
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+import joblib
+import os.path
+import tiktoken
+from textblob import TextBlob
+
+# Import from new module structure
+from src.visualization.salesforce_visualizer import SalesforceVisualizer
+from src.visualization.advanced_visualizations import AdvancedVisualizer
+from src.visualization.pattern_evolution import PatternEvolutionVisualizer
+
+from utils.text_processing import clean_text, remove_pii, prepare_text_for_ai, get_technical_stopwords, get_highest_priority_from_history
+from processors.salesforce_processor import SalesforceDataProcessor
+from utils.pii_handler import PIIHandler, get_privacy_status_indicator
+from typing import Tuple, Dict, Any, List
+from utils.token_manager import TokenManager, TokenInfo, convert_value_for_json
+from utils.ai_analysis import AIAnalyzer
+from utils.exporter import BaseExporter
+from utils.visualization_helpers import truncate_string
+from utils.debug_logger import DebugLogger
+from utils.time_analysis import calculate_first_response_time, calculate_sla_breaches
+from config.logging_config import get_logger, log_error
+
+# Initialize loggers
+logger = get_logger('app')
+api_logger = get_logger('api')
+error_logger = get_logger('error')
+
+# Set Seaborn and Matplotlib style
+sns.set_theme(style="whitegrid")
+
+# Custom color palettes for different visualizations
+VIRIDIS_PALETTE = ["#440154", "#3B528B", "#21918C", "#5EC962", "#FDE725"]  # Viridis colors
+AQUA_PALETTE = ["#E0F7FA", "#80DEEA", "#26C6DA", "#00ACC1", "#00838F", "#006064"]   # Material Cyan/Aqua
+PRIORITY_COLORS = {
+    'P1': VIRIDIS_PALETTE[0],
+    'P2': VIRIDIS_PALETTE[1],
+    'P3': VIRIDIS_PALETTE[2],
+    'P4': VIRIDIS_PALETTE[3]
+}
+
+# Define custom color palettes for each visualization type
+VOLUME_PALETTE = [AQUA_PALETTE[2], AQUA_PALETTE[4]]  # Two distinct colors for Created/Closed
+PRIORITY_PALETTE = VIRIDIS_PALETTE  # Viridis for priority levels
+CSAT_PALETTE = AQUA_PALETTE  # Aqua palette for CSAT
+HEATMAP_PALETTE = "viridis"  # Viridis colorscale for heatmaps
+
+# Create an extended palette for root causes
+ROOT_CAUSE_PALETTE = VIRIDIS_PALETTE
+
+# Set default style
+plt.style.use("seaborn-v0_8-whitegrid")
+
+# Check for debug mode
+DEBUG_MODE = os.getenv('DEBUG_MODE', 'False').lower() in ('true', '1', 't')
+
+# Page Configuration
+st.set_page_config(
+    page_title="Support Ticket Analytics",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Initialize Session State
+if 'customers' not in st.session_state:
+    st.session_state.customers = None
+if 'selected_customers' not in st.session_state:
+    st.session_state.selected_customers = []
+if 'date_range' not in st.session_state:
+    # Initialize with default date range (last 30 days)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=30)
+    st.session_state.date_range = (start_date, end_date)
+if 'sf_connection' not in st.session_state:
+    st.session_state.sf_connection = None
+if 'data_loaded' not in st.session_state:
+    st.session_state.data_loaded = False
+if 'debug_mode' not in st.session_state:
+    st.session_state.debug_mode = False
+if 'pii_handler' not in st.session_state:
+    st.session_state.pii_handler = PIIHandler()
+if 'enable_pii_processing' not in st.session_state:
+    st.session_state.enable_pii_processing = False
+if 'enable_detailed_analysis' not in st.session_state:
+    st.session_state.enable_detailed_analysis = True
+if 'enable_ai_analysis' not in st.session_state:
+    st.session_state.enable_ai_analysis = False
+
+# Initialize debug logger
+if 'debug_logger' not in st.session_state:
+    st.session_state.debug_logger = DebugLogger()
+
+# Initialize visualizers at the start of the script, after imports
+if 'advanced_visualizer' not in st.session_state:
+    st.session_state.advanced_visualizer = AdvancedVisualizer()
+if 'pattern_visualizer' not in st.session_state:
+    st.session_state.pattern_visualizer = PatternEvolutionVisualizer()
+
+# Custom CSS
+st.markdown("""
+    <style>
+    .main {
+        padding: 2rem;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+        background-color: #4CAF50;
+        color: white;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        background-color: #45a049;
+        transform: translateY(-2px);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .stSelectbox>div>div>input {
+        border-radius: 5px;
+    }
+    .reportview-container {
+        background: #f0f2f6;
+    }
+    .sidebar .sidebar-content {
+        background: #ffffff;
+    }
+    h1 {
+        color: #1E3D59;
+        font-weight: bold;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #1E3D59;
+        margin-bottom: 2rem;
+    }
+    .stMetric {
+        background-color: white;
+        padding: 1rem;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+    .stMetric:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .stPlotlyChart {
+        background-color: white;
+        padding: 1rem;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+        transition: all 0.3s ease;
+    }
+    .stPlotlyChart:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    /* Status Indicators */
+    .status-indicator {
+        padding: 8px 12px;
+        border-radius: 4px;
+        margin: 8px 0;
+        transition: all 0.3s ease;
+    }
+    .status-indicator.processing {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+        color: #856404;
+    }
+    .status-indicator.success {
+        background-color: #d4edda;
+        border-left: 4px solid #28a745;
+        color: #155724;
+    }
+    .status-indicator.error {
+        background-color: #f8d7da;
+        border-left: 4px solid #dc3545;
+        color: #721c24;
+    }
+    
+    /* Loading Animation */
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+    .loading {
+        animation: pulse 1.5s infinite;
+        padding: 1rem;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+        text-align: center;
+    }
+    
+    /* Section Transitions */
+    .section-transition {
+        opacity: 0;
+        transform: translateY(20px);
+        animation: fadeInUp 0.5s forwards;
+    }
+    @keyframes fadeInUp {
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* Privacy Status Styles */
+    .privacy-status {
+        padding: 1rem;
+        border-radius: 5px;
+        margin: 1rem 0;
+        transition: all 0.3s ease;
+    }
+    .privacy-status.excellent {
+        background-color: rgba(40, 167, 69, 0.1);
+        border: 1px solid #28a745;
+    }
+    .privacy-status.good {
+        background-color: rgba(0, 123, 255, 0.1);
+        border: 1px solid #007bff;
+    }
+    .privacy-status.fair {
+        background-color: rgba(255, 193, 7, 0.1);
+        border: 1px solid #ffc107;
+    }
+    .privacy-status.poor {
+        background-color: rgba(220, 53, 69, 0.1);
+        border: 1px solid #dc3545;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+def debug(message, data=None, category="app"):
+    """Enhanced debug function that uses both DebugLogger and file logging."""
+    # Log to DebugLogger if available
+    if hasattr(st.session_state, 'debug_logger'):
+        st.session_state.debug_logger.log(message, data, category)
+
+    # Log to file logger
+    logger = get_logger(category)
+    if data is not None:
+        # Convert NumPy types to Python native types
+        if isinstance(data, dict):
+            sanitized_data = {}
+            for k, v in data.items():
+                if hasattr(v, 'dtype'):  # Check if it's a NumPy type
+                    if np.issubdtype(v.dtype, np.integer):
+                        sanitized_data[k] = int(v)
+                    elif np.issubdtype(v.dtype, np.floating):
+                        sanitized_data[k] = float(v)
+                    elif np.issubdtype(v.dtype, np.bool_):
+                        sanitized_data[k] = bool(v)
+                    else:
+                        sanitized_data[k] = str(v)
+                else:
+                    sanitized_data[k] = v
+            logger.info(f"{message} - {json.dumps(sanitized_data)}")
+        else:
+            logger.info(f"{message} - {str(data)}")
+    else:
+        logger.info(message)
+
+def process_pii_in_dataframe(df):
+    """Process PII in DataFrame with visual feedback."""
+    if not st.session_state.enable_pii_processing:
+        return df, {}
+    
+    # Create a placeholder for the progress
+    progress_placeholder = st.empty()
+    progress_placeholder.markdown(
+        """
+        <div class='loading status-indicator processing'>
+            <p>🔍 Scanning for PII...</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    try:
+        # Process the DataFrame
+        processed_df, pii_stats = st.session_state.pii_handler.process_dataframe(
+            df,
+            ['Subject', 'Description', 'Comments', 'Account_Name', 'Product_Area__c', 'Product_Feature__c']
+        )
+        
+        # Show success message with stats
+        progress_placeholder.markdown(
+            f"""
+            <div class='status-indicator success'>
+                <p>✅ PII Processing Complete</p>
+                <p>Found and processed {pii_stats['pii_detected']} instances of PII</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        return processed_df, pii_stats
+    except Exception as e:
+        # Show error message
+        progress_placeholder.markdown(
+            f"""
+            <div class='status-indicator error'>
+                <p>❌ Error Processing PII</p>
+                <p>{str(e)}</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        raise e
+    finally:
+        # Clear the progress placeholder after a delay
+        time.sleep(2)
+        progress_placeholder.empty()
+
+def display_privacy_status():
+    """Display privacy status indicator in the sidebar."""
+    st.sidebar.markdown("---")
+    st.sidebar.header("Privacy Status")
+    
+    # Get latest validation score and status
+    audit_summary = st.session_state.pii_handler.get_audit_summary()
+    validation_score = audit_summary['latest_validation_score']
+    status = get_privacy_status_indicator(validation_score)
+    
+    # Display status with appropriate color and animation
+    st.sidebar.markdown(
+        f"""
+        <div class='privacy-status {status["status"].lower()}'>
+            <h3 style='color: {status["color"]}; margin: 0;'>{status["status"]}</h3>
+            <p style='margin: 5px 0 0 0;'>{status["message"]}</p>
+            <div style='margin-top: 10px;'>
+                <div style='background: #eee; height: 4px; border-radius: 2px;'>
+                    <div style='background: {status["color"]}; width: {validation_score * 100}%; height: 100%; border-radius: 2px; transition: width 0.5s ease;'></div>
+                </div>
+                <p style='text-align: right; font-size: 0.8em; margin: 2px 0;'>Score: {validation_score:.2f}</p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # Display audit summary with animation
+    if st.sidebar.checkbox("Show Privacy Audit Summary"):
+        st.sidebar.markdown(
+            f"""
+            <div class='section-transition'>
+                <div class='status-indicator success'>
+                    <h4 style='margin: 0;'>PII Detection Summary</h4>
+                    <p style='margin: 5px 0;'>Total operations: {audit_summary['total_operations']}</p>
+                    <p style='margin: 5px 0;'>Total PII detected: {audit_summary['total_pii_detected']}</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        if audit_summary['by_type']:
+            st.sidebar.markdown("<div class='section-transition'>", unsafe_allow_html=True)
+            st.sidebar.write("PII Types Detected:")
+            for pii_type, count in audit_summary['by_type'].items():
+                st.sidebar.markdown(
+                    f"""
+                    <div class='status-indicator processing' style='margin: 4px 0;'>
+                        {pii_type}: {count}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            st.sidebar.markdown("</div>", unsafe_allow_html=True)
+        
+        # Show debug information if debug mode is enabled
+        if st.session_state.debug_mode:
+            st.sidebar.markdown(
+                """
+                <div class='section-transition'>
+                    <div class='status-indicator processing'>
+                        <h4 style='margin: 0;'>Debug Information</h4>
+                """,
+                unsafe_allow_html=True
+            )
+            st.sidebar.write("- PII Handler Stats:", st.session_state.pii_handler.pii_stats)
+            st.sidebar.write("- Latest Audit Record:", st.session_state.pii_handler.audit_records[-1] if st.session_state.pii_handler.audit_records else "No audit records")
+            st.sidebar.markdown("</div></div>", unsafe_allow_html=True)
+
+# Initialize OpenAI client
+client = OpenAI()
+
+def main():
+    st.title("Support Ticket Analytics")
+    
+    # Initialize debug mode if in development environment
+    if os.getenv('ENVIRONMENT', 'development').lower() != 'production':
+        st.sidebar.markdown("---")
+        st.sidebar.header("Developer Options")
+        was_debug_enabled = st.session_state.get('debug_mode', False)
+        st.session_state.debug_mode = st.sidebar.checkbox(
+            "Enable Debug Mode",
+            value=st.session_state.debug_mode,
+            help="Show additional debugging information and detailed error messages",
+            key="debug_mode_checkbox"
+        )
+        
+        # Display debug UI if debug mode is enabled
+        if st.session_state.debug_mode:
+            # Log initial debug message only when first enabled
+            if not was_debug_enabled:
+                debug("Debug mode enabled")
+                debug("Application startup", {
+                    'environment': os.getenv('ENVIRONMENT', 'development'),
+                    'session_state_keys': list(st.session_state.keys())
+                })
+            
+            # Display debug UI
+            st.session_state.debug_logger.display_debug_ui()
+    
+    # Add debug message for Salesforce connection attempt
+    if st.session_state.debug_mode:
+        debug("Attempting Salesforce connection")
+    
+    # Initialize Salesforce connection if not already done
+    if st.session_state.sf_connection is None:
+        connection_status = st.empty()
+        connection_status.markdown(
+            """
+            <div class='loading status-indicator processing'>
+                <p>🔌 Connecting to Salesforce...</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        try:
+            st.session_state.sf_connection = init_salesforce()
+            if st.session_state.sf_connection is None:
+                connection_status.markdown(
+                    """
+                    <div class='status-indicator error'>
+                        <p>❌ Failed to connect to Salesforce</p>
+                        <p>Please check your credentials.</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                return
+            else:
+                connection_status.markdown(
+                    """
+                    <div class='status-indicator success'>
+                        <p>✅ Connected to Salesforce</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                time.sleep(1)
+                connection_status.empty()
+        except Exception as e:
+            connection_status.markdown(
+                f"""
+                <div class='status-indicator error'>
+                    <p>❌ Connection Error</p>
+                    <p>{str(e)}</p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            return
+    
+    # Fetch customers if not already loaded
+    if st.session_state.customers is None:
+        try:
+            debug("Fetching customer list")
+            query = """
+                SELECT Account.Account_Name__c 
+                FROM Account 
+                WHERE Account.Account_Name__c != null
+                AND Active_Contract__c = 'Yes'
+                ORDER BY Account.Account_Name__c
+            """
+            records = execute_soql_query(st.session_state.sf_connection, query)
+            if records:
+                st.session_state.customers = [record['Account_Name__c'] for record in records]
+                debug(f"Loaded {len(st.session_state.customers)} customers")
+            else:
+                st.session_state.customers = []
+                debug("No customers found", category="error")
+        except Exception as e:
+            st.error(f"Error fetching customers: {str(e)}")
+            debug(f"Error fetching customers: {str(e)}", {'traceback': traceback.format_exc()}, category="error")
+            return
+    
+    # Sidebar
+    st.sidebar.title("Settings")
+    
+    # Analysis Options
+    st.sidebar.header("Analysis Options")
+    st.session_state.enable_detailed_analysis = st.sidebar.checkbox(
+        "Enable Detailed Analysis",
+        value=True,
+        help="Show comprehensive metrics and visualizations"
+    )
+    st.session_state.enable_ai_analysis = st.sidebar.checkbox(
+        "Enable AI Analysis",
+        value=False,
+        help="Use AI to generate insights and recommendations"
+    )
+    st.session_state.enable_pii_processing = st.sidebar.checkbox(
+        "Enable PII Protection",
+        value=False,
+        help="Remove sensitive information before analysis"
+    )
+    
+    # Export Section in Sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.header("📥 Exports")
+    
+    from utils.data_export import get_available_exports
+    exports = get_available_exports()
+    
+    if exports:
+        st.sidebar.markdown("### Available Exports")
+        for export in exports:
+            # Format timestamp safely
+            timestamp_display = (
+                export['timestamp'].strftime('%Y-%m-%d %H:%M') 
+                if export['timestamp'] is not None 
+                else export['timestamp_str']
+            )
+            
+            with st.sidebar.expander(f"{export['customer_name']} - {timestamp_display}"):
+                # Show export details
+                st.write(f"Files available:")
+                for file in export['files']:
+                    file_size_mb = file['size'] / (1024 * 1024)
+                    st.write(f"- {file['name']} ({file_size_mb:.1f} MB)")
+                
+                # Download buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    # Individual file downloads
+                    for file in export['files']:
+                        with open(file['path'], 'rb') as f:
+                            st.download_button(
+                                label=f"📄 {file['type']}",
+                                data=f,
+                                file_name=file['name'],
+                                mime=f"text/{file['type'].lower()}"
+                            )
+                
+                with col2:
+                    # Download all as ZIP
+                    try:
+                        from utils.data_export import create_customer_export_zip
+                        zip_buffer, zip_filename = create_customer_export_zip(
+                            export['customer_name'],
+                            export['timestamp_str']
+                        )
+                        st.download_button(
+                            label="📦 Download All",
+                            data=zip_buffer,
+                            file_name=zip_filename,
+                            mime="application/zip",
+                            help="Download all files as ZIP"
+                        )
+                    except Exception as e:
+                        st.error("Error creating ZIP file")
+                        if st.session_state.debug_mode:
+                            st.exception(e)
+    else:
+        st.sidebar.info("No exports available yet. Run an analysis to generate exports.")
+    
+    # Date Range Selection
+    st.sidebar.markdown("---")
+    st.sidebar.header("Date Range")
+    
+    # Get current dates from session state and ensure they are datetime objects
+    if 'date_range' not in st.session_state:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+        st.session_state.date_range = (start_date, end_date)
+    
+    current_start, current_end = st.session_state.date_range
+    if not isinstance(current_start, datetime):
+        current_start = pd.to_datetime(current_start)
+    if not isinstance(current_end, datetime):
+        current_end = pd.to_datetime(current_end)
+    
+    # Create separate date inputs for start and end dates
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        start_date = st.date_input(
+            "Start Date",
+            value=current_start.date(),
+            max_value=datetime.now().date(),
+            key='start_date_input'
+        )
+    
+    with col2:
+        end_date = st.date_input(
+            "End Date",
+            value=current_end.date(),
+            max_value=datetime.now().date(),
+            min_value=start_date,  # Ensure end date is not before start date
+            key='end_date_input'
+        )
+    
+    # Update session state with new date range
+    start_date = datetime.combine(start_date, datetime.min.time())
+    end_date = datetime.combine(end_date, datetime.max.time())
+    st.session_state.date_range = (start_date, end_date)
+    
+    # Customer Selection
+    st.sidebar.header("Customer Selection")
+    if st.session_state.customers:
+        selected = st.sidebar.multiselect(
+            "Select Customers",
+            options=st.session_state.customers,
+            default=st.session_state.selected_customers,
+            help="Choose one or more customers to analyze"
+        )
+        st.session_state.selected_customers = selected
+    else:
+        st.sidebar.warning("No customers found. Please check your Salesforce connection.")
+    
+    # Export Options
+    st.sidebar.header("Export Options")
+    if st.sidebar.button("Export Analysis"):
+        if st.session_state.data_loaded and len(st.session_state.selected_customers) > 0:
+            export_analysis()
+        else:
+            st.sidebar.error("Please load data and select at least one customer first")
+    
+    # Help Section
+    with st.sidebar.expander("Help"):
+        st.markdown("""
+        ### How to use this tool:
+        1. Select one or more customers from the dropdown
+        2. Choose your desired date range
+        3. Enable/disable analysis options as needed
+        4. Click 'Generate Analysis' to view results
+        5. Use 'Export Analysis' to download results
+        
+        ### Analysis Options:
+        - **Detailed Analysis**: Shows comprehensive metrics and visualizations
+        - **AI Analysis**: Provides AI-generated insights and recommendations
+        - **PII Protection**: Removes sensitive information before analysis
+        
+        Need help? Contact support@company.com
+        """)
+    
+    # Main Content Area
+    if len(st.session_state.selected_customers) > 0:
+        with st.spinner("Fetching data..."):
+            try:
+                df = fetch_data()
+                st.session_state.data_loaded = True
+                
+                if df is not None and not df.empty:
+                    # Display basic visualizations first
+                    debug("Starting basic visualizations")
+                    display_visualizations(df, st.session_state.selected_customers)
+                    
+                    # Display detailed analysis if enabled
+                    if st.session_state.enable_detailed_analysis:
+                        debug("Starting detailed analysis")
+                        
+                        # Filter for closed tickets if AI analysis is enabled
+                        if st.session_state.enable_ai_analysis:
+                            closed_statuses = ['Closed', 'Resolved', 'Completed']
+                            analysis_df = df[df['Status'].isin(closed_statuses)].copy()
+                            
+                            if len(analysis_df) == 0:
+                                st.warning("No closed tickets found for AI analysis. Please adjust your filters or date range.")
+                                debug("No closed tickets available for AI analysis", {
+                                    'total_tickets': len(df),
+                                    'status_distribution': df['Status'].value_counts().to_dict()
+                                })
+                                return
+                                
+                            debug("Filtered for closed tickets", {
+                                'total_tickets': len(df),
+                                'closed_tickets': len(analysis_df),
+                                'status_distribution': df['Status'].value_counts().to_dict()
+                            })
+                        else:
+                            analysis_df = df
+                            
+                        display_detailed_analysis(
+                            analysis_df, 
+                            enable_ai_analysis=st.session_state.enable_ai_analysis,
+                            enable_pii_processing=st.session_state.enable_pii_processing
+                        )
+                else:
+                    debug("No data available for analysis", category="error")
+                    st.warning("No data available for the selected criteria. Please adjust your filters and try again.")
+                    
+            except Exception as e:
+                st.error(f"Error fetching data: {str(e)}")
+                debug(f"Error in main analysis flow: {str(e)}", 
+                      {'traceback': traceback.format_exc()}, 
+                      category="error")
+                if st.session_state.debug_mode:
+                    st.exception(e)
+    else:
+        st.info("Please select at least one customer to begin analysis")
+
+def fetch_data():
+    """Fetch data from Salesforce based on session state."""
+    try:
+        if not st.session_state.selected_customers:
+            st.warning("No customers selected")
+            debug("No customers selected for data fetch", category="app")
+            return None
+            
+        customer_list = "'" + "','".join(st.session_state.selected_customers) + "'"
+        start_date, end_date = st.session_state.date_range
+        
+        debug("Fetching data with parameters", {
+            'customers': st.session_state.selected_customers,
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': end_date.strftime('%Y-%m-%d')
+        })
+        
+        # Main case query
+        query = f"""
+            SELECT 
+                Id, CaseNumber, Subject, Description,
+                Account.Account_Name__c, CreatedDate, ClosedDate, Status, Internal_Priority__c,
+                Product_Area__c, Product_Feature__c, RCA__c,
+                First_Response_Time__c, CSAT__c, IsEscalated, Case_Type__c, Type
+            FROM Case
+            WHERE Account.Account_Name__c IN ({customer_list})
+            AND CreatedDate >= {start_date.strftime('%Y-%m-%d')}T00:00:00Z
+            AND CreatedDate <= {end_date.strftime('%Y-%m-%d')}T23:59:59Z
+            AND Is_Case_L1_Triaged__c = false
+            AND RecordTypeId = '0123m000000U8CCAA0'
+        """
+        
+        debug("Executing SOQL query", {'query': query}, category="api")
+        
+        records = execute_soql_query(st.session_state.sf_connection, query)
+        if not records:
+            st.warning("No data found for the selected criteria")
+            debug("No records returned from query", category="app")
+            return pd.DataFrame()
+            
+        df = pd.DataFrame(records)
+        
+        # Extract Account Name from nested structure
+        if 'Account' in df.columns and isinstance(df['Account'].iloc[0], dict):
+            df['Account_Name'] = df['Account'].apply(lambda x: x.get('Account_Name__c') if isinstance(x, dict) else None)
+            df = df.drop('Account', axis=1)
+        
+        # Fetch case history for priority tracking
+        try:
+            case_ids = "'" + "','".join(df['Id'].tolist()) + "'"
+            history_query = f"""
+                SELECT Id, CaseId, Field, OldValue, NewValue, CreatedDate
+                FROM CaseHistory
+                WHERE CaseId IN ({case_ids})
+                AND Field = 'Internal_Priority__c'
+                ORDER BY CreatedDate ASC
+            """
+            
+            debug("Fetching case history data", {
+                'query': history_query,
+                'case_count': len(df['Id'].unique())
+            })
+            
+            try:
+                history_records = execute_soql_query(st.session_state.sf_connection, history_query)
+                if history_records:
+                    history_df = pd.DataFrame(history_records)
+                    debug(f"Retrieved {len(history_df)} history records")
+                else:
+                    debug("No history records found")
+                    history_df = pd.DataFrame(columns=['Id', 'CaseId', 'Field', 'OldValue', 'NewValue', 'CreatedDate'])
+            except Exception as query_error:
+                logger.error(f"Error fetching history data: {str(query_error)}", exc_info=True)
+                history_df = pd.DataFrame(columns=['Id', 'CaseId', 'Field', 'OldValue', 'NewValue', 'CreatedDate'])
+            
+            # Calculate highest priority for each case
+            priority_stats = {'success': 0, 'error': 0, 'unchanged': 0}
+            
+            for case_id in df['Id']:
+                try:
+                    current_priority = df.loc[df['Id'] == case_id, 'Internal_Priority__c'].iloc[0]
+                    highest_priority = get_highest_priority(case_id, history_df, current_priority)
+                    
+                    if highest_priority != current_priority:
+                        priority_stats['success'] += 1
+                    else:
+                        priority_stats['unchanged'] += 1
+                        
+                    df.loc[df['Id'] == case_id, 'Highest_Priority'] = highest_priority
+                    
+                except Exception as e:
+                    priority_stats['error'] += 1
+                    error_msg = f"Error processing priority for case {case_id}: {str(e)}"
+                    debug(error_msg, {'traceback': traceback.format_exc()}, category="error")
+                    logger.error(error_msg, exc_info=True)
+                    df.loc[df['Id'] == case_id, 'Highest_Priority'] = current_priority
+            
+            debug("Priority analysis completed", {
+                'total_cases': len(df),
+                'priority_stats': priority_stats
+            })
+            
+        except Exception as e:
+            error_msg = f"Error fetching priority history: {str(e)}"
+            debug(error_msg, {'traceback': traceback.format_exc()}, category="error")
+            logger.error(error_msg, exc_info=True)
+            df['Highest_Priority'] = df['Internal_Priority__c']
+        
+        # Handle missing values
+        df['Subject'] = df['Subject'].fillna('')
+        df['Description'] = df['Description'].fillna('')
+        df['Product_Area__c'] = df['Product_Area__c'].fillna('Unspecified')
+        df['Product_Feature__c'] = df['Product_Feature__c'].fillna('Unspecified')
+        df['RCA__c'] = df['RCA__c'].fillna('Not Specified')
+        df['Internal_Priority__c'] = df['Internal_Priority__c'].fillna('Not Set')
+        df['Status'] = df['Status'].fillna('Unknown')
+        df['CSAT__c'] = pd.to_numeric(df['CSAT__c'], errors='coerce')
+        df['IsEscalated'] = df['IsEscalated'].fillna(False)
+        
+        # Convert date columns and ensure timezone consistency
+        date_columns = ['CreatedDate', 'ClosedDate', 'First_Response_Time__c']
+        for col in date_columns:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], utc=True)
+        
+        # Calculate resolution time
+        mask = df['ClosedDate'].notna() & df['CreatedDate'].notna()
+        df.loc[mask, 'Resolution Time (Days)'] = (
+            df.loc[mask, 'ClosedDate'] - df.loc[mask, 'CreatedDate']
+        ).dt.total_seconds() / (24 * 60 * 60)
+        
+        # Rename columns for consistency
+        df = df.rename(columns={
+            'CreatedDate': 'Created Date',
+            'ClosedDate': 'Closed Date',
+            'Product_Area__c': 'Product Area',
+            'Product_Feature__c': 'Product Feature',
+            'RCA__c': 'Root Cause',
+            'First_Response_Time__c': 'First Response Time',
+            'CSAT__c': 'CSAT',
+            'Internal_Priority__c': 'Priority'
+        })
+        
+        debug("Data processing completed", {
+            'shape': df.shape,
+            'columns': df.columns.tolist(),
+            'date_range': f"{df['Created Date'].min()} to {df['Created Date'].max()}"
+        })
+        
+        if df.empty:
+            st.warning("No data available after processing")
+            debug("Empty DataFrame after processing", category="error")
+            return pd.DataFrame()
+            
+        return df
+        
+    except Exception as e:
+        st.error(f"Error fetching data: {str(e)}")
+        debug(f"Error in fetch_data: {str(e)}", {'traceback': traceback.format_exc()}, category="error")
+        if st.session_state.debug_mode:
+            st.exception(e)
+        return pd.DataFrame()
+
+def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False, enable_pii_processing: bool = False):
+    """Display detailed analysis of support tickets."""
+    try:
+        st.header("Detailed Analysis")
+        
+        debug("Starting detailed analysis", {
+            'enable_ai_analysis': enable_ai_analysis,
+            'enable_pii_processing': enable_pii_processing,
+            'data_shape': df.shape
+        })
+        
+        # Pattern Evolution Analysis
+        st.markdown("---")
+        st.subheader("Pattern Evolution Analysis")
+        
+        # Ensure we have the required columns
+        required_columns = ['Created Date', 'Resolution Time (Days)', 'CSAT', 'Root Cause']
+        
+        if all(col in df.columns for col in required_columns):
+            # Call the dedicated function for pattern evolution analysis
+            debug("Calling pattern evolution analysis function")
+            display_pattern_evolution(df)
+        else:
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.warning(f"Cannot display pattern evolution analysis. Missing columns: {', '.join(missing_cols)}")
+            debug("Missing columns for pattern evolution analysis", {
+                'missing_columns': missing_cols
+            }, category="warning")
+
+        # AI Analysis Section
+        if enable_ai_analysis:
+            st.markdown("---")
+            st.markdown("""
+            <h2 style='text-align: center;'>🤖 AI Analysis</h2>
+            """, unsafe_allow_html=True)
+            
+            with st.spinner("Generating AI insights..."):
+                try:
+                    # Initialize OpenAI client
+                    openai_api_key = os.getenv('OPENAI_API_KEY') or st.secrets.get("OPENAI_API_KEY", None)
+                    if not openai_api_key:
+                        st.warning("OpenAI API key not found. Please add it to your environment variables or Streamlit secrets.")
+                        return
+                        
+                    client = OpenAI(api_key=openai_api_key)
+                    
+                    # Process PII if enabled
+                    analysis_df = df.copy()
+                    if enable_pii_processing:
+                        analysis_df, _ = st.session_state.pii_handler.process_dataframe(
+                            analysis_df,
+                            ['Subject', 'Description', 'Comments', 'Account_Name', 'Product_Area', 'Product_Feature']
+                        )
+                    
+                    # Initialize AI Analyzer with proper configuration
+                    analyzer = AIAnalyzer(client)
+                    
+                    # Generate insights with debug logging
+                    if st.session_state.debug_mode:
+                        st.write("Generating AI insights...")
+                        st.write(f"Data shape: {analysis_df.shape}")
+                        st.write("Columns:", list(analysis_df.columns))
+                    
+                    insights = analyzer.analyze_tickets(analysis_df)
+                    
+                    if insights and 'error' not in insights:
+                        # Display Executive Summary
+                        st.markdown("""
+                        <h3 style='color: #1E88E5;'>
+                            <i class='material-icons'>💡 Executive Summary</i>
+                        </h3>
+                        """, unsafe_allow_html=True)
+                        
+                        if 'executive_summary' in insights:
+                            exec_summary = insights['executive_summary']
+                            
+                            # Key Findings
+                            st.markdown("#### Key Findings")
+                            for finding in exec_summary.get('key_findings', []):
+                                st.markdown(f"- {finding}")
+                            
+                            # Critical Patterns
+                            if 'critical_patterns' in exec_summary:
+                                st.markdown("#### Critical Patterns")
+                                for pattern in exec_summary['critical_patterns']:
+                                    st.markdown(f"- {pattern}")
+                            
+                            # Risk Areas
+                            if 'risk_areas' in exec_summary:
+                                st.markdown("#### Risk Areas")
+                                for risk in exec_summary['risk_areas']:
+                                    st.markdown(f"- {risk}")
+                        
+                        # Pattern Insights
+                        if 'pattern_insights' in insights:
+                            st.markdown("""
+                            <h3 style='color: #43A047;'>
+                                <i class='material-icons'>📊 Pattern Analysis</i>
+                            </h3>
+                            """, unsafe_allow_html=True)
+                            
+                            pattern_insights = insights['pattern_insights']
+                            
+                            # Recurring Issues
+                            if 'recurring_issues' in pattern_insights:
+                                st.markdown("#### Recurring Issues")
+                                for issue in pattern_insights['recurring_issues']:
+                                    st.markdown(f"- {issue}")
+                            
+                            # Confidence Levels
+                            if 'confidence_levels' in pattern_insights:
+                                conf_levels = pattern_insights['confidence_levels']
+                                
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.markdown("#### High Confidence Patterns")
+                                    for pattern in conf_levels.get('high_confidence', []):
+                                        st.markdown(f"- {pattern}")
+                                
+                                with col2:
+                                    st.markdown("#### Medium Confidence Patterns")
+                                    for pattern in conf_levels.get('medium_confidence', []):
+                                        st.markdown(f"- {pattern}")
+                                
+                                with col3:
+                                    st.markdown("#### Low Confidence Patterns")
+                                    for pattern in conf_levels.get('low_confidence', []):
+                                        st.markdown(f"- {pattern}")
+                        
+                        # Customer Impact Analysis
+                        if 'customer_impact_analysis' in insights:
+                            st.markdown("""
+                            <h3 style='color: #FB8C00;'>
+                                <i class='material-icons'>👥 Customer Impact</i>
+                            </h3>
+                            """, unsafe_allow_html=True)
+                            
+                            impact = insights['customer_impact_analysis']
+                            
+                            # Display satisfaction trends
+                            st.markdown("#### Customer Satisfaction Trends")
+                            st.markdown(impact.get('satisfaction_trends', 'No satisfaction trend data available'))
+                            
+                            # Pain Points
+                            if 'pain_points' in impact:
+                                st.markdown("#### Customer Pain Points")
+                                for point in impact['pain_points']:
+                                    st.markdown(f"- {point}")
+                            
+                            # Improvement Opportunities
+                            if 'improvement_opportunities' in impact:
+                                st.markdown("#### Improvement Opportunities")
+                                for opp in impact['improvement_opportunities']:
+                                    st.markdown(f"- {opp}")
+                        
+                        # Recommendations
+                        if 'recommendations' in insights:
+                            st.markdown("""
+                            <h3 style='color: #E91E63;'>
+                                <i class='material-icons'>⚡ Recommendations</i>
+                            </h3>
+                            """, unsafe_allow_html=True)
+                            
+                            for rec in insights['recommendations']:
+                                priority_color = {
+                                    'High': '#F44336',
+                                    'Medium': '#FB8C00',
+                                    'Low': '#7CB342'
+                                }.get(rec['priority'], '#757575')
+                                
+                                st.markdown(f"""
+                                <div style='background-color: #FFF3E0; padding: 10px; border-radius: 5px; margin: 5px 0;'>
+                                    <div style='display: flex; justify-content: space-between; align-items: center;'>
+                                        <h4 style='color: #E65100; margin: 0;'>{rec['title']}</h4>
+                                        <span style='color: {priority_color}; font-weight: bold;'>Priority: {rec['priority']}</span>
+                                    </div>
+                                    <p style='margin: 5px 0;'>{rec['description']}</p>
+                                    <p style='margin: 5px 0;'><strong>Impact:</strong> {rec['impact']}</p>
+                                    <p style='margin: 5px 0;'><strong>Effort:</strong> {rec['effort']}</p>
+                                    <p style='margin: 5px 0;'><strong>Timeline:</strong> {rec.get('timeline', 'Not specified')}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        
+                        # Next Steps
+                        if 'next_steps' in insights:
+                            st.markdown("""
+                            <h3 style='color: #5E35B1;'>
+                                <i class='material-icons'>➡️ Next Steps</i>
+                            </h3>
+                            """, unsafe_allow_html=True)
+                            
+                            for step in insights['next_steps']:
+                                st.markdown(f"- {step}")
+                        
+                        # Analysis Metadata
+                        if 'metadata' in insights:
+                            with st.expander("Analysis Metadata"):
+                                meta = insights['metadata']
+                                metadata_display = [
+                                    f"- Analysis Timestamp: {meta.get('analysis_timestamp', 'Not available')}",
+                                    f"- Tickets Analyzed: {meta.get('tickets_analyzed', 0)} of {meta.get('total_tickets', 0)}",
+                                    f"- Chunks Processed: {meta.get('chunks_processed', 0)}",
+                                    f"- Patterns Detected: {meta.get('patterns_detected', 0)}"
+                                ]
+                                
+                                if 'pattern_insights_generated' in meta:
+                                    metadata_display.append(f"- Pattern Insights Generated: {meta['pattern_insights_generated']}")
+                                    
+                                st.markdown("\n".join(metadata_display))
+                    else:
+                        st.error("Failed to generate AI insights. Please check the logs for more information.")
+                        if 'error' in insights:
+                            st.error(f"Error: {insights['error']}")
+                            if st.session_state.debug_mode:
+                                st.write("Debug information:")
+                                st.write(insights)
+                except Exception as e:
+                    st.error("Error generating AI insights. Please try again or contact support if the issue persists.")
+                    if st.session_state.debug_mode:
+                        st.exception(e)
+                        st.write("Debug information:")
+                        st.write({
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                            "traceback": traceback.format_exc()
+                        })
+
+        # Get highest priority history
+        try:
+            # Initialize DataFrames and dictionaries
+            highest_priorities = {}
+            history_df = pd.DataFrame()
+            email_messages = {}
+            
+            # Get case history data
+            case_ids = "'" + "','".join(df['Id'].tolist()) + "'"
+            history_query = f"""
+                SELECT Id, CaseId, Field, OldValue, NewValue, CreatedDate
+                FROM CaseHistory
+                WHERE CaseId IN ({case_ids})
+                AND Field = 'Internal_Priority__c'
+                ORDER BY CreatedDate ASC
+            """
+            
+            debug("Fetching case history data", {
+                'query': history_query,
+                'case_count': len(df['Id'].unique())
+            })
+            
+            try:
+                history_records = execute_soql_query(st.session_state.sf_connection, history_query)
+                if history_records:
+                    history_df = pd.DataFrame(history_records)
+                    debug(f"Retrieved {len(history_df)} history records")
+                else:
+                    debug("No history records found")
+                    history_df = pd.DataFrame(columns=['Id', 'CaseId', 'Field', 'OldValue', 'NewValue', 'CreatedDate'])
+            except Exception as query_error:
+                logger.error(f"Error fetching history data: {str(query_error)}", exc_info=True)
+                history_df = pd.DataFrame(columns=['Id', 'CaseId', 'Field', 'OldValue', 'NewValue', 'CreatedDate'])
+            
+            # Calculate highest priorities
+            for case_id in df['Id'].unique():
+                highest_priority = get_highest_priority(case_id, history_df, df[df['Id'] == case_id]['Priority'].iloc[0])
+                highest_priorities[case_id] = highest_priority
+            
+            # Export ticket details per customer
+            from utils.data_export import export_customer_ticket_details
+            export_customer_ticket_details(
+                tickets_df=df,
+                history_df=history_df,
+                email_messages=email_messages,
+                highest_priorities=highest_priorities
+            )
+            st.success("✅ Exported ticket details per customer successfully! Check the Exports section in the sidebar to download.")
+            
+        except Exception as e:
+            error_msg = f"Error in priority history analysis: {str(e)}"
+            st.error(error_msg)
+            logger.error(error_msg, exc_info=True)
+            if st.session_state.debug_mode:
+                st.exception(e)
+
+        # 6. Root Cause Analysis
+        st.subheader("Root Cause Analysis")
+        debug("Starting root cause analysis")
+        
+        try:
+            # Filter for closed tickets
+            closed_statuses = ['Closed', 'Resolved', 'Completed']
+            closed_tickets_df = df[df['Status'].isin(closed_statuses)].copy()
+            
+            if closed_tickets_df.empty:
+                st.warning("No closed tickets available for root cause analysis.")
+                debug("No closed tickets available", category="warning")
+                return
+            
+            root_cause_counts = closed_tickets_df['Root Cause'].value_counts()
+            if not root_cause_counts.empty:
+                fig_root_cause = go.Figure(data=[
+                    go.Bar(
+                        x=root_cause_counts.index,
+                        y=root_cause_counts.values,
+                        marker_color=ROOT_CAUSE_PALETTE[0]
+                    )
+                ])
+                
+                fig_root_cause.update_layout(
+                    title='Root Cause Distribution (Closed Tickets Only)',
+                    xaxis_title='Root Cause',
+                    yaxis_title='Number of Tickets',
+                    xaxis_tickangle=-45
+                )
+                
+                st.plotly_chart(fig_root_cause)
+                
+                debug("Root cause analysis completed", {
+                    'total_closed_tickets': len(closed_tickets_df),
+                    'total_root_causes': len(root_cause_counts),
+                    'distribution': root_cause_counts.to_dict()
+                })
+                
+                # Root cause by product area heatmap
+                root_cause_product = pd.crosstab(
+                    closed_tickets_df['Root Cause'],
+                    closed_tickets_df['Product Area']
+                )
+                
+                # Create a container for the heatmap
+                with st.container():
+                    plt.figure(figsize=(12, 8))
+                    sns.heatmap(root_cause_product, annot=True, fmt='d', cmap=HEATMAP_PALETTE,
+                               cbar_kws={'label': 'Ticket Count'})
+                    plt.title('Root Causes by Product Area (Closed Tickets Only)')
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                
+                # Resolution time by root cause
+                resolution_by_root = closed_tickets_df.copy()
+                resolution_by_root['Resolution_Time_Days'] = (
+                    resolution_by_root['Closed Date'] - resolution_by_root['Created Date']
+                ).dt.total_seconds() / (24 * 3600)
+                
+                # Create a container for the resolution time plot
+                with st.container():
+                    plt.figure(figsize=(14, 8))
+                    sns.boxplot(data=resolution_by_root, x='Root Cause', y='Resolution_Time_Days',
+                               hue='Root Cause', palette=ROOT_CAUSE_PALETTE, legend=False)
+                    plt.title('Resolution Time by Root Cause (Closed Tickets Only)')
+                    plt.xlabel('Root Cause')
+                    plt.ylabel('Resolution Time (Days)')
+                    plt.xticks(rotation=45, ha='right')
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                
+                debug("Root cause visualizations completed", {
+                    'total_closed_tickets': len(closed_tickets_df),
+                    'product_areas': len(root_cause_product.columns),
+                    'root_causes': len(root_cause_product.index),
+                    'avg_resolution_time': resolution_by_root['Resolution_Time_Days'].mean()
+                })
+            else:
+                st.warning("No root cause data available for analysis.")
+                debug("No root cause data available", category="warning")
+        
+        except Exception as e:
+            st.error(f"Error in root cause analysis: {str(e)}")
+            debug(f"Error in root cause analysis: {str(e)}", category="error")
+            st.exception(e)
+
+        # 4. Resolution Time Analysis
+        st.subheader("Resolution Time Analysis")
+        debug("Starting resolution time analysis")
+        
+        # Filter out Service Requests
+        analysis_df = df[df['Case_Type__c'] != 'Service Request'].copy()
+        
+        # Calculate resolution time in days
+        analysis_df['resolution_time_days'] = (
+            analysis_df['Closed Date'] - analysis_df['Created Date']
+        ).dt.total_seconds() / (24 * 3600)
+        
+        # Filter out tickets with invalid resolution times
+        valid_resolution_df = analysis_df[
+            (analysis_df['resolution_time_days'].notna()) & 
+            (analysis_df['resolution_time_days'] > 0) &
+            (analysis_df['Highest_Priority'].notna()) & 
+            (~analysis_df['Highest_Priority'].isin(['Unspecified', '', ' ', None]))
+        ]
+        
+        if len(valid_resolution_df) > 0:
+            # Create box plot
+            fig_resolution = go.Figure()
+            
+            # Get all unique priorities and sort them
+            all_priorities = sorted(valid_resolution_df['Highest_Priority'].unique())
+            
+            for priority in all_priorities:
+                priority_data = valid_resolution_df[valid_resolution_df['Highest_Priority'] == priority]
+                if len(priority_data) > 0:
+                    fig_resolution.add_trace(go.Box(
+                        y=priority_data['resolution_time_days'],
+                        name=f'Priority {priority}',
+                        marker_color=PRIORITY_COLORS.get(priority, VIRIDIS_PALETTE[0]),
+                        boxpoints='outliers'
+                    ))
+            
+            fig_resolution.update_layout(
+                title='Resolution Time Distribution by Priority',
+                yaxis_title='Resolution Time (Days)',
+                showlegend=True,
+                boxmode='group'
+            )
+            
+            st.plotly_chart(fig_resolution)
+            
+            # Display summary statistics
+            st.write("### Resolution Time Summary")
+            summary_stats = valid_resolution_df.groupby('Highest_Priority').agg({
+                'resolution_time_days': ['count', 'mean', 'median']
+            }).round(2)
+            summary_stats.columns = ['Count', 'Mean Days', 'Median Days']
+            st.write(summary_stats)
+            
+            debug("Resolution time analysis completed", {
+                'total_cases': len(analysis_df),
+                'valid_cases': len(valid_resolution_df),
+                'priority_distribution': valid_resolution_df['Highest_Priority'].value_counts().to_dict()
+            })
+        else:
+            st.warning("No valid resolution time data available for analysis.")
+            debug("No valid resolution time data", category="warning")
+        
+        # 5. CSAT Analysis
+        st.subheader("Customer Satisfaction Analysis")
+        debug("Starting CSAT analysis")
+        
+        valid_csat = df[df['CSAT'].notna()]
+        if len(valid_csat) > 0:
+            # Group by month and calculate CSAT metrics
+            valid_csat['Month'] = valid_csat['Created Date'].dt.to_period('M')
+            monthly_stats = valid_csat.groupby('Month').agg({
+                'CSAT': ['mean', 'count']
+            }).reset_index()
+            
+            # Flatten column names
+            monthly_stats.columns = ['Month', 'Average CSAT', 'Response Count']
+            
+            # Convert Month to datetime and format as month name
+            monthly_stats['Month'] = pd.PeriodIndex(monthly_stats['Month']).to_timestamp()
+            monthly_stats = monthly_stats.sort_values('Month')
+            monthly_stats['Month_Display'] = monthly_stats['Month'].dt.strftime('%b %Y')
+            
+            # Create figure with secondary Y-axis
+            fig_csat = go.Figure()
+            
+            # Add CSAT bars
+            fig_csat.add_trace(
+                go.Bar(
+                    x=monthly_stats['Month_Display'],
+                    y=monthly_stats['Average CSAT'],
+                    name='Average CSAT',
+                    marker_color=CSAT_PALETTE[2],
+                    yaxis='y'
+                )
+            )
+            
+            # Add response count line
+            fig_csat.add_trace(
+                go.Scatter(
+                    x=monthly_stats['Month_Display'],
+                    y=monthly_stats['Response Count'],
+                    name='Response Count',
+                    marker_color=CSAT_PALETTE[4],
+                    yaxis='y2',
+                    mode='lines+markers'
+                )
+            )
+            
+            # Update layout for dual axes
+            fig_csat.update_layout(
+                title='Monthly CSAT Trends',
+                xaxis_title='Month',
+                yaxis_title='Average CSAT Score',
+                yaxis2=dict(
+                    title='Number of Responses',
+                    overlaying='y',
+                    side='right'
+                ),
+                showlegend=True,
+                xaxis_tickangle=-45,
+                barmode='group',
+                height=500,
+                xaxis=dict(
+                    type='category',
+                    tickmode='array',
+                    ticktext=monthly_stats['Month_Display'],
+                    tickvals=monthly_stats['Month_Display']
+                )
+            )
+            
+            st.plotly_chart(fig_csat)
+            
+            # Display CSAT statistics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Average CSAT", f"{valid_csat['CSAT'].mean():.2f}")
+            with col2:
+                st.metric("Median CSAT", f"{valid_csat['CSAT'].median():.2f}")
+            with col3:
+                response_rate = (len(valid_csat) / len(df)) * 100
+                st.metric("Response Rate", f"{response_rate:.1f}%")
+            
+            debug("CSAT analysis completed", {
+                'total_responses': len(valid_csat),
+                'response_rate': response_rate,
+                'avg_csat': valid_csat['CSAT'].mean()
+            })
+        else:
+            st.warning("No CSAT data available for analysis.")
+            debug("No CSAT data available", category="warning")
+        
+        # 3. First Response Time Analysis
+        st.subheader("First Response Time Analysis")
+        debug("Starting first response time analysis")
+        
+        # Calculate response times
+        response_hours, stats = calculate_first_response_time(df)
+        
+        if stats['valid_records'] > 0:
+            # Create box plot for response times by priority
+            fig_response = go.Figure()
+            
+            # Sort priorities in the correct order (P0 to P3)
+            priorities = sorted(df['Highest_Priority'].unique())
+            
+            for priority in priorities:
+                priority_mask = df['Highest_Priority'] == priority
+                priority_data = response_hours[priority_mask].dropna()
+                
+                if len(priority_data) > 0:
+                    fig_response.add_trace(go.Box(
+                        y=priority_data,
+                        name=f'Priority {priority}',
+                        marker_color=PRIORITY_COLORS.get(priority, VIRIDIS_PALETTE[0]),
+                        boxpoints='outliers'
+                    ))
+            
+            fig_response.update_layout(
+                title='First Response Time Distribution by Priority',
+                yaxis_title='Response Time (Hours)',
+                showlegend=True,
+                boxmode='group'
+            )
+            
+            st.plotly_chart(fig_response)
+            
+            # Display summary statistics
+            st.write("### First Response Time Summary")
+            
+            # Calculate and display breach statistics
+            summary_stats = calculate_sla_breaches(response_hours, df['Highest_Priority'])
+            st.write(summary_stats)
+            
+            # Display SLA thresholds for reference
+            st.info("First Response Time SLA Thresholds:\n" + "\n".join([
+                "- P0: 1 hour",
+                "- P1: 24 hours",
+                "- P2: 48 hours",
+                "- P3: No SLA"
+            ]))
+            
+            # Display validation statistics if there were any issues
+            if stats['invalid_records'] > 0:
+                st.warning(
+                    f"⚠️ {stats['invalid_records']} records were excluded due to invalid response times. "
+                    f"This represents {(stats['invalid_records']/stats['total_records']*100):.1f}% of total records."
+                )
+                if stats['error_details']:
+                    with st.expander("See validation details"):
+                        for detail in stats['error_details']:
+                            st.write(f"- {detail}")
+            
+            debug("First response time analysis completed", {
+                'total_tickets': stats['total_records'],
+                'valid_tickets': stats['valid_records'],
+                'invalid_tickets': stats['invalid_records']
+            })
+        else:
+            st.warning("No valid first response time data available for analysis.")
+            debug("No valid first response time data", category="warning")
+        
+        # 2. Monthly Ticket Trends (Bar Chart)
+        st.subheader("Monthly Ticket Trends")
+        debug("Generating monthly trends visualization")
+        
+        df['Month'] = df['Created Date'].dt.to_period('M')
+        df['Month_Closed'] = df['Closed Date'].dt.to_period('M')
+        
+        monthly_created = df.groupby('Month').size().reset_index(name='Created')
+        monthly_created['Month'] = monthly_created['Month'].astype(str)
+        
+        monthly_closed = df.groupby('Month_Closed').size().reset_index(name='Closed')
+        monthly_closed['Month_Closed'] = monthly_closed['Month_Closed'].astype(str)
+        
+        monthly_trends = pd.merge(
+            monthly_created, 
+            monthly_closed.rename(columns={'Month_Closed': 'Month'}), 
+            on='Month', 
+            how='outer'
+        ).fillna(0)
+        
+        monthly_trends['Month'] = pd.to_datetime(monthly_trends['Month'])
+        monthly_trends = monthly_trends.sort_values('Month')
+        monthly_trends['Month'] = monthly_trends['Month'].dt.strftime('%b')  # Changed from '%Y-%m' to '%b'
+        
+        debug("Monthly trends data prepared", {
+            'months_available': len(monthly_trends),
+            'date_range': f"{monthly_trends['Month'].iloc[0]} to {monthly_trends['Month'].iloc[-1]}"
+        })
+        
+        fig_trends = go.Figure()
+        
+        fig_trends.add_trace(go.Bar(
+            name='Created',
+            x=monthly_trends['Month'],
+            y=monthly_trends['Created'],
+            marker_color=VOLUME_PALETTE[0]
+        ))
+        
+        fig_trends.add_trace(go.Bar(
+            name='Closed',
+            x=monthly_trends['Month'],
+            y=monthly_trends['Closed'],
+            marker_color=VOLUME_PALETTE[1]
+        ))
+        
+        fig_trends.update_layout(
+            title='Monthly Ticket Volume',
+            xaxis_title='Month',
+            yaxis_title='Number of Tickets',
+            barmode='group',
+            xaxis_tickangle=-45
+        )
+        
+        st.plotly_chart(fig_trends)
+        debug("Monthly trends visualization completed")
+    
+    except Exception as e:
+        error_msg = f"Error in detailed analysis: {str(e)}"
+        st.error(error_msg)
+        debug(error_msg, {'traceback': traceback.format_exc()}, category="error")
+        logger.error(error_msg, exc_info=True)
+        if st.session_state.debug_mode:
+            st.exception(e)
+
+def display_visualizations(df: pd.DataFrame, customers: List[str]) -> None:
+    """Display visualizations using the dataset."""
+    try:
+        # 1. Ticket Volume by Customer (Bar Chart)
+        st.subheader("Ticket Distribution")
+        debug("Generating ticket distribution visualization")
+        
+        # Create a mapping of truncated names to ticket counts
+        ticket_counts = df.groupby('Account_Name', dropna=False).size().reset_index(name='Ticket_Count')
+        ticket_counts['Truncated_Name'] = ticket_counts['Account_Name'].apply(lambda x: truncate_string(x, 20))
+        
+        fig_counts = go.Figure(data=[
+            go.Bar(
+                x=ticket_counts['Truncated_Name'],
+                y=ticket_counts['Ticket_Count'],
+                text=ticket_counts['Ticket_Count'],
+                textposition='auto',
+                marker_color=AQUA_PALETTE[2],
+                hovertext=ticket_counts['Account_Name']  # Show full name on hover
+            )
+        ])
+        
+        fig_counts.update_layout(
+            title='Ticket Count by Customer',
+            xaxis_title='Customer',
+            yaxis_title='Number of Tickets',
+            showlegend=False,
+            xaxis_tickangle=-45
+        )
+        
+        st.plotly_chart(fig_counts, key='ticket_distribution')
+        debug("Ticket distribution visualization completed")
+        
+        # 2. Monthly Ticket Trends (Bar Chart)
+        st.subheader("Monthly Ticket Trends")
+        debug("Generating monthly trends visualization")
+        
+        df['Month'] = df['Created Date'].dt.to_period('M')
+        df['Month_Closed'] = df['Closed Date'].dt.to_period('M')
+        
+        monthly_created = df.groupby('Month').size().reset_index(name='Created')
+        monthly_created['Month'] = monthly_created['Month'].astype(str)
+        
+        monthly_closed = df.groupby('Month_Closed').size().reset_index(name='Closed')
+        monthly_closed['Month_Closed'] = monthly_closed['Month_Closed'].astype(str)
+        
+        monthly_trends = pd.merge(
+            monthly_created, 
+            monthly_closed.rename(columns={'Month_Closed': 'Month'}), 
+            on='Month', 
+            how='outer'
+        ).fillna(0)
+        
+        monthly_trends['Month'] = pd.to_datetime(monthly_trends['Month'])
+        monthly_trends = monthly_trends.sort_values('Month')
+        monthly_trends['Month'] = monthly_trends['Month'].dt.strftime('%b')
+        
+        debug("Monthly trends data prepared", {
+            'months_available': len(monthly_trends),
+            'date_range': f"{monthly_trends['Month'].iloc[0]} to {monthly_trends['Month'].iloc[-1]}"
+        })
+        
+        fig_trends = go.Figure()
+        
+        fig_trends.add_trace(go.Bar(
+            name='Created',
+            x=monthly_trends['Month'],
+            y=monthly_trends['Created'],
+            marker_color=VOLUME_PALETTE[0]
+        ))
+        
+        fig_trends.add_trace(go.Bar(
+            name='Closed',
+            x=monthly_trends['Month'],
+            y=monthly_trends['Closed'],
+            marker_color=VOLUME_PALETTE[1]
+        ))
+        
+        fig_trends.update_layout(
+            title='Monthly Ticket Volume',
+                    xaxis_title='Month',
+            yaxis_title='Number of Tickets',
+            barmode='group',
+            xaxis_tickangle=-45
+        )
+        
+        st.plotly_chart(fig_trends, key='monthly_trends')
+        debug("Monthly trends visualization completed")
+        
+        # 3. First Response Time Analysis
+        st.subheader("First Response Time Analysis")
+        debug("Starting first response time analysis")
+        
+        # Calculate response times
+        response_hours, stats = calculate_first_response_time(df)
+        
+        if stats['valid_records'] > 0:
+            # Create box plot for response times by priority
+            fig_response = go.Figure()
+            
+            # Sort priorities in the correct order (P0 to P3)
+            priorities = sorted(df['Highest_Priority'].unique())
+            
+            for priority in priorities:
+                priority_mask = df['Highest_Priority'] == priority
+                priority_data = response_hours[priority_mask].dropna()
+                
+                if len(priority_data) > 0:
+                    fig_response.add_trace(go.Box(
+                        y=priority_data,
+                        name=f'Priority {priority}',
+                        marker_color=PRIORITY_COLORS.get(priority, VIRIDIS_PALETTE[0]),
+                        boxpoints='outliers'
+                    ))
+            
+            fig_response.update_layout(
+                title='First Response Time Distribution by Priority',
+                yaxis_title='Response Time (Hours)',
+                showlegend=True,
+                boxmode='group'
+            )
+            
+            st.plotly_chart(fig_response, key='response_time_distribution')
+            
+            # Display summary statistics
+            st.write("### First Response Time Summary")
+            
+            # Calculate and display breach statistics
+            summary_stats = calculate_sla_breaches(response_hours, df['Highest_Priority'])
+            st.write(summary_stats)
+            
+            # Display SLA thresholds for reference
+            st.info("First Response Time SLA Thresholds:\n" + "\n".join([
+                "- P0: 1 hour",
+                "- P1: 24 hours",
+                "- P2: 48 hours",
+                "- P3: No SLA"
+            ]))
+            
+            # Display validation statistics if there were any issues
+            if stats['invalid_records'] > 0:
+                st.warning(
+                    f"⚠️ {stats['invalid_records']} records were excluded due to invalid response times. "
+                    f"This represents {(stats['invalid_records']/stats['total_records']*100):.1f}% of total records."
+                )
+                if stats['error_details']:
+                    with st.expander("See validation details"):
+                        for detail in stats['error_details']:
+                            st.write(f"- {detail}")
+            
+            debug("First response time analysis completed", {
+                'total_tickets': stats['total_records'],
+                'valid_tickets': stats['valid_records'],
+                'invalid_tickets': stats['invalid_records']
+            })
+        else:
+            st.warning("No valid first response time data available for analysis.")
+            debug("No valid first response time data", category="warning")
+        
+        # 4. Resolution Time Analysis
+        st.subheader("Resolution Time Analysis")
+        debug("Starting resolution time analysis")
+        
+        # Filter out Service Requests
+        analysis_df = df[df['Case_Type__c'] != 'Service Request'].copy()
+        
+        # Calculate resolution time in days
+        analysis_df['resolution_time_days'] = (
+            analysis_df['Closed Date'] - analysis_df['Created Date']
+        ).dt.total_seconds() / (24 * 3600)
+        
+        # Filter out tickets with invalid resolution times
+        valid_resolution_df = analysis_df[
+            (analysis_df['resolution_time_days'].notna()) & 
+            (analysis_df['resolution_time_days'] > 0) &
+            (analysis_df['Highest_Priority'].notna()) & 
+            (~analysis_df['Highest_Priority'].isin(['Unspecified', '', ' ', None]))
+        ]
+        
+        if len(valid_resolution_df) > 0:
+            # Create box plot
+            fig_resolution = go.Figure()
+            
+            # Get all unique priorities and sort them
+            all_priorities = sorted(valid_resolution_df['Highest_Priority'].unique())
+            
+            for priority in all_priorities:
+                priority_data = valid_resolution_df[valid_resolution_df['Highest_Priority'] == priority]
+                if len(priority_data) > 0:
+                    fig_resolution.add_trace(go.Box(
+                        y=priority_data['resolution_time_days'],
+                        name=f'Priority {priority}',
+                        marker_color=PRIORITY_COLORS.get(priority, VIRIDIS_PALETTE[0]),
+                        boxpoints='outliers'
+                    ))
+            
+            fig_resolution.update_layout(
+                title='Resolution Time Distribution by Priority',
+                yaxis_title='Resolution Time (Days)',
+                showlegend=True,
+                boxmode='group'
+            )
+            
+            st.plotly_chart(fig_resolution, key='resolution_time_distribution')
+            
+            # Display summary statistics
+            st.write("### Resolution Time Summary")
+            summary_stats = valid_resolution_df.groupby('Highest_Priority').agg({
+                'resolution_time_days': ['count', 'mean', 'median']
+            }).round(2)
+            summary_stats.columns = ['Count', 'Mean Days', 'Median Days']
+            st.write(summary_stats)
+            
+            debug("Resolution time analysis completed", {
+                'total_cases': len(analysis_df),
+                'valid_cases': len(valid_resolution_df),
+                'priority_distribution': valid_resolution_df['Highest_Priority'].value_counts().to_dict()
+            })
+        else:
+            st.warning("No valid resolution time data available for analysis.")
+            debug("No valid resolution time data", category="warning")
+        
+        # 5. CSAT Analysis
+        st.subheader("Customer Satisfaction Analysis")
+        debug("Starting CSAT analysis")
+        
+        valid_csat = df[df['CSAT'].notna()]
+        if len(valid_csat) > 0:
+            # Group by month and calculate CSAT metrics
+            valid_csat['Month'] = valid_csat['Created Date'].dt.to_period('M')
+            monthly_stats = valid_csat.groupby('Month').agg({
+                'CSAT': ['mean', 'count']
+            }).reset_index()
+            
+            # Flatten column names
+            monthly_stats.columns = ['Month', 'Average CSAT', 'Response Count']
+            
+            # Convert Month to datetime and format as month name
+            monthly_stats['Month'] = pd.PeriodIndex(monthly_stats['Month']).to_timestamp()
+            monthly_stats = monthly_stats.sort_values('Month')
+            monthly_stats['Month_Display'] = monthly_stats['Month'].dt.strftime('%b %Y')
+            
+            # Create figure with secondary Y-axis
+            fig_csat = go.Figure()
+            
+            # Add CSAT bars
+            fig_csat.add_trace(
+                go.Bar(
+                    x=monthly_stats['Month_Display'],
+                    y=monthly_stats['Average CSAT'],
+                    name='Average CSAT',
+                    marker_color=CSAT_PALETTE[2],
+                    yaxis='y'
+                )
+            )
+            
+            # Add response count line
+            fig_csat.add_trace(
+                go.Scatter(
+                    x=monthly_stats['Month_Display'],
+                    y=monthly_stats['Response Count'],
+                    name='Response Count',
+                    marker_color=CSAT_PALETTE[4],
+                    yaxis='y2',
+                    mode='lines+markers'
+                )
+            )
+            
+            # Update layout for dual axes
+            fig_csat.update_layout(
+                title='Monthly CSAT Trends',
+                xaxis_title='Month',
+                yaxis_title='Average CSAT Score',
+                yaxis2=dict(
+                    title='Number of Responses',
+                    overlaying='y',
+                    side='right'
+                ),
+                showlegend=True,
+                xaxis_tickangle=-45,
+                barmode='group',
+                height=500,
+                xaxis=dict(
+                    type='category',
+                    tickmode='array',
+                    ticktext=monthly_stats['Month_Display'],
+                    tickvals=monthly_stats['Month_Display']
+                )
+            )
+            
+            st.plotly_chart(fig_csat, key='csat_trends')
+            
+            # Display CSAT statistics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Average CSAT", f"{valid_csat['CSAT'].mean():.2f}")
+            with col2:
+                st.metric("Median CSAT", f"{valid_csat['CSAT'].median():.2f}")
+            with col3:
+                response_rate = (len(valid_csat) / len(df)) * 100
+                st.metric("Response Rate", f"{response_rate:.1f}%")
+            
+            debug("CSAT analysis completed", {
+                'total_responses': len(valid_csat),
+                'response_rate': response_rate,
+                'avg_csat': valid_csat['CSAT'].mean()
+            })
+        else:
+            st.warning("No CSAT data available for analysis.")
+            debug("No CSAT data available", category="warning")
+        
+        # 6. Root Cause Analysis
+        st.subheader("Root Cause Analysis")
+        debug("Starting root cause analysis")
+        
+        try:
+            # Filter for closed tickets
+            closed_statuses = ['Closed', 'Resolved', 'Completed']
+            closed_tickets_df = df[df['Status'].isin(closed_statuses)].copy()
+            
+            if closed_tickets_df.empty:
+                st.warning("No closed tickets available for root cause analysis.")
+                debug("No closed tickets available", category="warning")
+                return
+            
+            root_cause_counts = closed_tickets_df['Root Cause'].value_counts()
+            if not root_cause_counts.empty:
+                fig_root_cause = go.Figure(data=[
+                    go.Bar(
+                        x=root_cause_counts.index,
+                        y=root_cause_counts.values,
+                        marker_color=ROOT_CAUSE_PALETTE[0]
+                    )
+                ])
+                
+                fig_root_cause.update_layout(
+                    title='Root Cause Distribution (Closed Tickets Only)',
+                    xaxis_title='Root Cause',
+                    yaxis_title='Number of Tickets',
+                    xaxis_tickangle=-45
+                )
+                
+                st.plotly_chart(fig_root_cause, key='root_cause_distribution')
+                
+                debug("Root cause analysis completed", {
+                    'total_closed_tickets': len(closed_tickets_df),
+                    'total_root_causes': len(root_cause_counts),
+                    'distribution': root_cause_counts.to_dict()
+                })
+                
+                # Root cause by product area heatmap
+                root_cause_product = pd.crosstab(
+                    closed_tickets_df['Root Cause'],
+                    closed_tickets_df['Product Area']
+                )
+                
+                # Create a container for the heatmap
+                with st.container():
+                    plt.figure(figsize=(12, 8))
+                    sns.heatmap(root_cause_product, annot=True, fmt='d', cmap=HEATMAP_PALETTE,
+                               cbar_kws={'label': 'Ticket Count'})
+                    plt.title('Root Causes by Product Area (Closed Tickets Only)')
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                
+                # Resolution time by root cause
+                resolution_by_root = closed_tickets_df.copy()
+                resolution_by_root['Resolution_Time_Days'] = (
+                    resolution_by_root['Closed Date'] - resolution_by_root['Created Date']
+                ).dt.total_seconds() / (24 * 3600)
+                
+                # Create a container for the resolution time plot
+                with st.container():
+                    plt.figure(figsize=(14, 8))
+                    sns.boxplot(data=resolution_by_root, x='Root Cause', y='Resolution_Time_Days',
+                               hue='Root Cause', palette=ROOT_CAUSE_PALETTE, legend=False)
+                    plt.title('Resolution Time by Root Cause (Closed Tickets Only)')
+                    plt.xlabel('Root Cause')
+                    plt.ylabel('Resolution Time (Days)')
+                    plt.xticks(rotation=45, ha='right')
+                    plt.tight_layout()
+                    st.pyplot(plt)
+                    plt.close()
+                
+                debug("Root cause visualizations completed", {
+                    'total_closed_tickets': len(closed_tickets_df),
+                    'product_areas': len(root_cause_product.columns),
+                    'root_causes': len(root_cause_product.index),
+                    'avg_resolution_time': resolution_by_root['Resolution_Time_Days'].mean()
+                })
+            else:
+                st.warning("No root cause data available for analysis.")
+                debug("No root cause data available", category="warning")
+        
+        except Exception as e:
+            st.error(f"Error in root cause analysis: {str(e)}")
+            debug(f"Error in root cause analysis: {str(e)}", category="error")
+            st.exception(e)
+    
+    except Exception as e:
+        error_msg = f"Error in detailed analysis: {str(e)}"
+        st.error(error_msg)
+        debug(error_msg, {'traceback': traceback.format_exc()}, category="error")
+        logger.error(error_msg, exc_info=True)
+        if st.session_state.debug_mode:
+            st.exception(e)
+
+if __name__ == "__main__":
+    main() 

@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-02T07:55:16.395994",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"User Error\",\n      \"Net New Configuration\",\n      \"Missing Feature\",\n      \"Product Bug\",\n      \"Gap in Product Understanding\",\n      \"No EF Support Action\"\n    ],\n    \"confidences\": {\n      \"User Error\": 0.9,\n      \"Net New Configuration\": 0.6,\n      \"Missing Feature\": 0.6,\n      \"Product Bug\": 0.3,\n      \"Gap in Product Understanding\": 0.3,\n      \"No EF Support Action\": 0.5\n    },\n    \"frequencies\": {\n      \"User Error\": 1,\n      \"Net New Configuration\": 1,\n      \"Missing Feature\": 2,\n      \"Product Bug\": 1,\n      \"Gap in Product Understanding\": 2,\n      \"No EF Support Action\": 1\n    },\n    \"total_patterns\": 6,\n    \"high_confidence\": [\n      \"User Error\"\n    ],\n    \"medium_confidence\": [\n      \"Net New Configuration\",\n      \"Missing Feature\",\n      \"No EF Support Action\"\n    ],\n    \"low_confidence\": [\n      \"Product Bug\",\n      \"Gap in Product Understanding\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4fb4QAA\",\n    \"Subject\": \"recruiter claiming added req weeks date\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 3.027060185185185,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"5008V00001w4ddtQAA\",\n    \"Subject\": \"unable locate feedback feedback center\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 21.025648148148147,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The two tickets analysed both fall under the 'Gap in Product Understanding' pattern. This indicates that users are having difficulty understanding certain features or functionalities of the product.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\"pattern\": \"Gap in Product Understanding\", \"confidence\": \"low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve User Documentation\",\n            \"description\": \"Given the repeated occurrence of the 'Gap in Product Understanding' pattern, it is recommended to improve user documentation and tutorials to help users better understand the product's features and functionalities.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Improving user understanding can reduce the number of support tickets related to this issue and improve overall user satisfaction.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 574,
+      "completion_tokens": 174,
+      "total_tokens": 748
+    }
+  }
+}

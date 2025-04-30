@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:57:02.371829",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"Whitelist BNY domains\",\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\",\n      \"unexpected behavior in interview center\",\n      \"location incorrect\",\n      \"update email address contract recruiters\",\n      \"scheduling data 2025 missing\",\n      \"2025 q1 feature interview center issue\",\n      \"2025 q1 release feature delete notes candidate profile\",\n      \"remove course recommendation feature\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.9,\n      \"CareerHub BNYMellon issues\": 0.9,\n      \"Whitelist BNY domains\": 0.6,\n      \"Rejection email issues\": 0.3,\n      \"Unexpected behavior in interview center\": 0.3,\n      \"unexpected behavior in interview center\": 0.3,\n      \"location incorrect\": 0.3,\n      \"update email address contract recruiters\": 0.3,\n      \"scheduling data 2025 missing\": 0.3,\n      \"2025 q1 feature interview center issue\": 0.3,\n      \"2025 q1 release feature delete notes candidate profile\": 0.3,\n      \"remove course recommendation feature\": 0.3\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 3,\n      \"Whitelist BNY domains\": 1,\n      \"Rejection email issues\": 1,\n      \"Unexpected behavior in interview center\": 1,\n      \"unexpected behavior in interview center\": 1,\n      \"location incorrect\": 1,\n      \"update email address contract recruiters\": 2,\n      \"scheduling data 2025 missing\": 1,\n      \"2025 q1 feature interview center issue\": 2,\n      \"2025 q1 release feature delete notes candidate profile\": 1,\n      \"remove course recommendation feature\": 1\n    },\n    \"total_patterns\": 12,\n    \"high_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"medium_confidence\": [\n      \"Whitelist BNY domains\"\n    ],\n    \"low_confidence\": [\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\",\n      \"unexpected behavior in interview center\",\n      \"location incorrect\",\n      \"update email address contract recruiters\",\n      \"scheduling data 2025 missing\",\n      \"2025 q1 feature interview center issue\",\n      \"2025 q1 release feature delete notes candidate profile\",\n      \"remove course recommendation feature\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4V3XQAU\",\n    \"Subject\": \"remove course recommendation feature\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 15.152314814814815,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Net New Configuration\"\n  },\n  {\n    \"Id\": \"5008V00001w4UDfQAM\",\n    \"Subject\": \"sandbox job sync issue\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 23.13158564814815,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Product Bug\"\n  },\n  {\n    \"Id\": \"5008V00001w4DS2QAM\",\n    \"Subject\": \"not accessible in ats\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 40.03653935185185,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main findings from the analyzed tickets are: the 'remove course recommendation feature' ticket was closed with a resolution time of 15.15 days due to a 'Net New Configuration'; a new pattern 'sandbox job sync issue' was identified and closed with a resolution time of 23.13 days due to a 'Product Bug'; another new pattern 'not accessible in ats' was identified and closed with a resolution time of 40.03 days due to a 'Gap in Product Understanding'.\",\n        \"new_patterns\": [\"sandbox job sync issue\", \"not accessible in ats\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"remove course recommendation feature\", \"confidence\": \"low\"},\n        {\"pattern\": \"sandbox job sync issue\", \"confidence\": \"low\"},\n        {\"pattern\": \"not accessible in ats\", \"confidence\": \"low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve product understanding\",\n            \"description\": \"The pattern 'not accessible in ats' suggests a gap in product understanding. Providing additional training and documentation for users could help address this issue.\",\n            \"priority\": \"high\",\n            \"impact\": \"medium\"\n        },\n        {\n            \"title\": \"Resolve product bugs\",\n            \"description\": \"The pattern 'sandbox job sync issue' indicates a product bug. Prioritising bug fixes could improve user satisfaction and reduce resolution times.\",\n            \"priority\": \"high\",\n            \"impact\": \"high\"\n        },\n        {\n            \"title\": \"Expedite new configurations\",\n            \"description\": \"The pattern 'remove course recommendation feature' suggests a need for new configurations. Streamlining the process for implementing new configurations could reduce resolution times.\",\n            \"priority\": \"medium\",\n            \"impact\": \"medium\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 968,
+      "completion_tokens": 384,
+      "total_tokens": 1352
+    }
+  }
+}

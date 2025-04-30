@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:11:52.484085",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [],\n    \"confidences\": {},\n    \"frequencies\": {},\n    \"total_patterns\": 0,\n    \"high_confidence\": [],\n    \"medium_confidence\": [],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVnMOIA0\",\n    \"Subject\": \"certification number synced oracle talent profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 0.05457175925925926,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVnMJIA0\",\n    \"Subject\": \"support careerhub bnymellon 1743393800 push new data field oracle talent profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVfrEIAS\",\n    \"Subject\": \"support careerhub bnymellon 1742980119 wrong reporting manager showing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The tickets mainly revolve around issues related to 'Oracle Talent Profile' and 'CareerHub BNYMellon'. The issues range from data syncing, pushing new data fields to wrong reporting manager showing. The root causes are either not specified or due to a gap in product understanding.\",\n        \"new_patterns\": [\"Oracle Talent Profile issues\", \"CareerHub BNYMellon issues\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Oracle Talent Profile issues\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"CareerHub BNYMellon issues\",\n            \"confidence\": \"high\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Oracle Talent Profile Training\",\n            \"description\": \"Provide more training and documentation on Oracle Talent Profile to reduce issues related to data syncing and pushing new data fields.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"High\"\n        },\n        {\n            \"title\": \"CareerHub BNYMellon Product Understanding\",\n            \"description\": \"Improve product understanding for CareerHub BNYMellon to avoid issues like wrong reporting manager showing.\",\n            \"priority\": \"High\",\n            \"impact\": \"High\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 465,
+      "completion_tokens": 271,
+      "total_tokens": 736
+    }
+  }
+}

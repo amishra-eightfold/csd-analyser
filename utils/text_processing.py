@@ -229,59 +229,42 @@ def get_technical_stopwords() -> set:
         'application', 'software', 'browser-agent', 'browseragent'
     }
 
-def get_highest_priority_from_history(sf_connection: Salesforce, case_id: str) -> Optional[str]:
+def get_highest_priority_from_history(case_id: str, priority_history: pd.DataFrame, current_priority: str = None) -> Optional[str]:
     """Get the highest priority a case reached during its lifecycle.
     
     Args:
-        sf_connection (Salesforce): Salesforce connection object
         case_id (str): The ID of the case to check
+        priority_history (pd.DataFrame): DataFrame containing priority history records
+        current_priority (str, optional): The current priority of the case
         
     Returns:
         Optional[str]: The highest priority the case reached (P0, P1, P2, P3), or None if no valid priority found
     """
     # Priority order from lowest to highest
-    priority_order = {'P3': 0, 'P2': 1, 'P1': 2, 'P0': 3}
+    priority_order = {'P4': 0, 'P3': 1, 'P2': 2, 'P1': 3, 'P0': 4}
     
-    # Query case history for priority changes
-    query = f"""
-        SELECT Id, CaseId, Field, NewValue, OldValue, CreatedDate 
-        FROM CaseHistory 
-        WHERE Field = 'Internal_Priority__c' 
-        AND CaseId = '{case_id}'
-        ORDER BY CreatedDate ASC
-    """
+    # Start with current priority
+    highest_priority = current_priority
+    highest_value = priority_order.get(current_priority, -1)
     
-    try:
-        # Execute query directly using sf_connection
-        history_records = sf_connection.query(query)['records']
-        print(f"Found {len(history_records)} priority history records for case {case_id}")
-        
-        if not history_records:
-            print(f"No priority history found for case {case_id}")
-            return None
-            
-        # Collect all priority values (both old and new)
-        priorities = []
-        for record in history_records:
-            if record.get('OldValue'):
-                priorities.append(record['OldValue'])
-                print(f"Case {case_id}: Found old priority value: {record['OldValue']}")
-            if record.get('NewValue'):
-                priorities.append(record['NewValue'])
-                print(f"Case {case_id}: Found new priority value: {record['NewValue']}")
-                
-        # Filter valid priorities and get the highest
-        valid_priorities = [p for p in priorities if p in priority_order]
-        print(f"Case {case_id}: Valid priorities found: {valid_priorities}")
-        
-        if valid_priorities:
-            highest_priority = max(valid_priorities, key=lambda x: priority_order.get(x, -1))
-            print(f"Case {case_id}: Highest priority determined: {highest_priority}")
-            return highest_priority
-            
-        print(f"Case {case_id}: No valid priorities found in history")
-        return None
-            
-    except Exception as e:
-        print(f"Error querying case history for case {case_id}: {str(e)}")
-        return None
+    # Filter history for the specific case
+    case_history = priority_history[priority_history['CaseId'] == case_id]
+    
+    # Extract all priority values from history
+    all_priorities = []
+    
+    # Add NewValue from history
+    if 'NewValue' in case_history.columns:
+        all_priorities.extend(case_history['NewValue'].dropna().tolist())
+    
+    # Add OldValue from history
+    if 'OldValue' in case_history.columns:
+        all_priorities.extend(case_history['OldValue'].dropna().tolist())
+    
+    # Find highest priority
+    for priority in all_priorities:
+        if priority in priority_order and priority_order.get(priority, -1) > highest_value:
+            highest_priority = priority
+            highest_value = priority_order[priority]
+    
+    return highest_priority

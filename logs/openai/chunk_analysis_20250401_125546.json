@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:55:46.511971",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [],\n    \"confidences\": {},\n    \"frequencies\": {},\n    \"total_patterns\": 0,\n    \"high_confidence\": [],\n    \"medium_confidence\": [],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVnMOIA0\",\n    \"Subject\": \"certification number synced oracle talent profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 0.05457175925925926,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVnMJIA0\",\n    \"Subject\": \"support careerhub bnymellon 1743393800 push new data field oracle talent profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVfrEIAS\",\n    \"Subject\": \"support careerhub bnymellon 1742980119 wrong reporting manager showing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main findings indicate that the tickets are primarily related to 'Oracle Talent Profile' and 'CareerHub BNYMellon'. The issues range from syncing certification numbers, pushing new data fields, to incorrect reporting managers. The tickets are of 'P2' priority, indicating they are of high importance. The status of these tickets varies from 'Merged', 'Open', and 'Solved'.\",\n        \"new_patterns\": [\"Oracle Talent Profile issues\", \"CareerHub BNYMellon issues\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Oracle Talent Profile issues\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"CareerHub BNYMellon issues\",\n            \"confidence\": \"high\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve Oracle Talent Profile Support\",\n            \"description\": \"Given the high frequency of issues related to Oracle Talent Profile, it would be beneficial to improve the support and troubleshooting processes for this area.\",\n            \"priority\": \"high\",\n            \"impact\": \"This could reduce the number of related support tickets and improve user satisfaction.\"\n        },\n        {\n            \"title\": \"Address CareerHub BNYMellon Issues\",\n            \"description\": \"There are several tickets related to CareerHub BNYMellon. It's recommended to investigate these issues and ensure they are addressed promptly to prevent further tickets of the same nature.\",\n            \"priority\": \"high\",\n            \"impact\": \"Addressing these issues could decrease the number of related tickets and enhance user experience.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 465,
+      "completion_tokens": 343,
+      "total_tokens": 808
+    }
+  }
+}

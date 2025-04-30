@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:56:30.695802",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"Whitelist BNY domains\",\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\",\n      \"unexpected behavior in interview center\",\n      \"location incorrect\",\n      \"update email address contract recruiters\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.9,\n      \"CareerHub BNYMellon issues\": 0.9,\n      \"Whitelist BNY domains\": 0.6,\n      \"Rejection email issues\": 0.3,\n      \"Unexpected behavior in interview center\": 0.3,\n      \"unexpected behavior in interview center\": 0.3,\n      \"location incorrect\": 0.3,\n      \"update email address contract recruiters\": 0.3\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 3,\n      \"Whitelist BNY domains\": 1,\n      \"Rejection email issues\": 1,\n      \"Unexpected behavior in interview center\": 1,\n      \"unexpected behavior in interview center\": 1,\n      \"location incorrect\": 1,\n      \"update email address contract recruiters\": 1\n    },\n    \"total_patterns\": 8,\n    \"high_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"medium_confidence\": [\n      \"Whitelist BNY domains\"\n    ],\n    \"low_confidence\": [\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\",\n      \"unexpected behavior in interview center\",\n      \"location incorrect\",\n      \"update email address contract recruiters\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVOx5IAG\",\n    \"Subject\": \"update email address contract recruiters\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  },\n  {\n    \"Id\": \"5008V00001w4h2bQAA\",\n    \"Subject\": \"scheduling data 2025 missing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"ENG Support Required\"\n  },\n  {\n    \"Id\": \"5008V00001w4ab9QAA\",\n    \"Subject\": \"2025 q1 feature interview center issue\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Product Bug\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main findings from the current batch of tickets include one issue that matches a current pattern ('update email address contract recruiters') and two new issues ('scheduling data 2025 missing' and '2025 q1 feature interview center issue').\",\n        \"new_patterns\": [\"scheduling data 2025 missing\", \"2025 q1 feature interview center issue\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"update email address contract recruiters\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"scheduling data 2025 missing\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"2025 q1 feature interview center issue\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Address 'update email address contract recruiters' issue\",\n            \"description\": \"This issue has been identified as a current pattern. It is recommended to investigate the root cause of 'Configuration Implementation Miss' and address it to prevent further tickets on this issue.\",\n            \"priority\": \"P2\",\n            \"impact\": \"Reducing the number of tickets on this issue will improve customer satisfaction and reduce support workload.\"\n        },\n        {\n            \"title\": \"Investigate new issues\",\n            \"description\": \"Two new issues ('scheduling data 2025 missing' and '2025 q1 feature interview center issue') have been identified. It is recommended to investigate these issues to understand their causes and prevent them from becoming recurring patterns.\",\n            \"priority\": \"P2\",\n            \"impact\": \"Early detection and resolution of these issues can prevent them from becoming recurring patterns, improving customer satisfaction and reducing support workload.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 759,
+      "completion_tokens": 368,
+      "total_tokens": 1127
+    }
+  }
+}

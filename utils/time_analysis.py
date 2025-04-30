@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 def calculate_first_response_time(
     df: pd.DataFrame,
     created_date_col: str = 'Created Date',
-    first_response_col: str = 'First Response Time'
+    first_response_col: str = 'First Response Time',
+    allow_synthetic: bool = False
 ) -> Tuple[pd.Series, dict]:
     """
     Calculate first response time in hours between case creation and first customer email.
@@ -19,6 +20,7 @@ def calculate_first_response_time(
         df: DataFrame containing the ticket data
         created_date_col: Name of the column containing case creation timestamp
         first_response_col: Name of the column containing first response timestamp
+        allow_synthetic: If True, allows creation of synthetic data when response time is missing
         
     Returns:
         Tuple containing:
@@ -33,17 +35,53 @@ def calculate_first_response_time(
             'error_details': []
         }
         
-        # Ensure required columns exist
-        if not all(col in df.columns for col in [created_date_col, first_response_col]):
-            missing_cols = [col for col in [created_date_col, first_response_col] if col not in df.columns]
-            raise ValueError(f"Missing required columns: {missing_cols}")
+        # Create a copy of the dataframe to avoid modifying the original
+        df_copy = df.copy()
+        
+        # Check for alternative column names if first_response_col doesn't exist
+        if first_response_col not in df_copy.columns:
+            alt_columns = ['First_Response_Time__c', 'FirstResponseTime']
+            found = False
+            for alt_col in alt_columns:
+                if alt_col in df_copy.columns:
+                    logger.info(f"Using alternative column '{alt_col}' for first response time")
+                    df_copy[first_response_col] = pd.to_datetime(df_copy[alt_col], errors='coerce')
+                    found = True
+                    break
+            
+            # If still not found, create a synthetic column if allowed
+            if not found:
+                missing_cols = [col for col in [created_date_col, first_response_col] if col not in df_copy.columns]
+                logger.warning(f"Missing required columns: {missing_cols}")
+                
+                # Only create synthetic data if explicitly allowed
+                if allow_synthetic and created_date_col in df_copy.columns:
+                    logger.info("Creating synthetic First Response Time column from Created Date")
+                    # Create a synthetic first response time 24 hours after creation
+                    created_dates = pd.to_datetime(df_copy[created_date_col], errors='coerce')
+                    df_copy[first_response_col] = created_dates + pd.Timedelta(hours=24)
+                    
+                    # Mark these as synthetic in the statistics
+                    stats['error_details'].append(
+                        f"Using synthetic First Response Time values (Created Date + 24h)"
+                    )
+                    stats['synthetic_data'] = True
+                else:
+                    # If we don't have the column and synthetic data isn't allowed, we can't proceed
+                    raise ValueError(f"Missing required columns: {missing_cols}")
+        
+        # Ensure required created_date_col exists
+        if created_date_col not in df_copy.columns:
+            missing_cols = [created_date_col]
+            logger.error(f"Missing required column: {missing_cols}")
+            raise ValueError(f"Missing required column: {missing_cols}")
             
         # Initialize response time series
-        response_hours = pd.Series(index=df.index, dtype='float64')
+        response_hours = pd.Series(index=df_copy.index, dtype='float64')
         
         # Convert timestamps to datetime if needed
-        created_dates = pd.to_datetime(df[created_date_col], utc=True)
-        response_dates = pd.to_datetime(df[first_response_col], utc=True)
+        created_dates = pd.to_datetime(df_copy[created_date_col], utc=True)
+        response_dates = pd.to_datetime(df_copy[first_response_col], utc=True)
         
         # Calculate time difference
         valid_mask = created_dates.notna() & response_dates.notna()

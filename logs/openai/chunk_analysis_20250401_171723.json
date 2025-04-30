@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:17:23.131266",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Not Specified Root Cause\",\n      \"Net New Configuration Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\"\n    ],\n    \"confidences\": {\n      \"Sync issue with SuccessFactors\": 0.3,\n      \"Incorrect role assignment in Career Hub\": 0.3,\n      \"Not Specified Root Cause\": 0.9,\n      \"Net New Configuration Root Cause\": 0.3,\n      \"Recurrent 'Not Specified' Root Cause\": 0.9\n    },\n    \"frequencies\": {\n      \"Sync issue with SuccessFactors\": 1,\n      \"Incorrect role assignment in Career Hub\": 1,\n      \"Not Specified Root Cause\": 2,\n      \"Net New Configuration Root Cause\": 1,\n      \"Recurrent 'Not Specified' Root Cause\": 1\n    },\n    \"total_patterns\": 5,\n    \"high_confidence\": [\n      \"Not Specified Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\"\n    ],\n    \"medium_confidence\": [],\n    \"low_confidence\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Net New Configuration Root Cause\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVbMbIAK\",\n    \"Subject\": \"request id case 0004977575 resolved\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 4.6296296296296294e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVbMWIA0\",\n    \"Subject\": \"case 0004977575 support workflow automation ericsson 1739305520 duplicates frustrating hms\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVZDaIAO\",\n    \"Subject\": \"ericsson sandbox many failed syncs employee gid ericsson sandbox sid successfactorsec3 due many authentication error\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 2.9231944444444444,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"No EF Support Action\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"Two tickets have the 'Not Specified' root cause, which aligns with the current high confidence pattern. One ticket has a 'No EF Support Action' root cause, which is a new pattern. Also, there is a mention of 'failed syncs' in one ticket, which could be related to the 'Sync issue with SuccessFactors' pattern, but it's not clear.\",\n        \"new_patterns\": [\"No EF Support Action\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Not Specified Root Cause\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"No EF Support Action\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Sync issue with SuccessFactors\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate 'Not Specified' Root Cause\",\n            \"description\": \"Given the high frequency and confidence of the 'Not Specified' Root Cause, it is recommended to investigate these cases further to identify any possible underlying issues.\",\n            \"priority\": \"high\",\n            \"impact\": \"Improving the root cause specification could help identify recurring issues and improve resolution times.\"\n        },\n        {\n            \"title\": \"Monitor 'No EF Support Action' Root Cause\",\n            \"description\": \"This is a new pattern and it's not clear if it's a recurring issue. Monitor this root cause to see if it emerges as a significant pattern.\",\n            \"priority\": \"medium\",\n            \"impact\": \"Understanding this root cause could help in reducing the number of such cases.\"\n        },\n        {\n            \"title\": \"Clarify 'Sync issue with SuccessFactors'\",\n            \"description\": \"The mention of 'failed syncs' could be related to the 'Sync issue with SuccessFactors' pattern. It might be beneficial to clarify the details of this issue.\",\n            \"priority\": \"low\",\n            \"impact\": \"Resolving sync issues could lead to improved system performance.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 727,
+      "completion_tokens": 431,
+      "total_tokens": 1158
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:16:29.673879",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [],\n    \"confidences\": {},\n    \"frequencies\": {},\n    \"total_patterns\": 0,\n    \"high_confidence\": [],\n    \"medium_confidence\": [],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVlXzIAK\",\n    \"Subject\": \"sync back interview pool successfactors\",\n    \"Priority\": \"P2\",\n    \"Status\": \"New\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVkdeIAC\",\n    \"Subject\": \"incorrect role career hub user\",\n    \"Priority\": \"P2\",\n    \"Status\": \"New\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVikSIAS\",\n    \"Subject\": \"request id case 0005182379 resolved\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"In the provided tickets, there are two main issues: 'sync back interview pool successfactors' and 'incorrect role career hub user'. Both of these tickets are new and set at priority P2. The third ticket is a resolved case.\",\n        \"new_patterns\": [\"Sync issue with SuccessFactors\", \"Incorrect role assignment in Career Hub\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Sync issue with SuccessFactors\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Incorrect role assignment in Career Hub\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate SuccessFactors Integration\",\n            \"description\": \"There seems to be an issue with the syncing of interview data from SuccessFactors. This might indicate an issue with the API or the integration setup. Further investigation is needed.\",\n            \"priority\": \"P2\",\n            \"impact\": \"High\"\n        },\n        {\n            \"title\": \"Review Role Assignment Process in Career Hub\",\n            \"description\": \"A user appears to have been assigned an incorrect role in the Career Hub. This might be due to a manual error or a flaw in the role assignment process. It is recommended to review the process and rectify any issues.\",\n            \"priority\": \"P2\",\n            \"impact\": \"Medium\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 444,
+      "completion_tokens": 298,
+      "total_tokens": 742
+    }
+  }
+}

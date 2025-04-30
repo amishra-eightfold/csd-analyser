@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:42:05.177270",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Issues with bostonscientific extension\",\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\"\n    ],\n    \"confidences\": {\n      \"Issues with bostonscientific extension\": 0.9,\n      \"Difficulty logging into career hub\": 0.6,\n      \"Candidates not receiving confirmation emails\": 0.6\n    },\n    \"frequencies\": {\n      \"Issues with bostonscientific extension\": 2,\n      \"Difficulty logging into career hub\": 1,\n      \"Candidates not receiving confirmation emails\": 2\n    },\n    \"total_patterns\": 3,\n    \"high_confidence\": [\n      \"Issues with bostonscientific extension\"\n    ],\n    \"medium_confidence\": [\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\"\n    ],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVUZnIAO\",\n    \"Subject\": \"support position pipeline bostonscientific 1742434965 important system issue\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVTxJIAW\",\n    \"Subject\": \"contractor access internal links\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVTwQIAW\",\n    \"Subject\": \"support candidate profile bostonscientific 1742408746 candidate message\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"Two tickets are related to 'bostonscientific' extension issues, which is a pattern previously identified with high confidence. A new pattern of issues with 'internal links' is identified.\",\n        \"new_patterns\": [\"Issues with internal links\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Issues with bostonscientific extension\", \n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"Issues with internal links\", \n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate 'bostonscientific' extension\",\n            \"description\": \"Given the recurring issues with the 'bostonscientific' extension, it is recommended to conduct a thorough investigation to identify and resolve the root cause.\",\n            \"priority\": \"High\",\n            \"impact\": \"Resolving this issue could significantly reduce the number of related support tickets and improve user experience.\"\n        },\n        {\n            \"title\": \"Monitor 'internal links' issue\",\n            \"description\": \"A new pattern of issues with 'internal links' has been identified. Monitor incoming tickets to determine if this pattern persists and if further investigation is required.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Early identification and resolution of a recurring issue can prevent it from escalating and negatively affecting more users.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 596,
+      "completion_tokens": 298,
+      "total_tokens": 894
+    }
+  }
+}

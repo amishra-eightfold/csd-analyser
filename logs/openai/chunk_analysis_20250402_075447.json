@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-02T07:54:47.691436",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [],\n    \"confidences\": {},\n    \"frequencies\": {},\n    \"total_patterns\": 0,\n    \"high_confidence\": [],\n    \"medium_confidence\": [],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVWnTIAW\",\n    \"Subject\": \"reqs updating forcing sync icims\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 8.60707175925926,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"User Error\"\n  },\n  {\n    \"Id\": \"5008V00001w4rBCQAY\",\n    \"Subject\": \"two candidate accounts id number affecting interview scheduling\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 6.962592592592593,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Net New Configuration\"\n  },\n  {\n    \"Id\": \"5008V00001w4rAYQAY\",\n    \"Subject\": \"data availability in data hub\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 19.93599537037037,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Missing Feature\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"Three tickets were processed with varying root causes namely User Error, Net New Configuration, and Missing Feature. All tickets were of P2 priority and have been closed. The resolution time varied from approximately 7 days to 20 days.\",\n        \"new_patterns\": [\"User Error\", \"Net New Configuration\", \"Missing Feature\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"User Error\", \"confidence\": \"high\"},\n        {\"pattern\": \"Net New Configuration\", \"confidence\": \"medium\"},\n        {\"pattern\": \"Missing Feature\", \"confidence\": \"low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve User Education\",\n            \"description\": \"To reduce the number of user errors, consider improving user education and providing more detailed instructions.\",\n            \"priority\": \"medium\",\n            \"impact\": \"high\"\n        },\n        {\n            \"title\": \"Review Configuration Process\",\n            \"description\": \"To avoid new configuration issues, review the configuration process and ensure it's well documented and followed.\",\n            \"priority\": \"high\",\n            \"impact\": \"medium\"\n        },\n        {\n            \"title\": \"Feature Addition\",\n            \"description\": \"The missing feature seems to have caused a delay in resolution. Consider adding the required feature to avoid such issues in the future.\",\n            \"priority\": \"high\",\n            \"impact\": \"high\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 453,
+      "completion_tokens": 298,
+      "total_tokens": 751
+    }
+  }
+}

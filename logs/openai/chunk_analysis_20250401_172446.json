@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:24:46.536811",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Not Specified Root Cause\",\n      \"Net New Configuration Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\",\n      \"Net New Configuration\",\n      \"Not Specified\",\n      \"Redirected to Customer Admin\",\n      \"Merged Status\",\n      \"Low Resolution Time\",\n      \"High Resolution Time\"\n    ],\n    \"confidences\": {\n      \"Sync issue with SuccessFactors\": 0.3,\n      \"Incorrect role assignment in Career Hub\": 0.3,\n      \"Not Specified Root Cause\": 0.9,\n      \"Net New Configuration Root Cause\": 0.3,\n      \"Recurrent 'Not Specified' Root Cause\": 0.9,\n      \"No EF Support Action\": 0.3,\n      \"Gap in Product Understanding\": 0.3,\n      \"API sync failure\": 0.3,\n      \"User Error\": 0.3,\n      \"No Customer Response\": 0.3,\n      \"Net New Configuration\": 0.3,\n      \"Not Specified\": 0.9,\n      \"Redirected to Customer Admin\": 0.3,\n      \"Merged Status\": 0.6,\n      \"Low Resolution Time\": 0.6,\n      \"High Resolution Time\": 0.6\n    },\n    \"frequencies\": {\n      \"Sync issue with SuccessFactors\": 2,\n      \"Incorrect role assignment in Career Hub\": 1,\n      \"Not Specified Root Cause\": 22,\n      \"Net New Configuration Root Cause\": 1,\n      \"Recurrent 'Not Specified' Root Cause\": 1,\n      \"No EF Support Action\": 4,\n      \"Gap in Product Understanding\": 11,\n      \"API sync failure\": 1,\n      \"User Error\": 4,\n      \"No Customer Response\": 3,\n      \"Net New Configuration\": 5,\n      \"Not Specified\": 9,\n      \"Redirected to Customer Admin\": 2,\n      \"Merged Status\": 16,\n      \"Low Resolution Time\": 13,\n      \"High Resolution Time\": 2\n    },\n    \"total_patterns\": 16,\n    \"high_confidence\": [\n      \"Not Specified Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\",\n      \"Not Specified\"\n    ],\n    \"medium_confidence\": [\n      \"Merged Status\",\n      \"Low Resolution Time\",\n      \"High Resolution Time\"\n    ],\n    \"low_confidence\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Net New Configuration Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\",\n      \"User Error\",\n      \"No Customer Response\",\n      \"Net New Configuration\",\n      \"Redirected to Customer Admin\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4WA6QAM\",\n    \"Subject\": \"request id case 0005041237 submitted\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 3.472222222222222e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"5008V00001w4WA1QAM\",\n    \"Subject\": \"request case 0005041237 submitted\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 4.6296296296296294e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"5008V00001w4VxgQAE\",\n    \"Subject\": \"time variables for interview scheduling\",\n    \"Priority\": \"P3\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 32.77914351851852,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Net New Configuration\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The majority of the tickets have the 'Not Specified' as their Root Cause and have a status of 'Merged'. The resolution time for these tickets is low. One ticket has a root cause of 'Net New Configuration' and a longer resolution time.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\"pattern\": \"Not Specified Root Cause\", \"confidence\": \"high\"},\n        {\"pattern\": \"Merged Status\", \"confidence\": \"medium\"},\n        {\"pattern\": \"Low Resolution Time\", \"confidence\": \"medium\"},\n        {\"pattern\": \"Net New Configuration\", \"confidence\": \"low\"},\n        {\"pattern\": \"High Resolution Time\", \"confidence\": \"medium\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate 'Not Specified' Root Causes\",\n            \"description\": \"A high number of tickets have 'Not Specified' as their root cause. This could indicate a lack of proper categorization or understanding of the issues. Investigating these cases could lead to better issue identification and resolution.\",\n            \"priority\": \"high\",\n            \"impact\": \"improve issue resolution and categorization\"\n        },\n        {\n            \"title\": \"Review 'Net New Configuration' Issues\",\n            \"description\": \"The ticket with a root cause of 'Net New Configuration' had a longer resolution time. This could indicate a need for better training or documentation regarding new configurations.\",\n            \"priority\": \"medium\",\n            \"impact\": \"reduce resolution time for 'Net New Configuration' issues\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1062,
+      "completion_tokens": 333,
+      "total_tokens": 1395
+    }
+  }
+}

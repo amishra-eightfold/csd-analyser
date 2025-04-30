@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T22:26:08.331760",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [],\n    \"confidences\": {},\n    \"frequencies\": {},\n    \"total_patterns\": 0,\n    \"high_confidence\": [],\n    \"medium_confidence\": [],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVYXsIAO\",\n    \"Subject\": \"custom banner color change\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 6.041666666666667,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"No EF Support Action\"\n  },\n  {\n    \"Id\": \"5008V00001w4v9TQAQ\",\n    \"Subject\": \"insights recruiter list update\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 10.748784722222222,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"5008V00001w4fRXQAY\",\n    \"Subject\": \"hiring manager internal candidate access\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 3.247476851851852,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main issues identified in the tickets are related to product understanding, configuration implementation, and support action. All tickets are of P2 priority, indicating they are high priority issues but not critical. The resolution times vary significantly, indicating potential inefficiencies in handling certain types of issues.\",\n        \"new_patterns\": [\"Product Understanding Gap\", \"Configuration Implementation Miss\", \"No EF Support Action\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"Product Understanding Gap\", \"confidence\": \"medium\"},\n        {\"pattern\": \"Configuration Implementation Miss\", \"confidence\": \"medium\"},\n        {\"pattern\": \"No EF Support Action\", \"confidence\": \"low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve Product Understanding\",\n            \"description\": \"There seems to be a gap in the understanding of the product. This could be addressed by providing more comprehensive training to users or improving the product documentation.\",\n            \"priority\": \"High\",\n            \"impact\": \"Reducing this gap can significantly reduce the number of support tickets raised and improve user satisfaction.\"\n        },\n        {\n            \"title\": \"Improve Configuration Implementation\",\n            \"description\": \"There seems to be a miss in the configuration implementation. This could be addressed by reviewing the implementation process and identifying areas for improvement.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Improving the configuration implementation process can reduce the number of support tickets raised due to this issue and improve the resolution time.\"\n        },\n        {\n            \"title\": \"Review Support Action\",\n            \"description\": \"There are instances where no EF support action is identified. This could be due to various reasons and should be investigated further.\",\n            \"priority\": \"Low\",\n            \"impact\": \"Understanding the reasons behind the lack of support action can help improve the support process and improve user satisfaction.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 453,
+      "completion_tokens": 389,
+      "total_tokens": 842
+    }
+  }
+}

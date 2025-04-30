@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:55:53.937151",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.9,\n      \"CareerHub BNYMellon issues\": 0.9\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 1\n    },\n    \"total_patterns\": 2,\n    \"high_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"medium_confidence\": [],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVfrEIAS\",\n    \"Subject\": \"support careerhub bnymellon 1742980119 wrong reporting manager showing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVeGVIA0\",\n    \"Subject\": \"whitelist bny domains\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVdyCIAS\",\n    \"Subject\": \"support careerhub bnymellon 1742909882 unable update profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"Two tickets were related to CareerHub BNYMellon issues and one was about whitelisting BNY domains. The common root cause appears to be a 'Gap in Product Understanding'.\",\n        \"new_patterns\": [\"Whitelist BNY domains\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"CareerHub BNYMellon issues\", \"confidence\": \"high\"},\n        {\"pattern\": \"Whitelist BNY domains\", \"confidence\": \"medium\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Product Training\",\n            \"description\": \"Given the common root cause being 'Gap in Product Understanding', it is recommended to provide additional training or clearer documentation for the users.\",\n            \"priority\": \"High\",\n            \"impact\": \"Reducing the number of similar tickets in the future and improving user experience\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 546,
+      "completion_tokens": 191,
+      "total_tokens": 737
+    }
+  }
+}

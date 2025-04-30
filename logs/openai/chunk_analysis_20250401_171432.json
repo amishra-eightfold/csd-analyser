@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:14:32.720135",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [],\n    \"confidences\": {},\n    \"frequencies\": {},\n    \"total_patterns\": 0,\n    \"high_confidence\": [],\n    \"medium_confidence\": [],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVnMOIA0\",\n    \"Subject\": \"certification number synced oracle talent profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 0.05457175925925926,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVnMJIA0\",\n    \"Subject\": \"support careerhub bnymellon 1743393800 push new data field oracle talent profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVfrEIAS\",\n    \"Subject\": \"support careerhub bnymellon 1742980119 wrong reporting manager showing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"Three tickets were analysed. Two tickets are related to 'Oracle Talent Profile' and one is related to 'wrong reporting manager showing'. One ticket is still open, one is solved, and one is merged.\",\n        \"new_patterns\": [\"Oracle Talent Profile issues\", \"CareerHub BNYMellon issues\", \"Wrong Reporting Manager issues\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Oracle Talent Profile issues\",\n            \"confidence\": \"medium\"\n        },\n        {\n            \"pattern\": \"CareerHub BNYMellon issues\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Wrong Reporting Manager issues\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Focus on Oracle Talent Profile issues\",\n            \"description\": \"Two out of three tickets are related to Oracle Talent Profile. Investigating this could potentially reduce the number of tickets.\",\n            \"priority\": \"high\",\n            \"impact\": \"Reducing the number of tickets and increasing customer satisfaction\"\n        },\n        {\n            \"title\": \"Investigate CareerHub BNYMellon issues\",\n            \"description\": \"One ticket is related to CareerHub BNYMellon. This could be an isolated incident or part of a larger trend. More data is needed.\",\n            \"priority\": \"medium\",\n            \"impact\": \"Potential to identify a new issue trend\"\n        },\n        {\n            \"title\": \"Understand 'Wrong Reporting Manager' issues\",\n            \"description\": \"One ticket is related to wrong reporting manager showing. This could be due to a gap in product understanding. Training or better documentation could help.\",\n            \"priority\": \"medium\",\n            \"impact\": \"Improving product understanding and reducing similar tickets\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 465,
+      "completion_tokens": 383,
+      "total_tokens": 848
+    }
+  }
+}

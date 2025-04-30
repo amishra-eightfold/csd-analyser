@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:12:41.096775",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"whitelist bny domains\",\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\",\n      \"unexpected behavior in interview center\",\n      \"support bnymellon location incorrect\",\n      \"update email address contract recruiters\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.9,\n      \"CareerHub BNYMellon issues\": 0.9,\n      \"whitelist bny domains\": 0.3,\n      \"Rejection email issues\": 0.3,\n      \"Unexpected behavior in interview center\": 0.3,\n      \"unexpected behavior in interview center\": 0.3,\n      \"support bnymellon location incorrect\": 0.3,\n      \"update email address contract recruiters\": 0.3\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 3,\n      \"whitelist bny domains\": 1,\n      \"Rejection email issues\": 1,\n      \"Unexpected behavior in interview center\": 1,\n      \"unexpected behavior in interview center\": 1,\n      \"support bnymellon location incorrect\": 1,\n      \"update email address contract recruiters\": 1\n    },\n    \"total_patterns\": 8,\n    \"high_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"medium_confidence\": [],\n    \"low_confidence\": [\n      \"whitelist bny domains\",\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\",\n      \"unexpected behavior in interview center\",\n      \"support bnymellon location incorrect\",\n      \"update email address contract recruiters\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVOx5IAG\",\n    \"Subject\": \"update email address contract recruiters\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  },\n  {\n    \"Id\": \"5008V00001w4h2bQAA\",\n    \"Subject\": \"scheduling data 2025 missing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"ENG Support Required\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main findings from the recent tickets include a recurring issue of 'update email address contract recruiters' and a new issue of 'scheduling data 2025 missing'. The recurring issue has a low confidence level (0.3) and has occurred twice. The new issue has not been seen before but has been resolved.\",\n        \"new_patterns\": [\"scheduling data 2025 missing\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"update email address contract recruiters\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"scheduling data 2025 missing\",\n            \"confidence\": \"unknown\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate 'update email address contract recruiters' issue\",\n            \"description\": \"Given the recurring nature of the 'update email address contract recruiters' issue, it is recommended to investigate the root cause and implement a more permanent solution.\",\n            \"priority\": \"medium\",\n            \"impact\": \"Reducing the recurrence of this issue will improve user experience and reduce support ticket volume.\"\n        },\n        {\n            \"title\": \"Monitor 'scheduling data 2025 missing' issue\",\n            \"description\": \"As this is a new issue, it is recommended to monitor it closely to see if it recurs. If it does, investigate the root cause.\",\n            \"priority\": \"low\",\n            \"impact\": \"Early detection of recurring issues will allow for quicker resolution and improved user experience.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 701,
+      "completion_tokens": 323,
+      "total_tokens": 1024
+    }
+  }
+}

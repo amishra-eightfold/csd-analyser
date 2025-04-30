@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-02T07:54:58.619164",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"User Error\",\n      \"Net New Configuration\",\n      \"Missing Feature\"\n    ],\n    \"confidences\": {\n      \"User Error\": 0.9,\n      \"Net New Configuration\": 0.6,\n      \"Missing Feature\": 0.3\n    },\n    \"frequencies\": {\n      \"User Error\": 1,\n      \"Net New Configuration\": 1,\n      \"Missing Feature\": 1\n    },\n    \"total_patterns\": 3,\n    \"high_confidence\": [\n      \"User Error\"\n    ],\n    \"medium_confidence\": [\n      \"Net New Configuration\"\n    ],\n    \"low_confidence\": [\n      \"Missing Feature\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4rAYQAY\",\n    \"Subject\": \"data availability in data hub\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 19.93599537037037,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Missing Feature\"\n  },\n  {\n    \"Id\": \"5008V00001w4r6BQAQ\",\n    \"Subject\": \"events reports delivered via email\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 9.996701388888889,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Product Bug\"\n  },\n  {\n    \"Id\": \"5008V00001w4or7QAA\",\n    \"Subject\": \"issue candidate stage reflecting requisition\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 21.81392361111111,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The new tickets indicate two new patterns: 'Product Bug' and 'Gap in Product Understanding'. The 'Missing Feature' pattern was also found in one ticket, which was previously identified with low confidence.\",\n        \"new_patterns\": [\"Product Bug\", \"Gap in Product Understanding\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"Product Bug\", \"confidence\": \"low\"},\n        {\"pattern\": \"Gap in Product Understanding\", \"confidence\": \"low\"},\n        {\"pattern\": \"Missing Feature\", \"confidence\": \"medium\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve Product Documentation\",\n            \"description\": \"The 'Gap in Product Understanding' pattern suggests that users may be having difficulty understanding how to use the product. Improving product documentation and user guides could help address this issue.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"High\"\n        },\n        {\n            \"title\": \"Investigate Potential Product Bugs\",\n            \"description\": \"The 'Product Bug' pattern suggests that there may be issues with the product that are impacting user experience. These should be investigated and addressed as necessary.\",\n            \"priority\": \"High\",\n            \"impact\": \"High\"\n        },\n        {\n            \"title\": \"Prioritize Missing Features\",\n            \"description\": \"The 'Missing Feature' pattern has been identified again, suggesting that it may be a recurring issue. This should be taken into consideration when planning future product updates.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Medium\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 550,
+      "completion_tokens": 329,
+      "total_tokens": 879
+    }
+  }
+}

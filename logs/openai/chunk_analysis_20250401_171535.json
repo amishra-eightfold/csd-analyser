@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:15:35.287095",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"Wrong Reporting Manager issues\",\n      \"Whitelist BNY domains\",\n      \"Interview Center issues\",\n      \"Incorrect location details in BNY Mellon support\",\n      \"Update email addresses for contract recruiters\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.6,\n      \"CareerHub BNYMellon issues\": 0.6,\n      \"Wrong Reporting Manager issues\": 0.3,\n      \"Whitelist BNY domains\": 0.3,\n      \"Interview Center issues\": 0.6,\n      \"Incorrect location details in BNY Mellon support\": 0.3,\n      \"Update email addresses for contract recruiters\": 0.3\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 3,\n      \"Wrong Reporting Manager issues\": 2,\n      \"Whitelist BNY domains\": 1,\n      \"Interview Center issues\": 2,\n      \"Incorrect location details in BNY Mellon support\": 1,\n      \"Update email addresses for contract recruiters\": 1\n    },\n    \"total_patterns\": 7,\n    \"high_confidence\": [],\n    \"medium_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"Interview Center issues\"\n    ],\n    \"low_confidence\": [\n      \"Wrong Reporting Manager issues\",\n      \"Whitelist BNY domains\",\n      \"Incorrect location details in BNY Mellon support\",\n      \"Update email addresses for contract recruiters\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVOx5IAG\",\n    \"Subject\": \"update email address contract recruiters\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  },\n  {\n    \"Id\": \"5008V00001w4h2bQAA\",\n    \"Subject\": \"scheduling data 2025 missing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"ENG Support Required\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": [\n            \"One ticket pertains to a known pattern ('Update email addresses for contract recruiters') with low confidence, while the other ticket introduces a new potential pattern ('Scheduling data missing').\"\n        ],\n        \"new_patterns\": [\n            \"Scheduling data missing\"\n        ]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Update email addresses for contract recruiters\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Scheduling data missing\",\n            \"confidence\": \"unknown\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Increase focus on 'Update email addresses for contract recruiters' issues\",\n            \"description\": \"Despite the low confidence, the recurring pattern suggests a potential underlying issue that needs to be addressed.\",\n            \"priority\": \"medium\",\n            \"impact\": \"high\"\n        },\n        {\n            \"title\": \"Investigate the 'Scheduling data missing' issues\",\n            \"description\": \"This new pattern could indicate a new problem area. Further investigation is recommended to understand the root cause and potential solutions.\",\n            \"priority\": \"high\",\n            \"impact\": \"unknown\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 661,
+      "completion_tokens": 254,
+      "total_tokens": 915
+    }
+  }
+}

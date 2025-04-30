@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:43:11.076397",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Issues with bostonscientific extension\",\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\",\n      \"Issues with internal links\",\n      \"Difficulty accessing career navigator\",\n      \"Difficulty uploading PDFs\",\n      \"Issues with ta leadership dashboard\",\n      \"Issues with bostonscientific sandbox\",\n      \"bostonscientific sandbox failed syncs\",\n      \"support positions home page bostonscientific\"\n    ],\n    \"confidences\": {\n      \"Issues with bostonscientific extension\": 0.9,\n      \"Difficulty logging into career hub\": 0.6,\n      \"Candidates not receiving confirmation emails\": 0.6,\n      \"Issues with internal links\": 0.3,\n      \"Difficulty accessing career navigator\": 0.6,\n      \"Difficulty uploading PDFs\": 0.3,\n      \"Issues with ta leadership dashboard\": 0.3,\n      \"Issues with bostonscientific sandbox\": 0.3,\n      \"bostonscientific sandbox failed syncs\": 0.3,\n      \"support positions home page bostonscientific\": 0.3\n    },\n    \"frequencies\": {\n      \"Issues with bostonscientific extension\": 6,\n      \"Difficulty logging into career hub\": 1,\n      \"Candidates not receiving confirmation emails\": 2,\n      \"Issues with internal links\": 1,\n      \"Difficulty accessing career navigator\": 1,\n      \"Difficulty uploading PDFs\": 1,\n      \"Issues with ta leadership dashboard\": 1,\n      \"Issues with bostonscientific sandbox\": 1,\n      \"bostonscientific sandbox failed syncs\": 1,\n      \"support positions home page bostonscientific\": 1\n    },\n    \"total_patterns\": 10,\n    \"high_confidence\": [\n      \"Issues with bostonscientific extension\"\n    ],\n    \"medium_confidence\": [\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\",\n      \"Difficulty accessing career navigator\"\n    ],\n    \"low_confidence\": [\n      \"Issues with internal links\",\n      \"Difficulty uploading PDFs\",\n      \"Issues with ta leadership dashboard\",\n      \"Issues with bostonscientific sandbox\",\n      \"bostonscientific sandbox failed syncs\",\n      \"support positions home page bostonscientific\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4t51QAA\",\n    \"Subject\": \"support positions home page bostonscientific 1741805326 req showing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"5008V00001w4szrQAA\",\n    \"Subject\": \"\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"5008V00001w4nmLQAQ\",\n    \"Subject\": \"bms dev sandbox many failed syncs candidate gid bms dev sandbox sid workday bms8 due many authentication error\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Net New Configuration\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main finding from the analyzed tickets shows that there are recurring issues with 'support positions home page bostonscientific' and 'bostonscientific sandbox failed syncs'. These issues have come up again in the current batch of tickets, indicating that they are persistent problems. Additionally, there seems to be a common root cause, which is 'Gap in Product Understanding' and 'Net New Configuration'.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"support positions home page bostonscientific\",\n            \"confidence\": \"medium\"\n        },\n        {\n            \"pattern\": \"bostonscientific sandbox failed syncs\",\n            \"confidence\": \"medium\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Product Training\",\n            \"description\": \"There seems to be a gap in product understanding leading to these issues. It is recommended to provide additional training or documentation to address this gap.\",\n            \"priority\": \"High\",\n            \"impact\": \"Reduced number of support tickets and improved user experience\"\n        },\n        {\n            \"title\": \"Review Configuration\",\n            \"description\": \"The 'bostonscientific sandbox failed syncs' issue seems to be due to 'Net New Configuration'. It is recommended to review the configuration settings to identify and address the issue.\",\n            \"priority\": \"High\",\n            \"impact\": \"Prevention of future sync failures and improved system stability\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 913,
+      "completion_tokens": 320,
+      "total_tokens": 1233
+    }
+  }
+}

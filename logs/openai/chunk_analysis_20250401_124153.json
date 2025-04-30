@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:41:53.773317",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Issues with bostonscientific extension\",\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\"\n    ],\n    \"confidences\": {\n      \"Issues with bostonscientific extension\": 0.9,\n      \"Difficulty logging into career hub\": 0.6,\n      \"Candidates not receiving confirmation emails\": 0.6\n    },\n    \"frequencies\": {\n      \"Issues with bostonscientific extension\": 1,\n      \"Difficulty logging into career hub\": 1,\n      \"Candidates not receiving confirmation emails\": 1\n    },\n    \"total_patterns\": 3,\n    \"high_confidence\": [\n      \"Issues with bostonscientific extension\"\n    ],\n    \"medium_confidence\": [\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\"\n    ],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVYJvIAO\",\n    \"Subject\": \"candidates not receiving confirmation emails\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  },\n  {\n    \"Id\": \"500Kj00001cVY3MIAW\",\n    \"Subject\": \"support position pipeline bostonscientific 1742563302 fluctuating match score\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVUZnIAO\",\n    \"Subject\": \"support position pipeline bostonscientific 1742434965 important system issue\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The support tickets continue to follow the previously identified patterns, with issues related to 'bostonscientific extension' and 'candidates not receiving confirmation emails'. There is no new pattern identified.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Issues with bostonscientific extension\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"Candidates not receiving confirmation emails\",\n            \"confidence\": \"medium\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Review bostonscientific extension\",\n            \"description\": \"There are repeated issues with the bostonscientific extension. It is recommended to review the extension and debug any potential issues that could be causing the fluctuating match score and system issues.\",\n            \"priority\": \"high\",\n            \"impact\": \"Reducing the number of tickets related to this issue and improving user experience.\"\n        },\n        {\n            \"title\": \"Fix confirmation email issue\",\n            \"description\": \"Candidates are not receiving confirmation emails. It is crucial to review the configuration and ensure that the implementation is correct and functioning as expected.\",\n            \"priority\": \"medium\",\n            \"impact\": \"Improving candidate experience and reducing the number of tickets related to this issue.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 599,
+      "completion_tokens": 283,
+      "total_tokens": 882
+    }
+  }
+}

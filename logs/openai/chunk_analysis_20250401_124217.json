@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:42:17.239891",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Issues with bostonscientific extension\",\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\",\n      \"Issues with internal links\"\n    ],\n    \"confidences\": {\n      \"Issues with bostonscientific extension\": 0.9,\n      \"Difficulty logging into career hub\": 0.6,\n      \"Candidates not receiving confirmation emails\": 0.6,\n      \"Issues with internal links\": 0.3\n    },\n    \"frequencies\": {\n      \"Issues with bostonscientific extension\": 3,\n      \"Difficulty logging into career hub\": 1,\n      \"Candidates not receiving confirmation emails\": 2,\n      \"Issues with internal links\": 1\n    },\n    \"total_patterns\": 4,\n    \"high_confidence\": [\n      \"Issues with bostonscientific extension\"\n    ],\n    \"medium_confidence\": [\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\"\n    ],\n    \"low_confidence\": [\n      \"Issues with internal links\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVTwQIAW\",\n    \"Subject\": \"support candidate profile bostonscientific 1742408746 candidate message\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVSgFIAW\",\n    \"Subject\": \"issue access career navigator\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 5.787037037037037e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVRq1IAG\",\n    \"Subject\": \"support referrals bostonscientific 1742330878 employee referral issue\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"Two of the support tickets relate to issues with the bostonscientific extension. One ticket relates to difficulty accessing the career navigator, which could be similar to the previously identified pattern of difficulty logging into the career hub.\",\n        \"new_patterns\": [\"Difficulty accessing career navigator\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Issues with bostonscientific extension\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"Difficulty accessing career navigator\",\n            \"confidence\": \"medium\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate bostonscientific extension\",\n            \"description\": \"There seems to be recurring issues with the bostonscientific extension. It's recommended to investigate this further to identify and resolve the root cause.\",\n            \"priority\": \"high\",\n            \"impact\": \"Resolving this issue could significantly improve user experience and reduce the volume of related support tickets.\"\n        },\n        {\n            \"title\": \"Review career navigator access issues\",\n            \"description\": \"A ticket has been raised regarding difficulty accessing the career navigator. This is similar to previous issues with logging into the career hub. It's recommended to review this to ensure there are no systemic issues affecting access.\",\n            \"priority\": \"medium\",\n            \"impact\": \"Resolving this issue could improve user access to career resources and reduce related support tickets.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 638,
+      "completion_tokens": 307,
+      "total_tokens": 945
+    }
+  }
+}

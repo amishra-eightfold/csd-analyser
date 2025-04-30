@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:12:28.443937",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"whitelist bny domains\",\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.9,\n      \"CareerHub BNYMellon issues\": 0.9,\n      \"whitelist bny domains\": 0.3,\n      \"Rejection email issues\": 0.3,\n      \"Unexpected behavior in interview center\": 0.3\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 3,\n      \"whitelist bny domains\": 1,\n      \"Rejection email issues\": 1,\n      \"Unexpected behavior in interview center\": 1\n    },\n    \"total_patterns\": 5,\n    \"high_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"medium_confidence\": [],\n    \"low_confidence\": [\n      \"whitelist bny domains\",\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVTghIAG\",\n    \"Subject\": \"unexpected behavior in interview center\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVQEtIAO\",\n    \"Subject\": \"support bnymellon 1742287070 location incorrect\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 6.172106481481482,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"User Error\"\n  },\n  {\n    \"Id\": \"500Kj00001cVOx5IAG\",\n    \"Subject\": \"update email address contract recruiters\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"Based on the analysis of these tickets, there is a recurrence of 'unexpected behavior in interview center' issue, which was previously identified as a low confidence pattern. There are also new patterns identified such as 'support bnymellon location incorrect' and 'update email address contract recruiters'.\",\n        \"new_patterns\": [\"support bnymellon location incorrect\", \"update email address contract recruiters\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"unexpected behavior in interview center\", \"confidence\": \"low\"},\n        {\"pattern\": \"support bnymellon location incorrect\", \"confidence\": \"low\"},\n        {\"pattern\": \"update email address contract recruiters\", \"confidence\": \"low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate 'unexpected behavior in interview center' issue\",\n            \"description\": \"Since this issue is recurring, it is recommended to investigate the root cause and find a permanent solution to prevent it in the future.\",\n            \"priority\": \"High\",\n            \"impact\": \"Improving the functionality of the interview center could enhance user experience and satisfaction.\"\n        },\n        {\n            \"title\": \"Review new patterns\",\n            \"description\": \"New patterns such as 'support bnymellon location incorrect' and 'update email address contract recruiters' have emerged. It is recommended to monitor these issues closely to understand if they are isolated incidents or if they represent a new, recurring problem.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Early detection of new recurring problems can help in reducing the number of affected users and improve overall system stability.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 654,
+      "completion_tokens": 343,
+      "total_tokens": 997
+    }
+  }
+}

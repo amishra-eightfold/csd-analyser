@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:15:11.333691",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"Wrong Reporting Manager issues\",\n      \"Whitelist BNY domains\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.6,\n      \"CareerHub BNYMellon issues\": 0.6,\n      \"Wrong Reporting Manager issues\": 0.3,\n      \"Whitelist BNY domains\": 0.3\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 2,\n      \"Wrong Reporting Manager issues\": 2,\n      \"Whitelist BNY domains\": 1\n    },\n    \"total_patterns\": 4,\n    \"high_confidence\": [],\n    \"medium_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"low_confidence\": [\n      \"Wrong Reporting Manager issues\",\n      \"Whitelist BNY domains\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVdyCIAS\",\n    \"Subject\": \"support careerhub bnymellon 1742909882 unable update profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVTlIIAW\",\n    \"Subject\": \"rejection email getting sent\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVTghIAG\",\n    \"Subject\": \"unexpected behavior in interview center\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"In this batch of tickets, there is a continuation of the CareerHub BNYMellon issues pattern, as well as a potential new pattern of issues with the Interview Center. The second ticket's subject is too vague to be attributed to any current or new pattern.\",\n        \"new_patterns\": [\"Interview Center issues\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"CareerHub BNYMellon issues\",\n            \"confidence\": \"medium\"\n        },\n        {\n            \"pattern\": \"Interview Center issues\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate CareerHub BNYMellon Issues\",\n            \"description\": \"There is a continuation of issues related to CareerHub BNYMellon, particularly with updating profiles. This requires further investigation to identify and resolve the root cause.\",\n            \"priority\": \"High\",\n            \"impact\": \"Improving the functionality of CareerHub BNYMellon could significantly enhance user experience and reduce the volume of related support tickets.\"\n        },\n        {\n            \"title\": \"Monitor Potential Interview Center Issues\",\n            \"description\": \"A new potential pattern of issues with the Interview Center has emerged. Monitor incoming tickets for further instances of this issue to determine if it is a persistent problem.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Identifying and resolving any persistent issues with the Interview Center could improve user experience and prevent a potential increase in related support tickets.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 611,
+      "completion_tokens": 326,
+      "total_tokens": 937
+    }
+  }
+}

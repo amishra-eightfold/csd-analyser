@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T22:27:11.067256",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [],\n    \"confidences\": {},\n    \"frequencies\": {},\n    \"total_patterns\": 0,\n    \"high_confidence\": [],\n    \"medium_confidence\": [],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4k3qQAA\",\n    \"Subject\": \"definitions for query results\",\n    \"Priority\": \"P3\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 21.79769675925926,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Data Request\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"A new support ticket pattern has been identified. The pattern is related to 'Data Request' as a root cause and has a priority of 'P3'. The resolution time for this type of ticket is relatively high, around 21.8 days.\",\n        \"new_patterns\": [\"Data Request with high resolution time\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Data Request with high resolution time\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve Response Time for Data Request Tickets\",\n            \"description\": \"The resolution time for tickets with root cause 'Data Request' is high. There is a need to improve the response time for these types of tickets to enhance customer satisfaction.\",\n            \"priority\": \"High\",\n            \"impact\": \"Improving the response time for these tickets can potentially increase customer satisfaction and reduce the number of similar future tickets.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 288,
+      "completion_tokens": 210,
+      "total_tokens": 498
+    }
+  }
+}

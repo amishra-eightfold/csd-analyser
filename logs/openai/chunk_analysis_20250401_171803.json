@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:18:03.111883",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Not Specified Root Cause\",\n      \"Net New Configuration Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\"\n    ],\n    \"confidences\": {\n      \"Sync issue with SuccessFactors\": 0.3,\n      \"Incorrect role assignment in Career Hub\": 0.3,\n      \"Not Specified Root Cause\": 0.9,\n      \"Net New Configuration Root Cause\": 0.3,\n      \"Recurrent 'Not Specified' Root Cause\": 0.9,\n      \"No EF Support Action\": 0.3,\n      \"Gap in Product Understanding\": 0.3,\n      \"API sync failure\": 0.3\n    },\n    \"frequencies\": {\n      \"Sync issue with SuccessFactors\": 2,\n      \"Incorrect role assignment in Career Hub\": 1,\n      \"Not Specified Root Cause\": 5,\n      \"Net New Configuration Root Cause\": 1,\n      \"Recurrent 'Not Specified' Root Cause\": 1,\n      \"No EF Support Action\": 3,\n      \"Gap in Product Understanding\": 1,\n      \"API sync failure\": 1\n    },\n    \"total_patterns\": 8,\n    \"high_confidence\": [\n      \"Not Specified Root Cause\",\n      \"Recurrent 'Not Specified' Root Cause\"\n    ],\n    \"medium_confidence\": [],\n    \"low_confidence\": [\n      \"Sync issue with SuccessFactors\",\n      \"Incorrect role assignment in Career Hub\",\n      \"Net New Configuration Root Cause\",\n      \"No EF Support Action\",\n      \"Gap in Product Understanding\",\n      \"API sync failure\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVTkAIAW\",\n    \"Subject\": \"api sync failure\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"No EF Support Action\"\n  },\n  {\n    \"Id\": \"500Kj00001cVTSuIAO\",\n    \"Subject\": \"notification line manager direct reportees apply project\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVTAMIA4\",\n    \"Subject\": \"\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main findings from the latest batch of tickets include instances of 'No EF Support Action', 'Gap in Product Understanding' and a 'Not Specified' Root Cause. These are patterns we've seen in previous tickets.\",\n        \"new_patterns\": []\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"No EF Support Action\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Gap in Product Understanding\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Not Specified Root Cause\",\n            \"confidence\": \"high\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Improve Product Understanding\",\n            \"description\": \"There seems to be a gap in product understanding which might be causing some of the issues. It would be beneficial to provide additional training to users to help them understand the product better.\",\n            \"priority\": \"medium\",\n            \"impact\": \"high\"\n        },\n        {\n            \"title\": \"Investigate 'Not Specified' Root Cause\",\n            \"description\": \"There is a high occurrence of 'Not Specified' root causes. It's recommended to further investigate these instances to identify the underlying issues.\",\n            \"priority\": \"high\",\n            \"impact\": \"high\"\n        },\n        {\n            \"title\": \"Review Support Actions\",\n            \"description\": \"Several tickets have 'No EF Support Action' as the root cause. Reviewing the support actions and making necessary adjustments could help reduce these occurrences.\",\n            \"priority\": \"medium\",\n            \"impact\": \"medium\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 760,
+      "completion_tokens": 343,
+      "total_tokens": 1103
+    }
+  }
+}

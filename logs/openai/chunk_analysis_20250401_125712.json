@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:57:12.465513",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"Whitelist BNY domains\",\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\",\n      \"unexpected behavior in interview center\",\n      \"location incorrect\",\n      \"update email address contract recruiters\",\n      \"scheduling data 2025 missing\",\n      \"2025 q1 feature interview center issue\",\n      \"2025 q1 release feature delete notes candidate profile\",\n      \"remove course recommendation feature\",\n      \"sandbox job sync issue\",\n      \"not accessible in ats\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.9,\n      \"CareerHub BNYMellon issues\": 0.9,\n      \"Whitelist BNY domains\": 0.6,\n      \"Rejection email issues\": 0.3,\n      \"Unexpected behavior in interview center\": 0.3,\n      \"unexpected behavior in interview center\": 0.3,\n      \"location incorrect\": 0.3,\n      \"update email address contract recruiters\": 0.3,\n      \"scheduling data 2025 missing\": 0.3,\n      \"2025 q1 feature interview center issue\": 0.3,\n      \"2025 q1 release feature delete notes candidate profile\": 0.3,\n      \"remove course recommendation feature\": 0.3,\n      \"sandbox job sync issue\": 0.3,\n      \"not accessible in ats\": 0.3\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 3,\n      \"Whitelist BNY domains\": 1,\n      \"Rejection email issues\": 1,\n      \"Unexpected behavior in interview center\": 1,\n      \"unexpected behavior in interview center\": 1,\n      \"location incorrect\": 1,\n      \"update email address contract recruiters\": 2,\n      \"scheduling data 2025 missing\": 1,\n      \"2025 q1 feature interview center issue\": 2,\n      \"2025 q1 release feature delete notes candidate profile\": 1,\n      \"remove course recommendation feature\": 2,\n      \"sandbox job sync issue\": 1,\n      \"not accessible in ats\": 1\n    },\n    \"total_patterns\": 14,\n    \"high_confidence\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\"\n    ],\n    \"medium_confidence\": [\n      \"Whitelist BNY domains\"\n    ],\n    \"low_confidence\": [\n      \"Rejection email issues\",\n      \"Unexpected behavior in interview center\",\n      \"unexpected behavior in interview center\",\n      \"location incorrect\",\n      \"update email address contract recruiters\",\n      \"scheduling data 2025 missing\",\n      \"2025 q1 feature interview center issue\",\n      \"2025 q1 release feature delete notes candidate profile\",\n      \"remove course recommendation feature\",\n      \"sandbox job sync issue\",\n      \"not accessible in ats\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4DS2QAM\",\n    \"Subject\": \"not accessible in ats\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 40.03653935185185,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"5008V00001w44aTQAQ\",\n    \"Subject\": \"updates to the pipeline workflow\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Net New Configuration\"\n  },\n  {\n    \"Id\": \"5008V00001w42tMQAQ\",\n    \"Subject\": \"support_profile assessment data\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 4.770428240740741,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"ENG Support Required\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": [\n            \"One of the tickets is related to a high confidence pattern 'not accessible in ats'.\",\n            \"Two new patterns are found: 'updates to the pipeline workflow' and 'support_profile assessment data'.\"\n        ],\n        \"new_patterns\": [\n            \"updates to the pipeline workflow\",\n            \"support_profile assessment data\"\n        ]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"not accessible in ats\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"updates to the pipeline workflow\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"support_profile assessment data\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate new patterns\",\n            \"description\": \"Two new patterns 'updates to the pipeline workflow' and 'support_profile assessment data' have been identified. These need to be further investigated to understand the underlying issues and potential solutions.\",\n            \"priority\": \"medium\",\n            \"impact\": \"Understanding these new patterns can help in improving the product and the support provided to the users.\"\n        },\n        {\n            \"title\": \"Address high confidence pattern\",\n            \"description\": \"The pattern 'not accessible in ats' has been identified with high confidence. This issue needs to be addressed promptly to ensure smooth user experience.\",\n            \"priority\": \"high\",\n            \"impact\": \"Resolving this issue can significantly improve the user experience and reduce the number of related support tickets.\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1037,
+      "completion_tokens": 331,
+      "total_tokens": 1368
+    }
+  }
+}

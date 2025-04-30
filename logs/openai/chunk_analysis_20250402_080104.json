@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-02T08:01:04.145784",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [],\n    \"confidences\": {},\n    \"frequencies\": {},\n    \"total_patterns\": 0,\n    \"high_confidence\": [],\n    \"medium_confidence\": [],\n    \"low_confidence\": []\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVQEtIAO\",\n    \"Subject\": \"support bnymellon 1742287070 location incorrect\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 6.172106481481482,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"User Error\"\n  },\n  {\n    \"Id\": \"500Kj00001cVOx5IAG\",\n    \"Subject\": \"update email address contract recruiters\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 14.802349537037037,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Configuration Implementation Miss\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"Two main issues were identified from the tickets: incorrect location and email address update. Both tickets were of priority P2 and were closed. The root causes were User Error and Configuration Implementation Miss respectively.\",\n        \"new_patterns\": [\"Incorrect location\", \"Email address update\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Incorrect location\",\n            \"confidence\": \"medium\"\n        },\n        {\n            \"pattern\": \"Email address update\",\n            \"confidence\": \"medium\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"User Training\",\n            \"description\": \"Given that user error is a root cause, it is recommended to provide further training to users to prevent such errors.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Reduced number of tickets due to user errors\"\n        },\n        {\n            \"title\": \"Review Configuration Implementation\",\n            \"description\": \"Configuration Implementation Miss was identified as a root cause. It's recommended to review the implementation process to avoid such misses.\",\n            \"priority\": \"High\",\n            \"impact\": \"Improved configuration implementation, reducing related issues\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 375,
+      "completion_tokens": 248,
+      "total_tokens": 623
+    }
+  }
+}

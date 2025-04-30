@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:14:58.532387",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Oracle Talent Profile issues\",\n      \"CareerHub BNYMellon issues\",\n      \"Wrong Reporting Manager issues\"\n    ],\n    \"confidences\": {\n      \"Oracle Talent Profile issues\": 0.6,\n      \"CareerHub BNYMellon issues\": 0.3,\n      \"Wrong Reporting Manager issues\": 0.3\n    },\n    \"frequencies\": {\n      \"Oracle Talent Profile issues\": 1,\n      \"CareerHub BNYMellon issues\": 1,\n      \"Wrong Reporting Manager issues\": 1\n    },\n    \"total_patterns\": 3,\n    \"high_confidence\": [],\n    \"medium_confidence\": [\n      \"Oracle Talent Profile issues\"\n    ],\n    \"low_confidence\": [\n      \"CareerHub BNYMellon issues\",\n      \"Wrong Reporting Manager issues\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVfrEIAS\",\n    \"Subject\": \"support careerhub bnymellon 1742980119 wrong reporting manager showing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVeGVIA0\",\n    \"Subject\": \"whitelist bny domains\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  },\n  {\n    \"Id\": \"500Kj00001cVdyCIAS\",\n    \"Subject\": \"support careerhub bnymellon 1742909882 unable update profile\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Pending\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n  \"chunk_summary\": {\n    \"main_findings\": \"Two tickets are related to 'CareerHub BNYMellon issues' and one ticket is related to 'Wrong Reporting Manager issues'. No tickets were found related to 'Oracle Talent Profile issues'. A new pattern 'Whitelist BNY domains' was identified.\",\n    \"new_patterns\": [\"Whitelist BNY domains\"]\n  },\n  \"patterns\": [\n    {\n      \"pattern\": \"CareerHub BNYMellon issues\",\n      \"confidence\": \"medium\"\n    },\n    {\n      \"pattern\": \"Wrong Reporting Manager issues\",\n      \"confidence\": \"low\"\n    },\n    {\n      \"pattern\": \"Whitelist BNY domains\",\n      \"confidence\": \"low\"\n    }\n  ],\n  \"recommendations\": [\n    {\n      \"title\": \"Address CareerHub BNYMellon issues\",\n      \"description\": \"Multiple tickets are being raised related to CareerHub BNYMellon. The support team should focus on resolving these issues to reduce the number of tickets.\",\n      \"priority\": \"High\",\n      \"impact\": \"Reduced number of tickets and improved user satisfaction\"\n    },\n    {\n      \"title\": \"Investigate Wrong Reporting Manager issues\",\n      \"description\": \"There is a ticket related to wrong reporting manager showing in the system. The support team should investigate this to prevent future tickets with the same issue.\",\n      \"priority\": \"Medium\",\n      \"impact\": \"Prevention of future tickets with the same issue\"\n    },\n    {\n      \"title\": \"Monitor new pattern - Whitelist BNY domains\",\n      \"description\": \"A new pattern 'Whitelist BNY domains' has been identified. The support team should monitor this pattern to understand if it's a recurring issue.\",\n      \"priority\": \"Low\",\n      \"impact\": \"Early detection of a potentially recurring issue\"\n    }\n  ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 584,
+      "completion_tokens": 388,
+      "total_tokens": 972
+    }
+  }
+}

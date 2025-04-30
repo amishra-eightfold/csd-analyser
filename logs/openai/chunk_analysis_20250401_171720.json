@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:17:20.829885",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync back issue\",\n      \"Role assignment error\",\n      \"Case resolution\",\n      \"Release advancement\",\n      \"Meeting invites in Outlook\",\n      \"Authentication error\",\n      \"Gap in Product Understanding\",\n      \"api sync failure\",\n      \"status request id case changed canceled\",\n      \"flexibility add additional custom buttons custom menu navigation\",\n      \"request id case related issues\",\n      \"Tickets with P2 priority\",\n      \"Merged tickets\",\n      \"Visibility sync issue\"\n    ],\n    \"confidences\": {\n      \"Sync back issue\": 0.6,\n      \"Role assignment error\": 0.3,\n      \"Case resolution\": 0.9,\n      \"Release advancement\": 0.3,\n      \"Meeting invites in Outlook\": 0.3,\n      \"Authentication error\": 0.3,\n      \"Gap in Product Understanding\": 0.3,\n      \"api sync failure\": 0.6,\n      \"status request id case changed canceled\": 0.3,\n      \"flexibility add additional custom buttons custom menu navigation\": 0.3,\n      \"request id case related issues\": 0.3,\n      \"Tickets with P2 priority\": 0.6,\n      \"Merged tickets\": 0.6,\n      \"Visibility sync issue\": 0.3\n    },\n    \"frequencies\": {\n      \"Sync back issue\": 4,\n      \"Role assignment error\": 1,\n      \"Case resolution\": 6,\n      \"Release advancement\": 1,\n      \"Meeting invites in Outlook\": 1,\n      \"Authentication error\": 2,\n      \"Gap in Product Understanding\": 2,\n      \"api sync failure\": 2,\n      \"status request id case changed canceled\": 1,\n      \"flexibility add additional custom buttons custom menu navigation\": 1,\n      \"request id case related issues\": 2,\n      \"Tickets with P2 priority\": 2,\n      \"Merged tickets\": 2,\n      \"Visibility sync issue\": 1\n    },\n    \"total_patterns\": 14,\n    \"high_confidence\": [\n      \"Case resolution\"\n    ],\n    \"medium_confidence\": [\n      \"Sync back issue\",\n      \"api sync failure\",\n      \"Tickets with P2 priority\",\n      \"Merged tickets\"\n    ],\n    \"low_confidence\": [\n      \"Role assignment error\",\n      \"Release advancement\",\n      \"Meeting invites in Outlook\",\n      \"Authentication error\",\n      \"Gap in Product Understanding\",\n      \"status request id case changed canceled\",\n      \"flexibility add additional custom buttons custom menu navigation\",\n      \"request id case related issues\",\n      \"Visibility sync issue\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVQjSIAW\",\n    \"Subject\": \"visibility sync issue in ef\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 9.979155092592592,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"User Error\"\n  },\n  {\n    \"Id\": \"500Kj00001cVPkcIAG\",\n    \"Subject\": \"status request id case 0005068027 changed pending\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 4.6296296296296294e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVOt8IAG\",\n    \"Subject\": \"00118965 interview forms add comment section\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"No Customer Response\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The main finding from the new tickets is the recurrence of 'Visibility sync issue' and 'Status request id case changed'. These issues have been previously identified as patterns but with low confidence. Also, a new potential pattern 'Interview forms add comment section' has been identified.\",\n        \"new_patterns\": [\"Interview forms add comment section\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"Visibility sync issue\", \"confidence\": \"low\"},\n        {\"pattern\": \"Status request id case changed\", \"confidence\": \"low\"},\n        {\"pattern\": \"Interview forms add comment section\", \"confidence\": \"low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Increase monitoring on 'Visibility sync issue'\",\n            \"description\": \"Given the recurrence of the 'Visibility sync issue', it is recommended to increase monitoring on this issue to prevent future occurrences.\",\n            \"priority\": \"medium\",\n            \"impact\": \"high\"\n        },\n        {\n            \"title\": \"Investigate 'Status request id case changed'\",\n            \"description\": \"This issue has been identified again. It's recommended to investigate this further to understand the root cause and prevent future occurrences.\",\n            \"priority\": \"medium\",\n            \"impact\": \"medium\"\n        },\n        {\n            \"title\": \"Review 'Interview forms add comment section'\",\n            \"description\": \"This is a new potential pattern. It's recommended to review this issue and determine if it's a recurring problem or a one-time issue.\",\n            \"priority\": \"low\",\n            \"impact\": \"low\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 964,
+      "completion_tokens": 333,
+      "total_tokens": 1297
+    }
+  }
+}

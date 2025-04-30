@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T12:42:55.483130",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Issues with bostonscientific extension\",\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\",\n      \"Issues with internal links\",\n      \"Difficulty accessing career navigator\",\n      \"Difficulty uploading PDFs\",\n      \"Issues with ta leadership dashboard\",\n      \"Issues with bostonscientific sandbox\"\n    ],\n    \"confidences\": {\n      \"Issues with bostonscientific extension\": 0.9,\n      \"Difficulty logging into career hub\": 0.6,\n      \"Candidates not receiving confirmation emails\": 0.6,\n      \"Issues with internal links\": 0.3,\n      \"Difficulty accessing career navigator\": 0.6,\n      \"Difficulty uploading PDFs\": 0.3,\n      \"Issues with ta leadership dashboard\": 0.3,\n      \"Issues with bostonscientific sandbox\": 0.3\n    },\n    \"frequencies\": {\n      \"Issues with bostonscientific extension\": 6,\n      \"Difficulty logging into career hub\": 1,\n      \"Candidates not receiving confirmation emails\": 2,\n      \"Issues with internal links\": 1,\n      \"Difficulty accessing career navigator\": 1,\n      \"Difficulty uploading PDFs\": 1,\n      \"Issues with ta leadership dashboard\": 1,\n      \"Issues with bostonscientific sandbox\": 1\n    },\n    \"total_patterns\": 8,\n    \"high_confidence\": [\n      \"Issues with bostonscientific extension\"\n    ],\n    \"medium_confidence\": [\n      \"Difficulty logging into career hub\",\n      \"Candidates not receiving confirmation emails\",\n      \"Difficulty accessing career navigator\"\n    ],\n    \"low_confidence\": [\n      \"Issues with internal links\",\n      \"Difficulty uploading PDFs\",\n      \"Issues with ta leadership dashboard\",\n      \"Issues with bostonscientific sandbox\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"5008V00001w4w88QAA\",\n    \"Subject\": \"bostonscientific sandbox many failed syncs candidate gid bostonscientific sandbox sid successfactors_sbx due many authentication error\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Net New Configuration\"\n  },\n  {\n    \"Id\": \"5008V00001w4uXZQAY\",\n    \"Subject\": \"list disposition code steps ef\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Closed\",\n    \"Resolution Time (Days)\": 9.940150462962963,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"No EF Support Action\"\n  },\n  {\n    \"Id\": \"5008V00001w4t51QAA\",\n    \"Subject\": \"support positions home page bostonscientific 1741805326 req showing\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Solved\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Gap in Product Understanding\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"In the provided tickets, we found a new issue related to 'bostonscientific sandbox failed syncs' and 'support positions home page bostonscientific'. The other ticket does not match any known pattern. The 'bostonscientific sandbox failed syncs' issue is related to an existing pattern 'Issues with bostonscientific sandbox' but with a different cause.\",\n        \"new_patterns\": [\"bostonscientific sandbox failed syncs\", \"support positions home page bostonscientific\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"bostonscientific sandbox failed syncs\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"support positions home page bostonscientific\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Investigate 'bostonscientific sandbox failed syncs' issue\",\n            \"description\": \"There is a new pattern identified related to many failed syncs in the bostonscientific sandbox. It's recommended to investigate this issue further to prevent future occurrences.\",\n            \"priority\": \"medium\",\n            \"impact\": \"high\"\n        },\n        {\n            \"title\": \"Investigate 'support positions home page bostonscientific' issue\",\n            \"description\": \"There is a new pattern identified related to issues with the support positions on the home page of bostonscientific. It's recommended to investigate this issue further to prevent future occurrences.\",\n            \"priority\": \"medium\",\n            \"impact\": \"medium\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 818,
+      "completion_tokens": 349,
+      "total_tokens": 1167
+    }
+  }
+}

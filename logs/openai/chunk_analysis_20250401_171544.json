@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-04-01T17:15:44.962797",
+  "interaction_type": "chunk_analysis",
+  "request": {
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert support ticket analyst providing insights and pattern recognition. Always respond with valid JSON."
+      },
+      {
+        "role": "user",
+        "content": "Analyze these support tickets considering previous patterns.\n\nContext:\n{\n  \"current_patterns\": {\n    \"patterns\": [\n      \"Sync back issue\",\n      \"Role assignment error\",\n      \"Case resolution\"\n    ],\n    \"confidences\": {\n      \"Sync back issue\": 0.6,\n      \"Role assignment error\": 0.3,\n      \"Case resolution\": 0.9\n    },\n    \"frequencies\": {\n      \"Sync back issue\": 2,\n      \"Role assignment error\": 1,\n      \"Case resolution\": 3\n    },\n    \"total_patterns\": 3,\n    \"high_confidence\": [\n      \"Case resolution\"\n    ],\n    \"medium_confidence\": [\n      \"Sync back issue\"\n    ],\n    \"low_confidence\": [\n      \"Role assignment error\"\n    ]\n  },\n  \"previous_insights\": []\n}\n\nTickets:\n[\n  {\n    \"Id\": \"500Kj00001cVgT5IAK\",\n    \"Subject\": \"release advancement production environment v2025_q1\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 0.945162037037037,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVg8CIAS\",\n    \"Subject\": \"accepted meeting invites reflecting outlook\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Open\",\n    \"Resolution Time (Days)\": NaN,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  },\n  {\n    \"Id\": \"500Kj00001cVbMbIAK\",\n    \"Subject\": \"request id case 0004977575 resolved\",\n    \"Priority\": \"P2\",\n    \"Status\": \"Merged\",\n    \"Resolution Time (Days)\": 4.6296296296296294e-05,\n    \"CSAT\": NaN,\n    \"Root Cause\": \"Not Specified\"\n  }\n]\n\nProvide analysis in JSON format:\n{\n    \"chunk_summary\": {\n        \"main_findings\": \"key insights\",\n        \"new_patterns\": [\"new patterns\"]\n    },\n    \"patterns\": [\n        {\"pattern\": \"pattern\", \"confidence\": \"high/medium/low\"}\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"title\",\n            \"description\": \"detailed description\",\n            \"priority\": \"priority\",\n            \"impact\": \"impact\"\n        }\n    ]\n}"
+      }
+    ],
+    "temperature": 0.5,
+    "max_tokens": 2000
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\n    \"chunk_summary\": {\n        \"main_findings\": \"The tickets are mostly P2 priority with statuses either Merged or Open. The root causes are not specified and there is no CSAT data. One ticket mentions a resolved case which aligns with the 'Case resolution' pattern.\",\n        \"new_patterns\": [\"Release advancement\", \"Meeting invites in Outlook\"]\n    },\n    \"patterns\": [\n        {\n            \"pattern\": \"Case resolution\",\n            \"confidence\": \"high\"\n        },\n        {\n            \"pattern\": \"Release advancement\",\n            \"confidence\": \"low\"\n        },\n        {\n            \"pattern\": \"Meeting invites in Outlook\",\n            \"confidence\": \"low\"\n        }\n    ],\n    \"recommendations\": [\n        {\n            \"title\": \"Specify Root Causes\",\n            \"description\": \"It is recommended to specify the root causes of the issues in the tickets to help in better pattern recognition and resolution of the tickets.\",\n            \"priority\": \"High\",\n            \"impact\": \"Improvement in ticket resolution\"\n        },\n        {\n            \"title\": \"CSAT Data Collection\",\n            \"description\": \"CSAT data is missing in all tickets. It is recommended to collect CSAT data to evaluate the customer satisfaction and improve the services.\",\n            \"priority\": \"Medium\",\n            \"impact\": \"Improvement in customer satisfaction\"\n        }\n    ]\n}"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 561,
+      "completion_tokens": 279,
+      "total_tokens": 840
+    }
+  }
+}
