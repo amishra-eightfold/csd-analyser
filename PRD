@@ -6,231 +6,176 @@ This app provides a simple interface for users to query and analyze support tick
 ## Core Features
 
 ### 1. Landing Page
-- Customer picklist preloaded from Salesforce
-- Selection of 1-10 customers
-- Date range picker
+- Customer picklist preloaded from Salesforce, supporting multiple customer selection
+- Date range picker with customizable start and end dates
+- Connection status indicator for Salesforce integration
 
 ### 2. Data Flow
 - Automatic SOQL query generation based on selections
-- Data fetching from Salesforce
-- Analysis and visualization generation
+- Data fetching from Salesforce using the following fields:
+  - `Id`, `CaseNumber`, `Account.Account_Name__c`, `CreatedDate`, `ClosedDate`, `Status`
+  - `Subject`, `Description`, `Priority`, `Internal_Priority__c`, `Product_Area__c`, `Product_Feature__c`
+  - `RCA__c`, `CSAT__c`, `First_Response_Time__c`, `Case_Type__c`
+- Analysis and visualization generation with error handling
+- Priority determination using `Internal_Priority__c` field with fallback to regular `Priority`
 
 ### 3. Filtering Capabilities
-- Product Area filter
+- Ticket type filtering
+  - Automatic exclusion of 'Service Request' tickets from main case analysis
+  - Dedicated section for Service Request analysis
+- Product Area filter using `Product_Area__c` field
   - Multi-select filter showing all available product areas
   - Updates all visualizations in real-time
-- Product Feature filter
-  - Multi-select filter showing all available features
-  - Updates all visualizations in real-time
+- Status filter for open/closed tickets
+- Text search capabilities across ticket data
+- Pagination support for viewing large datasets
 
 ### 4. Visualizations
 1. Ticket Volume Analysis
-   - Created and closed tickets month over month (per customer)
-   - Trend analysis with interactive tooltips
+   - Bar chart showing created and closed tickets month over month
+   - Interactive tooltips displaying percentage changes
+   - Secondary axis displaying backlog trends
+   - Support for daily, weekly, and monthly aggregation
+   - Excludes tickets where Case_Type__c = 'Service Request'
 
 2. Response Time Analysis
-   - Average time to first response by priority (per customer)
-   - Box plots showing distribution
+   - Box plots showing first response time distribution by priority level
+   - SLA threshold indicators (1hr for P0, 24hrs for P1, 48hrs for P2)
+   - Metrics for average and median response times
+   - Excludes tickets where Case_Type__c = 'Service Request'
 
 3. Customer Satisfaction
-   - CSAT scores per customer month over month
-   - Trend lines with confidence intervals
+   - CSAT distribution bar chart colored by satisfaction level
+   - Clear display of average CSAT score
+   - Visual indicators for satisfaction trends
+   - Excludes tickets where Case_Type__c = 'Service Request'
 
 4. Resolution Analysis
-   - Average time to resolve by priority month over month by customer
-   - Interactive filtering capabilities
+   - Average time to resolve by priority with error bars
+   - Min/max/median resolution time indicators
+   - Interactive tooltips with detailed statistics
+   - Time spent in each priority level for tickets with priority changes (closed tickets only)
+   - Time spent in each status across the ticket lifecycle
+   - Excludes tickets where Case_Type__c = 'Service Request'
 
 5. Product Distribution
-   - Heatmap of ticket volume by product area
-   - Heatmap of ticket volume by product feature
+   - Bar chart showing ticket volume by product area
+   - Percentage indicators for each product area
+   - Support for handling large numbers of product areas
+   - Excludes tickets where Case_Type__c = 'Service Request'
 
 6. Text Analysis
-   - Word cloud analysis of the 'Subject' field (per customer)
-   - Word cloud analysis of the 'Description' field (per customer)
+   - Word cloud visualization of the 'Subject' or 'Description' fields
+   - Technical stopword filtering
+   - Support for analyzing comment text
+   - Excludes tickets where Case_Type__c = 'Service Request'
 
 7. Root Cause Analysis
-   - Distribution of root causes (pie chart)
-   - Root cause by product area (heatmap)
-   - Root cause trends over time (line chart)
-   - Average resolution time by root cause (box plot)
+   - Distribution of root causes (bar chart)
+   - Root cause by product area heatmap
+   - Proportion visualization with color scale
+   - Excludes tickets where Case_Type__c = 'Service Request'
 
-### 5. Export Capabilities
-1. Excel Export
-   - Summary sheet with key metrics
-   - Individual sheets for each customer
-   - Formatted tables and charts
-   - Automatic file naming with timestamp
+### 5. Service Request Analysis
+1. Volume Analysis
+   - Month over month volume of service requests
+   - Trend visualization with comparison to previous periods
+   - Interactive tooltips showing volume changes
 
-2. PowerPoint Export
-   - Title slide with analysis period
-   - Summary slides with key findings
-   - All visualizations included
-   - Consistent formatting and branding
-   - Consistent color palette matching the application's theme
+2. Resolution Time Analysis
+   - Average time to resolve service requests
+   - Resolution time trends over time
+   - Comparison with non-service request tickets
 
-3. PDF Export
-   - Professional report layout
-   - All visualizations and analysis included
-   - Consistent color palette matching PowerPoint and application theme
-   - Automatic table of contents generation
-   - Bookmarked sections for easy navigation
+3. Priority Change Analysis
+   - Average time spent by tickets in different priorities when the priority changed during the lifecycle
+   - Analysis limited to closed tickets only
+   - Comparison with non-service request tickets
 
-4. CSV Export
-   - Raw data export
-   - All columns included
-   - UTF-8 encoding
+4. Status Duration Analysis
+   - Average time spent in various statuses throughout the ticket lifecycle
+   - Breakdown by priority level
+   - Identification of bottlenecks in the service request workflow
 
-### 6. Detailed Ticket Analysis (Single Account)
+### 6. Export Capabilities
+1. CSV Export
+   - Raw data export with proper encoding
+   - Automatic timestamp in filename
+   - UTF-8 encoding support
+   - One-click download from data table view
+   - Option to include/exclude service requests
+
+### 7. Detailed Ticket Analysis
 1. Additional Data Retrieval
-   - Option to fetch detailed ticket information after initial analysis
-   - Only available when a single account is selected
-   - Includes extended fields and related records
+   - Fetch of comments via CaseComment object
+   - Fetch of history data via CaseHistory object
+   - Support for priority history analysis
    - Progress indicator during data fetch
 
 2. OpenAI Analysis Integration
    - Option to send detailed ticket data to OpenAI for advanced analysis
    - AI-generated insights and recommendations
    - Pattern recognition in customer issues
-   - Trend identification and forecasting
-   - Natural language summaries of key findings
-   - Privacy-aware data handling with automatic PII removal
-   - Standardized placeholders for removed PII to maintain context
+   - PII protection with automatic sanitization
+   - Four analysis types: Ticket Categorization, Pattern Detection, Root Cause Analysis, and Trend Analysis
 
    a. Token Management and Data Processing
-      - Smart chunking of large datasets:
-        * Automatic segmentation of data into optimal token-sized chunks
-        * Preservation of context across chunks
-        * Priority-based data selection when approaching token limits
-      - Token usage optimization:
-        * Dynamic calculation of token counts before API calls
-        * Intelligent truncation of less critical data
-        * Compression of repetitive information
-      - Batch processing strategy:
-        * Sequential processing of data chunks
-        * Aggregation of insights across multiple API calls
-        * Progress tracking for multi-chunk analysis
+      - Chunk processing for large datasets
+      - Smart prioritization of data when approaching token limits
+      - Error handling for API failures
 
    b. Data Completeness Assurance
-      - Validation mechanisms:
-        * Pre-processing data verification
-        * Post-processing completeness checks
-        * Missing data detection and handling
-      - Fallback strategies:
-        * Automatic retry mechanism for failed API calls
-        * Alternative processing paths for oversized data
-        * Graceful degradation when token limits are reached
-      - Quality control:
-        * Consistency checks across processed chunks
-        * Validation of merged analysis results
-        * Detection of potential data gaps
+      - Validation of data before processing
+      - Fallback to available data when complete data isn't available
+      - Graceful handling of missing fields
 
    c. Error Handling and Recovery
-      - Token limit management:
-        * Proactive monitoring of token usage
-        * Dynamic adjustment of chunk sizes
-        * Automatic cost optimization
-      - Error recovery:
-        * Automatic retry with reduced chunk size
-        * Intelligent resumption of interrupted analysis
-        * State preservation during processing
-      - User feedback:
-        * Real-time progress indicators
-        * Clear error messages with suggested actions
-        * Token usage statistics and warnings
+      - Clear error messages for failed analysis
+      - Logging of analysis attempts and results
+      - Debug mode for troubleshooting
 
-### 7. Privacy and PII Protection
+### 8. Privacy and PII Protection
 1. PII Detection and Removal
-   - Automatic detection and removal of:
-     * Email addresses (any format)
-     * Phone numbers (domestic and international formats)
+   - Regex-based detection of:
+     * Email addresses (multiple formats)
+     * Phone numbers (domestic and international)
      * URLs and IP addresses
-     * Credit card numbers
-     * Social security numbers
-     * Names (with titles and common patterns)
-     * Passwords
-     * Dates of birth
-   - Standardized placeholder system ([EMAIL], [PHONE], etc.)
-   - Real-time PII scrubbing during data processing
+     * Names with title patterns
+     * Password information
+   - Standardized placeholder replacement ([EMAIL], [PHONE], etc.)
+   - Toggle for enabling/disabling PII protection
 
 2. Privacy Features
-   - Pre-processing pipeline for all text data
-   - Automatic sanitization before AI analysis
-   - Multi-format support:
-     * String data
-     * Structured data (DataFrames)
-     * Nested data structures (dictionaries, lists)
-   - Privacy-preserving data transformations
-   - Audit trail of PII removal (without logging PII)
-
-3. Implementation Components
-   - Core PII removal function
-   - High-level data preparation pipeline
-   - Integration with all data export features
-   - Monitoring and validation system
+   - Pre-processing pipeline for text data
+   - User interface indicators for privacy status
+   - Processing of DataFrame text columns
 
 ## Technical Requirements
 1. Performance
-   - Query response time < 30 seconds
-   - Visualization rendering < 5 seconds
-   - Export generation < 60 seconds
-   - Detailed data fetch < 45 seconds
-   - AI analysis processing < 120 seconds
-   - PII detection and removal < 5 seconds per MB of text
+   - Support for large ticket datasets with pagination
+   - Visualization rendering optimizations
+   - Efficient data filtering and processing
 
 2. Data Handling
-   - Proper date/time formatting
-   - Null value handling
+   - Proper date/time formatting and timezone handling
+   - Handling of missing fields (First_Response_Time__c, Internal_Priority__c)
+   - Field fallback mechanisms for robustness
    - Error handling with user-friendly messages
-   - Secure data transmission to OpenAI
-   - Data sanitization before AI processing
-   - PII removal with 99.9% accuracy
-   - Zero PII leakage in exports and visualizations
-   - Regular expression pattern updates for new PII formats
-   - Token optimization and management:
-     * Maximum token utilization without overflow
-     * Smart data prioritization
-     * Efficient chunking strategies
-   - Data completeness verification:
-     * Pre-submission validation
-     * Post-processing integrity checks
-     * Gap detection and remediation
+   - Ticket type-based filtering (Service Request vs. regular tickets)
 
 3. UI/UX
-   - Responsive design
-   - Interactive visualizations
-   - Clear loading indicators
-   - Intuitive filter controls
-   - Seamless transition between analysis stages
-   - Clear progress indicators for AI analysis
-   - Visual confirmation of PII removal (when appropriate)
-   - Privacy status indicators
-
-4. Privacy and Security
-   - Secure handling of all PII data
-   - Audit logging of PII removal operations
-   - Regular pattern updates for new PII types
-   - Configurable PII detection rules
-   - Validation tools for PII removal effectiveness
-   - Integration with existing security frameworks
-   - Compliance with data protection regulations
+   - Responsive chart layouts
+   - Interactive visualizations with tooltips
+   - Loading indicators during data processing
+   - Error states with helpful messaging
+   - Debug mode for advanced troubleshooting
+   - Clear separation between ticket types in the UI
 
 ## Future Considerations
-1. Scheduled exports
-2. Custom visualization builder
-3. Saved filter presets
-4. Additional export formats
-5. Enhanced AI analysis capabilities:
-   - Advanced token optimization algorithms
-   - Parallel processing of data chunks
-   - Improved context preservation across chunks
-   - Smart data prioritization based on historical insights
+1. PowerPoint export integration
+2. PDF report generation
+3. Scheduled exports
+4. Custom visualization builder
+5. Saved filter presets
 6. Custom AI model training
-7. Batch processing for multiple accounts
-8. Advanced PII detection using ML models
-9. Custom PII pattern definitions
-10. Privacy compliance reporting
-11. Automated PII pattern updates
-12. Integration with enterprise DLP systems
-13. Token usage analytics and optimization dashboard
-14. Adaptive chunk sizing based on content complexity
-15. Multi-model analysis pipeline for large datasets 
+7. Batch processing for multiple accounts 
