@@ -48,9 +48,9 @@ print(f"Running on Streamlit Cloud: {IS_CLOUD}")
 
 # Set the redirect URI based on the environment
 if IS_CLOUD:
-    DEFAULT_REDIRECT_URI = "https://ef-csd-analyser.streamlit.app"
+    DEFAULT_REDIRECT_URI = "https://ef-csd-analyser.streamlit.app/callback"
 else:
-    DEFAULT_REDIRECT_URI = "http://localhost:8501"
+    DEFAULT_REDIRECT_URI = "http://localhost:8501/callback"
 
 print(f"Default redirect URI: {DEFAULT_REDIRECT_URI}")
 REDIRECT_URI = st.secrets.get("REDIRECT_URI", DEFAULT_REDIRECT_URI)
