@@ -26,6 +26,7 @@ print(f"CLIENT_SECRET: {st.secrets.get('GOOGLE_CLIENT_SECRET', 'Not set')[:6]}..
 print(f"REDIRECT_URI: {st.secrets.get('REDIRECT_URI', 'Not set')}")
 print(f"ALLOWED_DOMAIN: {st.secrets.get('ALLOWED_DOMAIN', 'Not set')}")
 print(f"Python version: {sys.version}")
+print("============================")
 
 # Check if secrets exist and are accessible
 try:
@@ -36,8 +37,6 @@ try:
 except Exception as e:
     print(f"Error accessing Streamlit secrets: {e}")
 
-print("============================")
-
 # Get the current directory for the HTML files
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGIN_HTML_PATH = os.path.join(CURRENT_DIR, "login.html")
@@ -47,19 +46,13 @@ REDIRECT_HTML_PATH = os.path.join(CURRENT_DIR, "redirect.html")
 try:
     CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID")
     CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET")
-    print(f"Retrieved CLIENT_ID: {'Yes' if CLIENT_ID else 'No'}")
-    print(f"Retrieved CLIENT_SECRET: {'Yes' if CLIENT_SECRET else 'No'}")
 except Exception as e:
-    print(f"Error retrieving OAuth credentials: {e}")
     CLIENT_ID = None
     CLIENT_SECRET = None
 
 # Validate that credentials are provided
 if not CLIENT_ID or not CLIENT_SECRET:
-    error_msg = f"Google OAuth credentials not configured. CLIENT_ID: {'✓' if CLIENT_ID else '✗'}, CLIENT_SECRET: {'✓' if CLIENT_SECRET else '✗'}"
-    print(f"CREDENTIAL ERROR: {error_msg}")
     st.error("Google OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Streamlit secrets.")
-    st.error(f"Debug: CLIENT_ID exists: {'Yes' if CLIENT_ID else 'No'}, CLIENT_SECRET exists: {'Yes' if CLIENT_SECRET else 'No'}")
     st.stop()
 
 # Determine if we're running on Streamlit Cloud or locally
@@ -86,25 +79,17 @@ else:
 
 print(f"Default redirect URI: {DEFAULT_REDIRECT_URI}")
 
-# Get REDIRECT_URI from secrets with additional debugging
+# Get REDIRECT_URI from secrets
 try:
     REDIRECT_URI = st.secrets.get("REDIRECT_URI", DEFAULT_REDIRECT_URI)
-    print(f"Retrieved REDIRECT_URI from secrets: {REDIRECT_URI}")
-    print(f"REDIRECT_URI type: {type(REDIRECT_URI)}")
-    print(f"REDIRECT_URI is None: {REDIRECT_URI is None}")
-    print(f"REDIRECT_URI is empty: {REDIRECT_URI == '' if REDIRECT_URI else 'REDIRECT_URI is None'}")
 except Exception as e:
-    print(f"Error retrieving REDIRECT_URI from secrets: {e}")
     REDIRECT_URI = DEFAULT_REDIRECT_URI
-    print(f"Using default REDIRECT_URI: {REDIRECT_URI}")
 
 print(f"Final REDIRECT_URI: {REDIRECT_URI}")
 
 try:
     ALLOWED_DOMAIN = st.secrets.get("ALLOWED_DOMAIN", "eightfold.ai")
-    print(f"Retrieved ALLOWED_DOMAIN: {ALLOWED_DOMAIN}")
 except Exception as e:
-    print(f"Error retrieving ALLOWED_DOMAIN: {e}")
     ALLOWED_DOMAIN = "eightfold.ai"
 
 # OAuth scopes
@@ -137,25 +122,16 @@ def init_auth_session_state():
 def create_flow():
     """Create OAuth flow instance to manage the OAuth 2.0 Authorization Grant Flow"""
     try:
-        print(f"Creating OAuth flow with CLIENT_ID: {'[PRESENT]' if CLIENT_ID else '[MISSING]'}")
-        print(f"Creating OAuth flow with CLIENT_SECRET: {'[PRESENT]' if CLIENT_SECRET else '[MISSING]'}")
-        print(f"Creating OAuth flow with REDIRECT_URI: {REDIRECT_URI}")
-        print(f"REDIRECT_URI type: {type(REDIRECT_URI)}")
-        print(f"REDIRECT_URI length: {len(REDIRECT_URI) if REDIRECT_URI else 0}")
-        
         if not CLIENT_ID:
             logger.error("CLIENT_ID is missing - cannot create OAuth flow")
-            print("ERROR: CLIENT_ID is None or empty")
             return None
             
         if not CLIENT_SECRET:
             logger.error("CLIENT_SECRET is missing - cannot create OAuth flow")
-            print("ERROR: CLIENT_SECRET is None or empty")
             return None
             
         if not REDIRECT_URI:
             logger.error("REDIRECT_URI is missing - cannot create OAuth flow")
-            print("ERROR: REDIRECT_URI is None or empty")
             return None
             
         client_config = {
@@ -167,92 +143,37 @@ def create_flow():
                 "redirect_uris": [REDIRECT_URI]
             }
         }
-        print(f"Client config created successfully")
-        print(f"Client config redirect_uris: {client_config['web']['redirect_uris']}")
         
         flow = Flow.from_client_config(
             client_config,
             scopes=SCOPES,
             redirect_uri=REDIRECT_URI
         )
-        print("OAuth flow created successfully")
-        print(f"Flow redirect_uri: {flow.redirect_uri}")
         return flow
     except Exception as e:
         logger.error(f"Error creating OAuth flow: {str(e)}")
-        print(f"ERROR creating OAuth flow: {str(e)}")
-        import traceback
-        print(f"Full traceback: {traceback.format_exc()}")
         return None
 
 def get_auth_url():
     """Get the authorization URL to redirect the user to"""
     try:
-        print("🔄 Starting auth URL generation...")
         flow = create_flow()
         if flow is None:
-            print("❌ OAuth flow creation returned None")
             return None
-        
-        print("✅ OAuth flow created successfully, generating auth URL...")
-        auth_url, state = flow.authorization_url(
+            
+        auth_url, _ = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
             prompt='consent'
         )
-        print(f"✅ Auth URL generated successfully")
-        print(f"Generated Auth URL: {auth_url}")
-        print(f"State: {state}")
         logger.info(f"Generated authentication URL for OAuth flow")
         return auth_url
     except Exception as e:
-        print(f"❌ ERROR generating auth URL: {str(e)}")
         logger.error(f"Error generating auth URL: {str(e)}")
-        import traceback
-        print(f"Full traceback: {traceback.format_exc()}")
         return None
 
 def display_login_page():
     """Display the beautiful login page directly in Streamlit"""
-    
-    # Add immediate debugging output
-    st.write("🔍 **DEBUG INFO:**")
-    st.write(f"- IS_CLOUD: {IS_CLOUD}")
-    st.write(f"- CLIENT_ID exists: {'✅ Yes' if CLIENT_ID else '❌ No'}")
-    st.write(f"- CLIENT_SECRET exists: {'✅ Yes' if CLIENT_SECRET else '❌ No'}")
-    st.write(f"- REDIRECT_URI: {REDIRECT_URI}")
-    
-    # Get auth URL with debugging
-    st.write("🔄 **Generating Auth URL...**")
-    auth_url = get_auth_url()
-    
-    if not auth_url:
-        st.error("❌ **Unable to generate authentication URL. Please check the OAuth configuration.**")
-        st.write("**Debug: OAuth flow creation failed**")
-        return
-    else:
-        st.success("✅ **Auth URL generated successfully**")
-        st.write(f"**Auth URL length**: {len(auth_url)} characters")
-        st.write(f"**Auth URL preview**: `{auth_url[:100]}...`")
-    
-    # TEMPORARY BYPASS: Show direct auth URL instead of HTML injection
-    st.markdown("---")
-    st.markdown("### 🔗 **Direct Authentication (Bypass Mode)**")
-    st.markdown("Click the button below to authenticate:")
-    
-    # Create a simple authentication button
-    if st.button("🔐 **Sign in with Google**", type="primary", use_container_width=True):
-        st.markdown(f"**Please copy and paste this URL into a new browser tab:**")
-        st.code(auth_url, language=None)
-        st.markdown(f"**Or click this link:** [Open Google OAuth]({auth_url})")
-    
-    st.markdown("---")
-    st.markdown("### 📝 **Manual URL (for testing)**")
-    st.text_area("Complete Auth URL:", value=auth_url, height=100)
-    
-    # Also try the original HTML method
-    st.markdown("---")
-    st.markdown("### 🎨 **Original HTML Method (for comparison)**")
     
     # Check if login.html exists
     if not os.path.exists(LOGIN_HTML_PATH):
@@ -260,29 +181,34 @@ def display_login_page():
         st.info("Please ensure the login.html file exists in the project directory.")
         return
     
+    # Get auth URL
+    auth_url = get_auth_url()
+    if not auth_url:
+        st.error("Unable to generate authentication URL. Please check the OAuth configuration.")
+        return
+    
     # Read the login.html file
     try:
         with open(LOGIN_HTML_PATH, 'r', encoding='utf-8') as f:
             html_content = f.read()
         
-        # Inject the real auth URL into the HTML by replacing the JavaScript line
-        original_line = 'const urlParams = new URLSearchParams(window.location.search);'
-        encoded_auth_url = urllib.parse.quote(auth_url, safe=':/?#[]@!$&\'()*+,;=')
-        replacement_line = f'const urlParams = new URLSearchParams("auth_url={encoded_auth_url}");'
+        # Instead of replacing JavaScript, inject the auth URL directly as a data attribute
+        # This avoids URL encoding issues in JavaScript strings
+        head_tag = '<head>'
+        head_replacement = f'''<head>
+    <script>
+        window.authUrl = {repr(auth_url)};
+    </script>'''
         
-        st.write(f"**Original line to replace:** `{original_line}`")
-        st.write(f"**Replacement line:** `{replacement_line[:100]}...`")
-        st.write(f"**Encoded URL length:** {len(encoded_auth_url)} characters")
+        html_content = html_content.replace(head_tag, head_replacement, 1)
         
-        html_content = html_content.replace(original_line, replacement_line)
+        # Update the JavaScript to use the global variable instead of URL params
+        original_js_line = 'const urlParams = new URLSearchParams(window.location.search);'
+        new_js_line = 'const urlParams = new URLSearchParams(`auth_url=${encodeURIComponent(window.authUrl)}`);'
         
-        # Check if replacement worked
-        if original_line in html_content:
-            st.error("❌ **HTML replacement failed - original line still present**")
-        else:
-            st.success("✅ **HTML replacement successful**")
+        html_content = html_content.replace(original_js_line, new_js_line)
         
-        # Display the beautiful login page directly in Streamlit
+        # Display the login page
         st.components.v1.html(html_content, height=800, scrolling=True)
         
     except Exception as e:
