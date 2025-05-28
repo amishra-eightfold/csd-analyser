@@ -26,6 +26,16 @@ print(f"CLIENT_SECRET: {st.secrets.get('GOOGLE_CLIENT_SECRET', 'Not set')[:6]}..
 print(f"REDIRECT_URI: {st.secrets.get('REDIRECT_URI', 'Not set')}")
 print(f"ALLOWED_DOMAIN: {st.secrets.get('ALLOWED_DOMAIN', 'Not set')}")
 print(f"Python version: {sys.version}")
+
+# Check if secrets exist and are accessible
+try:
+    secrets_available = hasattr(st, 'secrets') and st.secrets is not None
+    print(f"Streamlit secrets available: {secrets_available}")
+    if secrets_available:
+        print(f"Secrets keys: {list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else 'No keys method'}")
+except Exception as e:
+    print(f"Error accessing Streamlit secrets: {e}")
+
 print("============================")
 
 # Get the current directory for the HTML files
@@ -33,13 +43,23 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGIN_HTML_PATH = os.path.join(CURRENT_DIR, "login.html")
 REDIRECT_HTML_PATH = os.path.join(CURRENT_DIR, "redirect.html")
 
-# Google OAuth configuration
-CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID")
-CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET")
+# Google OAuth configuration with better error handling
+try:
+    CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID")
+    CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET")
+    print(f"Retrieved CLIENT_ID: {'Yes' if CLIENT_ID else 'No'}")
+    print(f"Retrieved CLIENT_SECRET: {'Yes' if CLIENT_SECRET else 'No'}")
+except Exception as e:
+    print(f"Error retrieving OAuth credentials: {e}")
+    CLIENT_ID = None
+    CLIENT_SECRET = None
 
 # Validate that credentials are provided
 if not CLIENT_ID or not CLIENT_SECRET:
+    error_msg = f"Google OAuth credentials not configured. CLIENT_ID: {'✓' if CLIENT_ID else '✗'}, CLIENT_SECRET: {'✓' if CLIENT_SECRET else '✗'}"
+    print(f"CREDENTIAL ERROR: {error_msg}")
     st.error("Google OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Streamlit secrets.")
+    st.error(f"Debug: CLIENT_ID exists: {'Yes' if CLIENT_ID else 'No'}, CLIENT_SECRET exists: {'Yes' if CLIENT_SECRET else 'No'}")
     st.stop()
 
 # Determine if we're running on Streamlit Cloud or locally
@@ -99,22 +119,41 @@ def init_auth_session_state():
 def create_flow():
     """Create OAuth flow instance to manage the OAuth 2.0 Authorization Grant Flow"""
     try:
+        print(f"Creating OAuth flow with CLIENT_ID: {'[PRESENT]' if CLIENT_ID else '[MISSING]'}")
+        print(f"Creating OAuth flow with CLIENT_SECRET: {'[PRESENT]' if CLIENT_SECRET else '[MISSING]'}")
+        print(f"Creating OAuth flow with REDIRECT_URI: {REDIRECT_URI}")
+        
+        if not CLIENT_ID:
+            logger.error("CLIENT_ID is missing - cannot create OAuth flow")
+            print("ERROR: CLIENT_ID is None or empty")
+            return None
+            
+        if not CLIENT_SECRET:
+            logger.error("CLIENT_SECRET is missing - cannot create OAuth flow")
+            print("ERROR: CLIENT_SECRET is None or empty")
+            return None
+            
+        client_config = {
+            "web": {
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [REDIRECT_URI]
+            }
+        }
+        print(f"Client config created successfully")
+        
         flow = Flow.from_client_config(
-            {
-                "web": {
-                    "client_id": CLIENT_ID,
-                    "client_secret": CLIENT_SECRET,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [REDIRECT_URI]
-                }
-            },
+            client_config,
             scopes=SCOPES,
             redirect_uri=REDIRECT_URI
         )
+        print("OAuth flow created successfully")
         return flow
     except Exception as e:
         logger.error(f"Error creating OAuth flow: {str(e)}")
+        print(f"ERROR creating OAuth flow: {str(e)}")
         return None
 
 def get_auth_url():
