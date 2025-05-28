@@ -37,16 +37,50 @@ REDIRECT_HTML_PATH = os.path.join(CURRENT_DIR, "redirect.html")
 CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID", "902153275427-cig5li22d32gvgmvnucmffcgdp3dfl9b.apps.googleusercontent.com")
 CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET", "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")
 
+def get_current_app_url():
+    """Get the current Streamlit app URL dynamically"""
+    try:
+        # Try to get from Streamlit context
+        if hasattr(st, 'get_option'):
+            server_address = st.get_option('browser.serverAddress')
+            server_port = st.get_option('browser.serverPort')
+            if server_address and server_port:
+                if 'streamlit.app' in server_address:
+                    return f"https://{server_address}"
+                else:
+                    return f"http://{server_address}:{server_port}"
+        
+        # Check environment variables
+        if 'STREAMLIT_SERVER_URL' in os.environ:
+            url = os.environ['STREAMLIT_SERVER_URL']
+            if not url.startswith('http'):
+                url = f"https://{url}"
+            return url
+            
+        # Check if we're on Streamlit Cloud
+        if 'streamlit.app' in str(os.environ.get('PWD', '')):
+            return "https://csd-analyser.streamlit.app"
+            
+        # Default fallback
+        return "http://localhost:8501"
+        
+    except Exception as e:
+        print(f"Error getting current app URL: {e}")
+        return "http://localhost:8501"
+
 # Determine if we're running on Streamlit Cloud or locally
-IS_CLOUD = os.environ.get('STREAMLIT_SHARING', '') == 'true' or os.environ.get('STREAMLIT_CLOUD', '') == 'true'
+current_url = get_current_app_url()
+IS_CLOUD = 'streamlit.app' in current_url
+
+print(f"Current app URL: {current_url}")
 print(f"Running on Streamlit Cloud: {IS_CLOUD}")
+print(f"Environment variables: STREAMLIT_SHARING={os.environ.get('STREAMLIT_SHARING')}, STREAMLIT_CLOUD={os.environ.get('STREAMLIT_CLOUD')}")
+print(f"Server URL env: {os.environ.get('STREAMLIT_SERVER_URL', 'Not set')}")
 
-# Set the redirect URI based on the environment
-if IS_CLOUD:
-    DEFAULT_REDIRECT_URI = "https://csd-analyser.streamlit.app/callback"
-else:
-    DEFAULT_REDIRECT_URI = "http://localhost:8501/callback"
-
+# Set the redirect URI - for Streamlit, we redirect back to the main app, not /callback
+# Streamlit will handle the query parameters on the main page
+DEFAULT_REDIRECT_URI = current_url  # Remove /callback since Streamlit doesn't handle routes
+print(f"Default redirect URI: {DEFAULT_REDIRECT_URI}")
 REDIRECT_URI = st.secrets.get("REDIRECT_URI", DEFAULT_REDIRECT_URI)
 ALLOWED_DOMAIN = st.secrets.get("ALLOWED_DOMAIN", "eightfold.ai")
 
