@@ -143,12 +143,12 @@ def display_login_page():
         with open(LOGIN_HTML_PATH, 'r', encoding='utf-8') as f:
             html_content = f.read()
         
-        # Inject the real auth URL into the HTML
-        encoded_auth_url = urllib.parse.quote(auth_url, safe='')
-        html_content = html_content.replace(
-            'const urlParams = new URLSearchParams(window.location.search);', 
-            f'const urlParams = new URLSearchParams("auth_url={encoded_auth_url}");'
-        )
+        # Inject the real auth URL into the HTML by replacing the JavaScript line
+        original_line = 'const urlParams = new URLSearchParams(window.location.search);'
+        encoded_auth_url = urllib.parse.quote(auth_url, safe=':/?#[]@!$&\'()*+,;=')
+        replacement_line = f'const urlParams = new URLSearchParams("auth_url={encoded_auth_url}");'
+        
+        html_content = html_content.replace(original_line, replacement_line)
         
         # Display the beautiful login page directly in Streamlit
         st.components.v1.html(html_content, height=800, scrolling=True)
