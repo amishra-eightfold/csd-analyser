@@ -85,9 +85,27 @@ else:
     DEFAULT_REDIRECT_URI = "http://localhost:8501/callback"
 
 print(f"Default redirect URI: {DEFAULT_REDIRECT_URI}")
-REDIRECT_URI = st.secrets.get("REDIRECT_URI", DEFAULT_REDIRECT_URI)
+
+# Get REDIRECT_URI from secrets with additional debugging
+try:
+    REDIRECT_URI = st.secrets.get("REDIRECT_URI", DEFAULT_REDIRECT_URI)
+    print(f"Retrieved REDIRECT_URI from secrets: {REDIRECT_URI}")
+    print(f"REDIRECT_URI type: {type(REDIRECT_URI)}")
+    print(f"REDIRECT_URI is None: {REDIRECT_URI is None}")
+    print(f"REDIRECT_URI is empty: {REDIRECT_URI == '' if REDIRECT_URI else 'REDIRECT_URI is None'}")
+except Exception as e:
+    print(f"Error retrieving REDIRECT_URI from secrets: {e}")
+    REDIRECT_URI = DEFAULT_REDIRECT_URI
+    print(f"Using default REDIRECT_URI: {REDIRECT_URI}")
+
 print(f"Final REDIRECT_URI: {REDIRECT_URI}")
-ALLOWED_DOMAIN = st.secrets.get("ALLOWED_DOMAIN", "eightfold.ai")
+
+try:
+    ALLOWED_DOMAIN = st.secrets.get("ALLOWED_DOMAIN", "eightfold.ai")
+    print(f"Retrieved ALLOWED_DOMAIN: {ALLOWED_DOMAIN}")
+except Exception as e:
+    print(f"Error retrieving ALLOWED_DOMAIN: {e}")
+    ALLOWED_DOMAIN = "eightfold.ai"
 
 # OAuth scopes
 SCOPES = [
@@ -122,6 +140,8 @@ def create_flow():
         print(f"Creating OAuth flow with CLIENT_ID: {'[PRESENT]' if CLIENT_ID else '[MISSING]'}")
         print(f"Creating OAuth flow with CLIENT_SECRET: {'[PRESENT]' if CLIENT_SECRET else '[MISSING]'}")
         print(f"Creating OAuth flow with REDIRECT_URI: {REDIRECT_URI}")
+        print(f"REDIRECT_URI type: {type(REDIRECT_URI)}")
+        print(f"REDIRECT_URI length: {len(REDIRECT_URI) if REDIRECT_URI else 0}")
         
         if not CLIENT_ID:
             logger.error("CLIENT_ID is missing - cannot create OAuth flow")
@@ -131,6 +151,11 @@ def create_flow():
         if not CLIENT_SECRET:
             logger.error("CLIENT_SECRET is missing - cannot create OAuth flow")
             print("ERROR: CLIENT_SECRET is None or empty")
+            return None
+            
+        if not REDIRECT_URI:
+            logger.error("REDIRECT_URI is missing - cannot create OAuth flow")
+            print("ERROR: REDIRECT_URI is None or empty")
             return None
             
         client_config = {
@@ -143,6 +168,7 @@ def create_flow():
             }
         }
         print(f"Client config created successfully")
+        print(f"Client config redirect_uris: {client_config['web']['redirect_uris']}")
         
         flow = Flow.from_client_config(
             client_config,
@@ -150,10 +176,13 @@ def create_flow():
             redirect_uri=REDIRECT_URI
         )
         print("OAuth flow created successfully")
+        print(f"Flow redirect_uri: {flow.redirect_uri}")
         return flow
     except Exception as e:
         logger.error(f"Error creating OAuth flow: {str(e)}")
         print(f"ERROR creating OAuth flow: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
         return None
 
 def get_auth_url():
