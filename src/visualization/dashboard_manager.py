@@ -103,9 +103,8 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
     if 'Case_Type__c' not in df.columns:
         df['Case_Type__c'] = 'Unknown'
     
-    # Create tabs for different analysis sections
+    # Create tabs for different analysis sections - removed duplicate chart tabs
     tabs = st.tabs([
-        "📊 Ticket Metrics", 
         "⏳ Resolution Analysis", 
         "🗃️ Categorization", 
         "📝 Text Analysis",
@@ -117,51 +116,20 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
     main_analysis_df = df[df['Case_Type__c'] != 'Service Request'].copy()
     service_requests_df = df[df['Case_Type__c'] == 'Service Request'].copy()
     
-    # Ticket Metrics Tab
+    # Resolution Analysis Tab (enhanced version, not duplicating basic charts)
     with tabs[0]:
         if main_analysis_df.empty:
             st.warning("No regular support tickets found (excluding Service Requests).")
         else:
-            st.subheader("Ticket Volume (Excluding Service Requests)")
-            
-            # Time unit selector
-            time_unit = st.radio(
-                "Time Aggregation",
-                options=["day", "week", "month"],
-                index=2,  # Default to month
-                horizontal=True,
-                key="main_time_unit"
-            )
-            
-            # Ticket volume chart
-            volume_chart = create_ticket_volume_chart(main_analysis_df, time_unit)
-            st.plotly_chart(volume_chart, use_container_width=True, key="main_volume_chart")
-            
-            # Priority distribution
-            st.subheader("Priority Distribution (Excluding Service Requests)")
-            priority_chart = create_priority_distribution_chart(main_analysis_df)
-            st.plotly_chart(priority_chart, use_container_width=True, key="main_priority_chart")
-    
-    # Resolution Analysis Tab
-    with tabs[1]:
-        if main_analysis_df.empty:
-            st.warning("No regular support tickets found (excluding Service Requests).")
-        else:
-            st.subheader("Resolution Time Analysis (Excluding Service Requests)")
-            
-            # Resolution time by priority
-            resolution_chart = create_resolution_time_chart(main_analysis_df)
-            st.plotly_chart(resolution_chart, use_container_width=True, key="main_resolution_chart")
-            
-            # Add Priority Time Analysis
+            # Add Priority Time Analysis (this is unique to detailed analysis)
             if 'history_df' in st.session_state and not st.session_state.history_df.empty:
                 st.subheader("Priority Time Analysis (Closed Tickets Only)")
                 priority_time_chart = create_priority_time_chart(main_analysis_df, st.session_state.history_df)
-                st.plotly_chart(priority_time_chart, use_container_width=True, key="main_priority_time_chart")
+                st.plotly_chart(priority_time_chart, use_container_width=True, key="detailed_priority_time_chart")
                 
                 st.subheader("Status Time Analysis")
                 status_time_chart = create_status_time_chart(main_analysis_df, st.session_state.history_df)
-                st.plotly_chart(status_time_chart, use_container_width=True, key="main_status_time_chart")
+                st.plotly_chart(status_time_chart, use_container_width=True, key="detailed_status_time_chart")
             else:
                 st.info("Case history data not available. Please enable 'Include History Data' in the sidebar and reload data to see Priority and Status Time Analysis.")
             
@@ -174,7 +142,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                 
                 # Create and display first response time chart
                 first_response_chart = create_first_response_time_chart(main_analysis_df, response_hours)
-                st.plotly_chart(first_response_chart, use_container_width=True, key="main_response_time_chart")
+                st.plotly_chart(first_response_chart, use_container_width=True, key="detailed_response_time_chart")
                 
                 # Display SLA statistics if we have valid data
                 if stats['valid_records'] > 0:
@@ -204,15 +172,9 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                     st.exception(e)
                 debug(f"Error in first response time analysis: {str(e)}", 
                      {'traceback': traceback.format_exc()}, category="error")
-            
-            # CSAT distribution if available
-            if 'CSAT' in main_analysis_df.columns and not main_analysis_df.dropna(subset=['CSAT']).empty:
-                st.subheader("Customer Satisfaction (Excluding Service Requests)")
-                csat_chart = create_csat_distribution_chart(main_analysis_df)
-                st.plotly_chart(csat_chart, use_container_width=True, key="main_csat_chart")
     
     # Categorization Tab
-    with tabs[2]:
+    with tabs[1]:
         if main_analysis_df.empty:
             st.warning("No regular support tickets found (excluding Service Requests).")
         else:
@@ -260,7 +222,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                 st.info("Status information not available in the data.")
     
     # Text Analysis Tab
-    with tabs[3]:
+    with tabs[2]:
         if main_analysis_df.empty:
             st.warning("No regular support tickets found (excluding Service Requests).")
         else:
@@ -292,7 +254,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                 st.warning(f"{text_column} column not found in the data.")
     
     # Service Requests Tab
-    with tabs[4]:
+    with tabs[3]:
         if service_requests_df.empty:
             st.warning("No Service Request tickets found in the data.")
         else:
@@ -595,7 +557,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                 st.info("Case history data not available. Please enable 'Include History Data' in the sidebar and reload data to see Status Duration Analysis.")
     
     # AI Insights Tab
-    with tabs[5]:
+    with tabs[4]:
         st.subheader("AI Analysis Insights")
         
         if enable_ai_analysis:
