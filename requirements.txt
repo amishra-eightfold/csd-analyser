@@ -38,3 +38,6 @@ toml>=0.10.2
 gitpython>=3.1.44
 pydeck>=0.9.1
 tornado>=6.4.2
+google-auth>=2.16.0
+google-auth-oauthlib>=0.8.0
+google-auth-httplib2>=0.1.0
