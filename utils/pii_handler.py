@@ -37,7 +37,7 @@ class PIIHandler:
         'url': r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[^\s]*',
         'date_of_birth': r'\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b',
         'name_with_title': r'\b(?:Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b',
-        'password': r'\b(?i)password[\s:]+\S+\b',
+        'password': r'(?i)\bpassword[\s:]+\S+\b',
         'address': r'\b\d{1,5}\s+[A-Za-z\s]{1,30}\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Way|Court|Ct|Circle|Cir|Trail|Trl|Parkway|Pkwy|Place|Pl)\b',
     }
     
