@@ -188,24 +188,39 @@ def create_flow():
 def get_auth_url():
     """Get the authorization URL to redirect the user to"""
     try:
+        print("🔄 Starting auth URL generation...")
         flow = create_flow()
         if flow is None:
+            print("❌ OAuth flow creation returned None")
             return None
-            
-        auth_url, _ = flow.authorization_url(
+        
+        print("✅ OAuth flow created successfully, generating auth URL...")
+        auth_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
             prompt='consent'
         )
+        print(f"✅ Auth URL generated successfully")
         print(f"Generated Auth URL: {auth_url}")
+        print(f"State: {state}")
         logger.info(f"Generated authentication URL for OAuth flow")
         return auth_url
     except Exception as e:
+        print(f"❌ ERROR generating auth URL: {str(e)}")
         logger.error(f"Error generating auth URL: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
         return None
 
 def display_login_page():
     """Display the beautiful login page directly in Streamlit"""
+    
+    # Add immediate debugging output
+    st.write("🔍 **DEBUG INFO:**")
+    st.write(f"- IS_CLOUD: {IS_CLOUD}")
+    st.write(f"- CLIENT_ID exists: {'✅ Yes' if CLIENT_ID else '❌ No'}")
+    st.write(f"- CLIENT_SECRET exists: {'✅ Yes' if CLIENT_SECRET else '❌ No'}")
+    st.write(f"- REDIRECT_URI: {REDIRECT_URI}")
     
     # Check if login.html exists
     if not os.path.exists(LOGIN_HTML_PATH):
@@ -213,11 +228,18 @@ def display_login_page():
         st.info("Please ensure the login.html file exists in the project directory.")
         return
     
-    # Get auth URL
+    # Get auth URL with debugging
+    st.write("🔄 **Generating Auth URL...**")
     auth_url = get_auth_url()
+    
     if not auth_url:
-        st.error("Unable to generate authentication URL. Please check the OAuth configuration.")
+        st.error("❌ **Unable to generate authentication URL. Please check the OAuth configuration.**")
+        st.write("**Debug: OAuth flow creation failed**")
         return
+    else:
+        st.success("✅ **Auth URL generated successfully**")
+        st.write(f"**Auth URL length**: {len(auth_url)} characters")
+        st.write(f"**Auth URL preview**: `{auth_url[:100]}...`")
     
     # Read the login.html file
     try:
