@@ -43,8 +43,20 @@ if not CLIENT_ID or not CLIENT_SECRET:
     st.stop()
 
 # Determine if we're running on Streamlit Cloud or locally
-IS_CLOUD = os.environ.get('STREAMLIT_SHARING', '') == 'true' or os.environ.get('STREAMLIT_CLOUD', '') == 'true'
+IS_CLOUD = (
+    os.environ.get('STREAMLIT_SHARING', '') == 'true' or 
+    os.environ.get('STREAMLIT_CLOUD', '') == 'true' or
+    os.environ.get('HOSTNAME', '').startswith('streamlit') or
+    'streamlit.app' in os.environ.get('STREAMLIT_SERVER_BASE_URL_PATH', '') or
+    'streamlit.app' in os.environ.get('EXTERNAL_URL', '')
+)
 print(f"Running on Streamlit Cloud: {IS_CLOUD}")
+print(f"Environment variables check:")
+print(f"  STREAMLIT_SHARING: {os.environ.get('STREAMLIT_SHARING', 'Not set')}")
+print(f"  STREAMLIT_CLOUD: {os.environ.get('STREAMLIT_CLOUD', 'Not set')}")
+print(f"  HOSTNAME: {os.environ.get('HOSTNAME', 'Not set')}")
+print(f"  STREAMLIT_SERVER_BASE_URL_PATH: {os.environ.get('STREAMLIT_SERVER_BASE_URL_PATH', 'Not set')}")
+print(f"  EXTERNAL_URL: {os.environ.get('EXTERNAL_URL', 'Not set')}")
 
 # Set the redirect URI based on the environment
 if IS_CLOUD:
@@ -54,6 +66,7 @@ else:
 
 print(f"Default redirect URI: {DEFAULT_REDIRECT_URI}")
 REDIRECT_URI = st.secrets.get("REDIRECT_URI", DEFAULT_REDIRECT_URI)
+print(f"Final REDIRECT_URI: {REDIRECT_URI}")
 ALLOWED_DOMAIN = st.secrets.get("ALLOWED_DOMAIN", "eightfold.ai")
 
 # OAuth scopes
