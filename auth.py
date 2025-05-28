@@ -222,12 +222,6 @@ def display_login_page():
     st.write(f"- CLIENT_SECRET exists: {'✅ Yes' if CLIENT_SECRET else '❌ No'}")
     st.write(f"- REDIRECT_URI: {REDIRECT_URI}")
     
-    # Check if login.html exists
-    if not os.path.exists(LOGIN_HTML_PATH):
-        st.error(f"Login HTML file not found at: {LOGIN_HTML_PATH}")
-        st.info("Please ensure the login.html file exists in the project directory.")
-        return
-    
     # Get auth URL with debugging
     st.write("🔄 **Generating Auth URL...**")
     auth_url = get_auth_url()
@@ -241,6 +235,31 @@ def display_login_page():
         st.write(f"**Auth URL length**: {len(auth_url)} characters")
         st.write(f"**Auth URL preview**: `{auth_url[:100]}...`")
     
+    # TEMPORARY BYPASS: Show direct auth URL instead of HTML injection
+    st.markdown("---")
+    st.markdown("### 🔗 **Direct Authentication (Bypass Mode)**")
+    st.markdown("Click the button below to authenticate:")
+    
+    # Create a simple authentication button
+    if st.button("🔐 **Sign in with Google**", type="primary", use_container_width=True):
+        st.markdown(f"**Please copy and paste this URL into a new browser tab:**")
+        st.code(auth_url, language=None)
+        st.markdown(f"**Or click this link:** [Open Google OAuth]({auth_url})")
+    
+    st.markdown("---")
+    st.markdown("### 📝 **Manual URL (for testing)**")
+    st.text_area("Complete Auth URL:", value=auth_url, height=100)
+    
+    # Also try the original HTML method
+    st.markdown("---")
+    st.markdown("### 🎨 **Original HTML Method (for comparison)**")
+    
+    # Check if login.html exists
+    if not os.path.exists(LOGIN_HTML_PATH):
+        st.error(f"Login HTML file not found at: {LOGIN_HTML_PATH}")
+        st.info("Please ensure the login.html file exists in the project directory.")
+        return
+    
     # Read the login.html file
     try:
         with open(LOGIN_HTML_PATH, 'r', encoding='utf-8') as f:
@@ -251,7 +270,17 @@ def display_login_page():
         encoded_auth_url = urllib.parse.quote(auth_url, safe=':/?#[]@!$&\'()*+,;=')
         replacement_line = f'const urlParams = new URLSearchParams("auth_url={encoded_auth_url}");'
         
+        st.write(f"**Original line to replace:** `{original_line}`")
+        st.write(f"**Replacement line:** `{replacement_line[:100]}...`")
+        st.write(f"**Encoded URL length:** {len(encoded_auth_url)} characters")
+        
         html_content = html_content.replace(original_line, replacement_line)
+        
+        # Check if replacement worked
+        if original_line in html_content:
+            st.error("❌ **HTML replacement failed - original line still present**")
+        else:
+            st.success("✅ **HTML replacement successful**")
         
         # Display the beautiful login page directly in Streamlit
         st.components.v1.html(html_content, height=800, scrolling=True)
