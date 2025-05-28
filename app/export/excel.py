@@ -321,7 +321,7 @@ class ExcelExporter:
                 cell.border = self.cell_border
             
             # Calculate monthly metrics
-            monthly_data = self.df.resample('ME', on='Created Date').agg({
+            monthly_data = self.df.resample('M', on='Created Date').agg({
                 'CaseNumber': 'count',
                 'Resolution Time (Days)': 'mean',
                 'CSAT': 'mean',

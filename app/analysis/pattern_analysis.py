@@ -36,7 +36,7 @@ class PatternAnalyzer:
             trends = {}
             
             # Volume trends
-            volume_trends = self.df.resample('ME', on='Created Date').size()
+            volume_trends = self.df.resample('M', on='Created Date').size()
             trends['volume_trend'] = {
                 'values': volume_trends.to_dict(),
                 'trend': 'increasing' if volume_trends.is_monotonic_increasing else
@@ -44,7 +44,7 @@ class PatternAnalyzer:
             }
             
             # Priority trends
-            priority_trends = self.df.groupby([pd.Grouper(key='Created Date', freq='ME'), 'Priority']).size().unstack(fill_value=0)
+            priority_trends = self.df.groupby([pd.Grouper(key='Created Date', freq='M'), 'Priority']).size().unstack(fill_value=0)
             trends['priority_trends'] = {
                 priority: {
                     'values': priority_trends[priority].to_dict(),
@@ -55,7 +55,7 @@ class PatternAnalyzer:
             }
             
             # Resolution time trends
-            resolution_trends = self.df.resample('ME', on='Created Date')['Resolution Time (Days)'].mean()
+            resolution_trends = self.df.resample('M', on='Created Date')['Resolution Time (Days)'].mean()
             trends['resolution_trends'] = {
                 'values': resolution_trends.to_dict(),
                 'trend': 'increasing' if resolution_trends.is_monotonic_increasing else
@@ -63,7 +63,7 @@ class PatternAnalyzer:
             }
             
             # CSAT trends
-            csat_trends = self.df.resample('ME', on='Created Date')['CSAT'].mean()
+            csat_trends = self.df.resample('M', on='Created Date')['CSAT'].mean()
             trends['csat_trends'] = {
                 'values': csat_trends.to_dict(),
                 'trend': 'increasing' if csat_trends.is_monotonic_increasing else

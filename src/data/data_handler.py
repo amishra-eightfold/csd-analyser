@@ -283,7 +283,7 @@ def export_data(df: pd.DataFrame, export_format: str = "CSV") -> Tuple[bool, Opt
     
     Args:
         df: DataFrame to export
-        export_format: Format to export (CSV, Excel, or JSON)
+        export_format: Format to export (CSV, Excel, PowerPoint, or JSON)
         
     Returns:
         Tuple of (success, filename, file_data)
@@ -293,13 +293,23 @@ def export_data(df: pd.DataFrame, export_format: str = "CSV") -> Tuple[bool, Opt
             debug("Cannot export: DataFrame is empty")
             return False, None, None
             
+        # Create a copy to avoid modifying the original DataFrame
+        export_df = df.copy()
+        
+        # Fix timezone issues for Excel/PowerPoint export
+        if export_format in ["Excel", "PowerPoint"]:
+            # Convert timezone-aware datetime columns to timezone-naive
+            for col in export_df.columns:
+                if export_df[col].dtype == 'datetime64[ns, UTC]' or str(export_df[col].dtype).startswith('datetime64[ns,'):
+                    export_df[col] = export_df[col].dt.tz_localize(None)
+        
         # Generate timestamp for filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Process for each format
         if export_format == "CSV":
             filename = f"support_tickets_{timestamp}.csv"
-            buffer = df.to_csv(index=False).encode('utf-8')
+            buffer = export_df.to_csv(index=False).encode('utf-8')
             
         elif export_format == "Excel":
             filename = f"support_tickets_{timestamp}.xlsx"
@@ -307,12 +317,16 @@ def export_data(df: pd.DataFrame, export_format: str = "CSV") -> Tuple[bool, Opt
             from io import BytesIO
             buffer = BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Support Tickets')
+                export_df.to_excel(writer, index=False, sheet_name='Support Tickets')
             buffer = buffer.getvalue()
+            
+        elif export_format == "PowerPoint":
+            filename = f"support_tickets_{timestamp}.pptx"
+            buffer = _create_powerpoint_export(export_df, timestamp)
             
         elif export_format == "JSON":
             filename = f"support_tickets_{timestamp}.json"
-            buffer = df.to_json(orient='records', date_format='iso').encode('utf-8')
+            buffer = export_df.to_json(orient='records', date_format='iso').encode('utf-8')
             
         else:
             debug(f"Invalid export format: {export_format}")
@@ -330,4 +344,137 @@ def export_data(df: pd.DataFrame, export_format: str = "CSV") -> Tuple[bool, Opt
         error_msg = f"Error exporting data: {str(e)}"
         logger.error(error_msg, exc_info=True)
         debug(error_msg, {'traceback': traceback.format_exc()}, category="error")
-        return False, None, None 
+        return False, None, None
+
+def _create_powerpoint_export(df: pd.DataFrame, timestamp: str) -> bytes:
+    """Create a PowerPoint presentation with data summary.
+    
+    Args:
+        df: DataFrame to export
+        timestamp: Timestamp string for the presentation
+        
+    Returns:
+        PowerPoint file as bytes
+    """
+    try:
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+        from pptx.enum.text import PP_ALIGN
+        from io import BytesIO
+        
+        # Create presentation
+        prs = Presentation()
+        
+        # Title slide
+        title_slide_layout = prs.slide_layouts[0]  # Title slide
+        slide = prs.slides.add_slide(title_slide_layout)
+        title = slide.shapes.title
+        subtitle = slide.placeholders[1]
+        
+        title.text = "Support Ticket Analytics Report"
+        subtitle.text = f"Generated on {datetime.now().strftime('%B %d, %Y at %H:%M')}"
+        
+        # Summary slide
+        bullet_slide_layout = prs.slide_layouts[1]  # Title and Content
+        slide = prs.slides.add_slide(bullet_slide_layout)
+        title = slide.shapes.title
+        content = slide.placeholders[1]
+        
+        title.text = "Data Summary"
+        
+        # Calculate summary statistics
+        total_tickets = len(df)
+        closed_tickets = len(df[df['Status'] == 'Closed']) if 'Status' in df.columns else 0
+        open_tickets = total_tickets - closed_tickets
+        
+        avg_resolution = None
+        if 'Resolution Time (Days)' in df.columns:
+            avg_resolution = df['Resolution Time (Days)'].mean()
+        
+        avg_csat = None
+        if 'CSAT' in df.columns:
+            avg_csat = df['CSAT'].mean()
+        
+        # Build summary text
+        summary_text = f"• Total Tickets: {total_tickets}\n"
+        summary_text += f"• Open Tickets: {open_tickets}\n"
+        summary_text += f"• Closed Tickets: {closed_tickets}\n"
+        
+        if avg_resolution is not None:
+            summary_text += f"• Average Resolution Time: {avg_resolution:.1f} days\n"
+        
+        if avg_csat is not None:
+            summary_text += f"• Average CSAT Score: {avg_csat:.1f}/5\n"
+        
+        # Add date range if available
+        if 'Created Date' in df.columns:
+            min_date = df['Created Date'].min().strftime('%Y-%m-%d')
+            max_date = df['Created Date'].max().strftime('%Y-%m-%d')
+            summary_text += f"• Date Range: {min_date} to {max_date}"
+        
+        content.text = summary_text
+        
+        # Top Issues slide (if we have enough data)
+        if 'Status' in df.columns and len(df) > 0:
+            slide = prs.slides.add_slide(bullet_slide_layout)
+            title = slide.shapes.title
+            content = slide.placeholders[1]
+            
+            title.text = "Status Distribution"
+            
+            status_counts = df['Status'].value_counts()
+            status_text = ""
+            for status, count in status_counts.items():
+                percentage = (count / total_tickets) * 100
+                status_text += f"• {status}: {count} tickets ({percentage:.1f}%)\n"
+            
+            content.text = status_text
+        
+        # Priority Distribution slide
+        if 'Priority' in df.columns and len(df) > 0:
+            slide = prs.slides.add_slide(bullet_slide_layout)
+            title = slide.shapes.title
+            content = slide.placeholders[1]
+            
+            title.text = "Priority Distribution"
+            
+            priority_counts = df['Priority'].value_counts()
+            priority_text = ""
+            for priority, count in priority_counts.items():
+                percentage = (count / total_tickets) * 100
+                priority_text += f"• {priority}: {count} tickets ({percentage:.1f}%)\n"
+            
+            content.text = priority_text
+        
+        # Save to BytesIO
+        buffer = BytesIO()
+        prs.save(buffer)
+        buffer.seek(0)
+        
+        debug("PowerPoint export created successfully", {
+            'slides': len(prs.slides),
+            'total_tickets': total_tickets
+        })
+        
+        return buffer.getvalue()
+        
+    except ImportError:
+        debug("python-pptx not available, creating simple text export", category="warning")
+        # Fallback to a simple text-based "PowerPoint" export
+        summary = f"Support Ticket Analytics Report\n"
+        summary += f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+        summary += f"Total Tickets: {len(df)}\n"
+        
+        if 'Status' in df.columns:
+            summary += f"\nStatus Distribution:\n"
+            for status, count in df['Status'].value_counts().items():
+                summary += f"  {status}: {count}\n"
+        
+        return summary.encode('utf-8')
+        
+    except Exception as e:
+        error_msg = f"Error creating PowerPoint export: {str(e)}"
+        debug(error_msg, {'traceback': traceback.format_exc()}, category="error")
+        # Return error message as text
+        error_text = f"Error creating PowerPoint presentation: {str(e)}"
+        return error_text.encode('utf-8') 

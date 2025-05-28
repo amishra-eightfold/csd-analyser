@@ -20,7 +20,7 @@ import logging
 
 from utils.pii_handler import get_privacy_status_indicator
 from utils.debug_logger import DebugLogger
-from config.logging_config import get_logger
+from config.logging_config import get_logger, log_error
 
 # Initialize logger
 logger = get_logger('ui')
@@ -92,60 +92,80 @@ def setup_application_sidebar():
     st.sidebar.markdown("---")
     st.sidebar.header("📥 Exports")
     
+    # Check if data is loaded in current session
+    current_session_has_data = st.session_state.get('data_loaded', False)
+    
+    if current_session_has_data:
+        # Show current session export options
+        st.sidebar.markdown("### Current Session")
+        export_format = st.sidebar.selectbox(
+            "Export Format",
+            ["Excel", "CSV", "PowerPoint"],
+            help="Export current analysis data"
+        )
+        
+        if st.sidebar.button("Export Current Data", help="Export data from current analysis"):
+            settings['export_current_data'] = True
+            settings['export_format'] = export_format
+        else:
+            settings['export_current_data'] = False
+    
+    # Show previous exports if any exist
     from utils.data_export import get_available_exports
     exports = get_available_exports()
     
     if exports:
-        st.sidebar.markdown("### Available Exports")
-        for export in exports:
-            # Format timestamp safely
-            timestamp_display = (
-                export['timestamp'].strftime('%Y-%m-%d %H:%M') 
-                if export['timestamp'] is not None 
-                else export['timestamp_str']
-            )
-            
-            with st.sidebar.expander(f"{export['customer_name']} - {timestamp_display}"):
-                # Show export details
-                st.write(f"Files available:")
-                for file in export['files']:
-                    file_size_mb = file['size'] / (1024 * 1024)
-                    st.write(f"- {file['name']} ({file_size_mb:.1f} MB)")
+        st.sidebar.markdown("### Previous Exports")
+        with st.sidebar.expander("📂 View Previous Exports", expanded=False):
+            for export in exports:
+                # Format timestamp safely
+                timestamp_display = (
+                    export['timestamp'].strftime('%Y-%m-%d %H:%M') 
+                    if export['timestamp'] is not None 
+                    else export['timestamp_str']
+                )
                 
-                # Download buttons
-                col1, col2 = st.columns(2)
-                with col1:
-                    # Individual file downloads
+                with st.sidebar.expander(f"{export['customer_name']} - {timestamp_display}"):
+                    # Show export details
+                    st.write(f"Files available:")
                     for file in export['files']:
-                        with open(file['path'], 'rb') as f:
-                            st.download_button(
-                                label=f"📄 {file['type']}",
-                                data=f,
-                                file_name=file['name'],
-                                mime=f"text/{file['type'].lower()}"
+                        file_size_mb = file['size'] / (1024 * 1024)
+                        st.write(f"- {file['name']} ({file_size_mb:.1f} MB)")
+                    
+                    # Download buttons
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        # Individual file downloads
+                        for file in export['files']:
+                            with open(file['path'], 'rb') as f:
+                                st.download_button(
+                                    label=f"📄 {file['type']}",
+                                    data=f,
+                                    file_name=file['name'],
+                                    mime=f"text/{file['type'].lower()}"
+                                )
+                    
+                    with col2:
+                        # Download all as ZIP
+                        try:
+                            from utils.data_export import create_customer_export_zip
+                            zip_buffer, zip_filename = create_customer_export_zip(
+                                export['customer_name'],
+                                export['timestamp_str']
                             )
-                
-                with col2:
-                    # Download all as ZIP
-                    try:
-                        from utils.data_export import create_customer_export_zip
-                        zip_buffer, zip_filename = create_customer_export_zip(
-                            export['customer_name'],
-                            export['timestamp_str']
-                        )
-                        st.download_button(
-                            label="📦 Download All",
-                            data=zip_buffer,
-                            file_name=zip_filename,
-                            mime="application/zip",
-                            help="Download all files as ZIP"
-                        )
-                    except Exception as e:
-                        st.error("Error creating ZIP file")
-                        if st.session_state.debug_mode:
-                            st.exception(e)
+                            st.download_button(
+                                label="📦 Download All",
+                                data=zip_buffer,
+                                file_name=zip_filename,
+                                mime="application/zip",
+                                help="Download all files as ZIP"
+                            )
+                        except Exception as e:
+                            st.error("Error creating ZIP file")
+                            if st.session_state.debug_mode:
+                                st.exception(e)
     else:
-        st.sidebar.info("No exports available yet. Run an analysis to generate exports.")
+        st.sidebar.info("No previous exports found.")
     
     # Date Range Selection
     st.sidebar.markdown("---")
@@ -172,6 +192,7 @@ def setup_application_sidebar():
         settings['start_date'] = date_range
         settings['end_date'] = date_range
     
+
     # Customer Selection
     st.sidebar.markdown("---")
     st.sidebar.header("Customer Selection")
@@ -314,11 +335,12 @@ def process_pii_in_dataframe(df):
         )
         
         # Show success message with stats
+        pii_count = pii_stats.get('pii_detected', 0)
         progress_placeholder.markdown(
             f"""
             <div class='status-indicator success'>
                 <p>✅ PII Processing Complete</p>
-                <p>Found and processed {pii_stats['pii_detected']} instances of PII</p>
+                <p>Found and processed {pii_count} instances of PII</p>
             </div>
             """,
             unsafe_allow_html=True

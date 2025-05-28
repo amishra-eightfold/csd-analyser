@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSD Analyzer - Google Authentication</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+            margin: 0;
+            padding: 50px 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 500px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .logo {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+        
+        .title {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.8;
+            margin-bottom: 30px;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin: 20px 0;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .button {
+            display: inline-block;
+            background-color: #4285F4;
+            color: white;
+            padding: 14px 28px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+            margin-top: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .button:hover {
+            background-color: #3367D6;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        
+        .status.success {
+            background-color: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.5);
+        }
+        
+        .status.error {
+            background-color: rgba(244, 67, 54, 0.2);
+            border: 1px solid rgba(244, 67, 54, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🏢</div>
+        <h1 class="title">CSD Analyzer</h1>
+        <p class="subtitle">Redirecting to Google Sign-In</p>
+        
+        <div class="loading"></div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <p>You should be redirected automatically to Google for authentication.</p>
+        <p>If not, please click the button below:</p>
+        
+        <a id="authButton" class="button" href="AUTH_URL_PLACEHOLDER" target="_self">
+            🔑 Sign in with Google
+        </a>
+        
+        <div style="margin-top: 30px; opacity: 0.7; font-size: 0.9rem;">
+            <p>⚠️ Only @eightfold.ai email addresses are authorized</p>
+        </div>
+    </div>
+
+    <script>
+        // Auto-redirect to Google OAuth after a short delay
+        setTimeout(function() {
+            const authUrl = 'AUTH_URL_PLACEHOLDER';
+            if (authUrl && authUrl !== 'AUTH_URL_PLACEHOLDER') {
+                window.location.href = authUrl;
+            } else {
+                document.getElementById('status').style.display = 'block';
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').innerHTML = '❌ Authentication URL not configured properly';
+            }
+        }, 2000);
+        
+        // Update button href with actual auth URL if available
+        document.addEventListener('DOMContentLoaded', function() {
+            const authUrl = 'AUTH_URL_PLACEHOLDER';
+            if (authUrl && authUrl !== 'AUTH_URL_PLACEHOLDER') {
+                document.getElementById('authButton').href = authUrl;
+            }
+        });
+    </script>
+</body>
+</html> 

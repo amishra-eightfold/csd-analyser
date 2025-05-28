@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSD Analyzer - Eightfold.ai</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'brand-primary': '#007AFF', // Classic Eightfold Blue
+            'brand-primary-dark': '#005FCC', // Darker shade for hover
+            'brand-accent': '#00C4B3', // Teal (currently unused for main branding, kept for potential future use)
+            'brand-secondary': '#F3F4F6', // Light gray for secondary elements (slate-100)
+            'brand-warning': '#FF9500',
+            'brand-danger': '#FF3B30',
+            'text-heading': '#1F2937', // slate-800
+            'text-body': '#4B5563', // slate-600
+            'text-muted': '#6B7281', // slate-500
+            'bg-app': '#F3F4F6', // slate-100 for main page background
+            'bg-card': '#FFFFFF', // white for the login card
+            'border-light': '#D1D1D6', // A light border color
+            'border-medium': '#9CA3AF', // slate-400
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@^19.1.0",
+        "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+        "react/": "https://esm.sh/react@^19.1.0/"
+      }
+    }
+  </script>
+</head>
+<body class="bg-app font-sans">
+  <div id="root"></div>
+  <script type="module">
+    import React, { useState } from "https://esm.sh/react@^19.1.0";
+    import ReactDOM from "https://esm.sh/react-dom@^19.1.0/client";
+
+    // --- START OF ICON COMPONENTS ---
+    const LockClosedIcon = ({ className = "w-6 h-6" }) => (
+      React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", fill: "none", viewBox: "0 0 24 24", strokeWidth: 1.5, stroke: "currentColor", className },
+        React.createElement('path', { strokeLinecap: "round", strokeLinejoin: "round", d: "M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" })
+      )
+    );
+
+    const ExclamationTriangleIcon = ({ className = "w-6 h-6" }) => (
+      React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", fill: "none", viewBox: "0 0 24 24", strokeWidth: 1.5, stroke: "currentColor", className },
+        React.createElement('path', { strokeLinecap: "round", strokeLinejoin: "round", d: "M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" })
+      )
+    );
+
+    const InformationCircleIcon = ({ className = "w-6 h-6" }) => (
+      React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", fill: "none", viewBox: "0 0 24 24", strokeWidth: 1.5, stroke: "currentColor", className },
+        React.createElement('path', { strokeLinecap: "round", strokeLinejoin: "round", d: "M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" })
+      )
+    );
+
+    const KeyIcon = ({ className = "w-6 h-6" }) => (
+      React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", fill: "none", viewBox: "0 0 24 24", strokeWidth: 1.5, stroke: "currentColor", className },
+        React.createElement('path', { strokeLinecap: "round", strokeLinejoin: "round", d: "M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" })
+      )
+    );
+
+    const WrenchScrewdriverIcon = ({ className = "w-6 h-6" }) => (
+      React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", fill: "none", viewBox: "0 0 24 24", strokeWidth: 1.5, stroke: "currentColor", className },
+        React.createElement('path', { strokeLinecap: "round", strokeLinejoin: "round", d: "M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.83-5.83M11.42 15.17l2.496-3.03c.527-1.032.288-2.372-.838-2.9s-2.372-.288-2.9.838L8.4 12.96M11.42 15.17L8.4 12.96m0 0L6.75 11.25M6.75 11.25l-1.5-1.5M12 9A3 3 0 009 6m3 3a3 3 0 00-3-3m0 0a3 3 0 00-3 3m0 0L6.75 7.5M6.75 7.5L3 11.25" })
+      )
+    );
+
+    const ChevronDownIcon = ({ className = "w-5 h-5" }) => (
+      React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 20 20", fill: "currentColor", className },
+        React.createElement('path', { fillRule: "evenodd", d: "M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.23 8.29a.75.75 0 01.02-1.06z", clipRule: "evenodd" })
+      )
+    );
+
+    const ChevronUpIcon = ({ className = "w-5 h-5" }) => (
+      React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 20 20", fill: "currentColor", className },
+        React.createElement('path', { fillRule: "evenodd", d: "M14.77 12.79a.75.75 0 01-1.06-.02L10 9.06l-3.71 3.71a.75.75 0 11-1.06-1.06l4.25-4.25a.75.75 0 011.06 0l4.25 4.25a.75.75 0 01-.02 1.06z", clipRule: "evenodd" })
+      )
+    );
+    
+    const GoogleIcon = ({ className = "w-5 h-5" }) => (
+        React.createElement('svg', { className, viewBox: "0 0 48 48", xmlns: "http://www.w3.org/2000/svg"},
+            React.createElement('path', { fill: "#EA4335", d: "M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" }),
+            React.createElement('path', { fill: "#4285F4", d: "M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" }),
+            React.createElement('path', { fill: "#FBBC05", d: "M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" }),
+            React.createElement('path', { fill: "#34A853", d: "M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" }),
+            React.createElement('path', { fill: "none", d: "M0 0h48v48H0z" })
+        )
+    );
+    // --- END OF ICON COMPONENTS ---
+
+    // --- START OF LOGINPAGE COMPONENT ---
+    const LoginPage = () => {
+      const [isTroubleshootingOpen, setIsTroubleshootingOpen] = useState(false);
+      
+      // Get auth URL from URL parameters (passed from Streamlit)
+      const urlParams = new URLSearchParams(window.location.search);
+      const authUrl = urlParams.get('auth_url') || '';
+
+      return (
+        React.createElement('div', { className: "w-full max-w-2xl mx-auto bg-bg-card shadow-2xl rounded-xl p-8 md:p-12 my-8" },
+          React.createElement('header', { className: "text-center mb-10" },
+            React.createElement('div', { className: "mb-2" },
+              React.createElement('span', { className: "text-xl font-semibold text-brand-primary tracking-tight" }, "Eightfold.ai")
+            ),
+            React.createElement('h1', { className: "text-4xl font-extrabold text-text-heading mb-2 flex items-center justify-center" },
+              React.createElement('span', { role: "img", "aria-label": "Office building icon", className: "mr-3 text-3xl" }, "🏢"),
+              "CSD Analyzer"
+            ),
+            React.createElement('p', { className: "text-lg text-text-body" }, "Customer Support Data Analytics Platform")
+          ),
+          React.createElement('hr', { className: "border-border-light my-8" }),
+          React.createElement('section', { className: "mb-8" },
+            React.createElement('div', { className: "flex items-center text-2xl font-semibold text-text-heading mb-4" },
+              React.createElement(LockClosedIcon, { className: "w-7 h-7 text-brand-primary mr-3" }),
+              React.createElement('h3', null, "Authentication Required")
+            ),
+            React.createElement('p', { className: "text-text-body mb-4" },
+              "Please sign in with your Eightfold.ai Google account to access the CSD Analyzer."
+            ),
+            React.createElement('div', { className: "bg-yellow-50 border-l-4 border-brand-warning p-4 rounded-md shadow-sm" },
+              React.createElement('div', { className: "flex" },
+                React.createElement('div', { className: "flex-shrink-0" },
+                  React.createElement(ExclamationTriangleIcon, { className: "h-5 w-5 text-brand-warning", "aria-hidden": "true" })
+                ),
+                React.createElement('div', { className: "ml-3" },
+                  React.createElement('p', { className: "text-sm text-yellow-700 font-medium" },
+                    React.createElement('strong', null, "Domain Restriction:"),
+                    " Only ",
+                    React.createElement('strong', null, "@eightfold.ai"),
+                    " email addresses are authorized to access this application."
+                  )
+                )
+              )
+            )
+          ),
+          authUrl && (
+            React.createElement('section', null,
+              React.createElement('div', { className: "bg-blue-50 border-l-4 border-brand-primary p-4 rounded-md shadow-sm mb-6" }, 
+                React.createElement('div', { className: "flex" },
+                  React.createElement('div', { className: "flex-shrink-0" },
+                    React.createElement(InformationCircleIcon, { className: "h-5 w-5 text-brand-primary", "aria-hidden": "true" })
+                  ),
+                  React.createElement('div', { className: "ml-3" },
+                    React.createElement('p', { className: "text-sm text-brand-primary font-medium" }, 
+                      "Authentication URL Generated Successfully"
+                    )
+                  )
+                )
+              ),
+              React.createElement('p', { className: "text-text-body mb-3 font-medium" }, "Click below to sign in with Google:"),
+              React.createElement('a', {
+                  href: authUrl,
+                  target: "_blank",
+                  rel: "noopener noreferrer",
+                  className: "w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-brand-primary hover:bg-brand-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-primary shadow-md transition-colors duration-150 ease-in-out mb-4 group"
+                },
+                React.createElement(GoogleIcon, {className: "w-5 h-5 mr-2 text-white"}),
+                "Sign in with Google"
+              ),
+              React.createElement('div', { className: "mt-8 border-t border-border-light pt-6" },
+                React.createElement('button', {
+                    onClick: () => setIsTroubleshootingOpen(!isTroubleshootingOpen),
+                    className: "w-full flex items-center justify-between text-left text-text-body hover:text-text-heading focus:outline-none",
+                    "aria-expanded": isTroubleshootingOpen,
+                    "aria-controls": "troubleshooting-content"
+                  },
+                  React.createElement('span', { className: "font-medium flex items-center" },
+                    React.createElement(WrenchScrewdriverIcon, { className: "w-5 h-5 mr-2" }),
+                    "Troubleshooting"
+                  ),
+                  isTroubleshootingOpen ? React.createElement(ChevronUpIcon, { className: "w-5 h-5" }) : React.createElement(ChevronDownIcon, { className: "w-5 h-5" })
+                ),
+                isTroubleshootingOpen && (
+                  React.createElement('div', { id: "troubleshooting-content", className: "mt-4 space-y-4 p-4 bg-brand-secondary rounded-md border border-border-light shadow-inner" },
+                    React.createElement('div', null,
+                      React.createElement('h4', { className: "text-sm font-semibold text-text-heading mb-1" }, "Manual Authentication URL"),
+                      React.createElement('p', { className: "text-xs text-text-body mb-2" }, "If the buttons don't work, copy and paste this URL into your browser:"),
+                      React.createElement('code', { className: "block w-full text-xs p-2 bg-white text-text-muted rounded border border-slate-300 break-all select-all", "aria-label": "Authentication URL" },
+                        authUrl
+                      )
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('h4', { className: "text-sm font-semibold text-text-heading mb-1" }, "Common Issues"),
+                      React.createElement('ul', { className: "list-disc list-inside text-xs text-text-body space-y-1" },
+                        React.createElement('li', null, React.createElement('strong', null, "Pop-up blocked:"), " Allow pop-ups for this site."),
+                        React.createElement('li', null, React.createElement('strong', null, "Browser issues:"), " Try a different browser or incognito/private mode."),
+                        React.createElement('li', null, React.createElement('strong', null, "Network issues:"), " Check your internet connection."),
+                        React.createElement('li', null, React.createElement('strong', null, "Corporate firewall:"), " You may need to use your personal device or VPN if approved.")
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          ),
+          !authUrl && (
+            React.createElement('div', { className: "bg-red-50 border-l-4 border-brand-danger p-4 rounded-md shadow-sm" },
+              React.createElement('div', { className: "flex" },
+                React.createElement('div', { className: "flex-shrink-0" },
+                  React.createElement(ExclamationTriangleIcon, { className: "h-5 w-5 text-brand-danger", "aria-hidden": "true" })
+                ),
+                React.createElement('div', { className: "ml-3" },
+                  React.createElement('p', { className: "text-sm text-red-700 font-medium" },
+                    "Unable to generate authentication URL. Please check the OAuth configuration or contact support."
+                  )
+                )
+              )
+            )
+          )
+        )
+      );
+    };
+    // --- END OF LOGINPAGE COMPONENT ---
+
+    // --- START OF APP COMPONENT ---
+    const App = () => {
+      return (
+        React.createElement('div', { className: "min-h-screen flex flex-col items-center justify-center p-4 bg-app text-text-body" }, 
+          React.createElement(LoginPage, null)
+        )
+      );
+    };
+    // --- END OF APP COMPONENT ---
+
+    // --- START OF REACT DOM RENDER ---
+    const rootElement = document.getElementById('root');
+    if (!rootElement) {
+      throw new Error("Could not find root element to mount to");
+    }
+
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(
+      React.createElement(React.StrictMode, null,
+        React.createElement(App, null)
+      )
+    );
+    // --- END OF REACT DOM RENDER ---
+  </script>
+</body>
+</html> 

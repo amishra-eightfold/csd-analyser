@@ -26,13 +26,13 @@ class ChartGenerator:
         self.priority_colors = colors['priority_colors']
         
     def create_ticket_volume_chart(self, 
-                                 grouping: str = 'ME',
+                                 grouping: str = 'M',
                                  title: Optional[str] = None) -> go.Figure:
         """
         Create ticket volume trend chart.
         
         Args:
-            grouping (str): Time grouping ('D' for daily, 'W' for weekly, 'ME' for monthly)
+            grouping (str): Time grouping ('D' for daily, 'W' for weekly, 'M' for monthly)
             title (Optional[str]): Chart title
             
         Returns:
@@ -181,13 +181,13 @@ class ChartGenerator:
             return go.Figure()
             
     def create_csat_trend_chart(self,
-                               grouping: str = 'ME',
+                               grouping: str = 'M',
                                title: Optional[str] = None) -> go.Figure:
         """
         Create CSAT trend chart.
         
         Args:
-            grouping (str): Time grouping ('D' for daily, 'W' for weekly, 'ME' for monthly)
+            grouping (str): Time grouping ('D' for daily, 'W' for weekly, 'M' for monthly)
             title (Optional[str]): Chart title
             
         Returns:

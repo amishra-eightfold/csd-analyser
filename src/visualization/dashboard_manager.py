@@ -50,35 +50,36 @@ def display_visualization_dashboard(df: pd.DataFrame) -> None:
             "Time Aggregation",
             options=["day", "week", "month"],
             index=2,  # Default to month
-            horizontal=True
+            horizontal=True,
+            key="overview_time_unit"
         )
         volume_chart = create_ticket_volume_chart(df, time_unit)
-        st.plotly_chart(volume_chart, use_container_width=True)
+        st.plotly_chart(volume_chart, use_container_width=True, key="overview_volume_chart")
     
     # Resolution Time tab
     with tabs[1]:
         st.subheader("Resolution Time Analysis")
         resolution_chart = create_resolution_time_chart(df)
-        st.plotly_chart(resolution_chart, use_container_width=True)
+        st.plotly_chart(resolution_chart, use_container_width=True, key="overview_resolution_chart")
     
     # Priority tab
     with tabs[2]:
         st.subheader("Priority Distribution")
         priority_chart = create_priority_distribution_chart(df)
-        st.plotly_chart(priority_chart, use_container_width=True)
+        st.plotly_chart(priority_chart, use_container_width=True, key="overview_priority_chart")
     
     # Product Areas tab
     with tabs[3]:
         st.subheader("Product Area Distribution")
         product_chart = create_product_area_chart(df)
-        st.plotly_chart(product_chart, use_container_width=True)
+        st.plotly_chart(product_chart, use_container_width=True, key="overview_product_chart")
     
     # CSAT tab
     with tabs[4]:
         st.subheader("Customer Satisfaction")
         if 'CSAT' in df.columns and not df.dropna(subset=['CSAT']).empty:
             csat_chart = create_csat_distribution_chart(df)
-            st.plotly_chart(csat_chart, use_container_width=True)
+            st.plotly_chart(csat_chart, use_container_width=True, key="overview_csat_chart")
         else:
             st.info("No CSAT data available.")
 
@@ -276,7 +277,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
             # Process text if PII protection is enabled
             analysis_df = main_analysis_df.copy()
             if enable_pii_processing and text_column in analysis_df.columns:
-                analysis_df = st.session_state.pii_handler.process_dataframe(
+                analysis_df, _ = st.session_state.pii_handler.process_dataframe(
                     analysis_df,
                     [text_column]
                 )
@@ -636,7 +637,7 @@ def display_detailed_analysis(df: pd.DataFrame, enable_ai_analysis: bool = False
                     
                     # Clean and prepare text
                     if enable_pii_processing:
-                        sample_df = st.session_state.pii_handler.process_dataframe(
+                        sample_df, _ = st.session_state.pii_handler.process_dataframe(
                             sample_df,
                             ['Subject', 'Description', 'Comments']
                         )

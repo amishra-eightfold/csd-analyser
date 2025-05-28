@@ -1,0 +1,45 @@
+
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>OpenAI Interaction Log</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                h1, h2 { color: #333; }
+                pre { background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }
+                .timestamp { color: #888; font-style: italic; }
+                .section { margin-bottom: 20px; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
+            </style>
+        </head>
+        <body>
+            <h1>OpenAI Interaction Log</h1>
+            <p class="timestamp">Timestamp: 2025-05-27T05:31:04.917398</p>
+            <p>Interaction Type: categorization</p>
+            
+            <div class="section">
+                <h2>Request</h2>
+                <pre>{
+  "model": "gpt-4-turbo",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are an expert support ticket analyzer."
+    },
+    {
+      "role": "user",
+      "content": "\nAnalyze these support tickets and categorize them into logical groupings.\nIdentify common themes, issues, and feature requests.\n\nFor each category identified, provide:\n1. Category name\n2. Description of the category\n3. Count/percentage of tickets in this category\n4. Common keywords or phrases\n\nAlso suggest improvements to ticket categorization for the support team.\n\n\nTicket Data:\n[\n  {\n    \"case_number\": \"00129603\",\n    \"subject\": \"Bulk Emails Question\",\n    \"status\": \"New\",\n    \"priority\": \"Normal\",\n    \"product_area\": \"None\",\n    \"case_type\": \"Support Request\",\n    \"created_date\": \"2025-05-23\",\n    \"resolution_time\": NaN\n  },\n  {\n    \"case_number\": \"00129155\",\n    \"subject\": \"RE: [00123049] Candidate Match Score Inconsistency\",\n    \"status\": \"Solved\",\n    \"priority\": \"Normal\",\n    \"product_area\": \"AI Platform (AI)\",\n    \"case_type\": null,\n    \"created_date\": \"2025-05-19\",\n    \"resolution_time\": NaN\n  },\n  {\n    \"case_number\": \"00128455\",\n    \"subject\": \"Marked as contacted action is not working in workflow automation\",\n    \"status\": \"Pending\",\n    \"priority\": \"Normal\",\n    \"product_area\": \"Talent Acquisition (TA)\",\n    \"case_type\": null,\n    \"created_date\": \"2025-05-09\",\n    \"resolution_time\": NaN\n  },\n  {\n    \"case_number\": \"00128219\",\n    \"subject\": \"Disable Register button for passed and Archived events\",\n    \"status\": \"Pending\",\n    \"priority\": \"Normal\",\n    \"product_area\": \"Talent Acquisition (TA)\",\n    \"case_type\": \"Support Request\",\n    \"created_date\": \"2025-05-08\",\n    \"resolution_time\": NaN\n  },\n  {\n    \"case_number\": \"00127900\",\n    \"subject\": \"Issue with  CC'ed Emails\",\n    \"status\": \"Solved\",\n    \"priority\": \"Normal\",\n    \"product_area\": \"Core Infrastructure (CI)\",\n    \"case_type\": \"Support Request\",\n    \"created_date\": \"2025-05-02\",\n    \"resolution_time\": NaN\n  },\n  {\n    \"case_number\": \"00127626\",\n    \"subject\": \"Only display open communities in the drop-down list\",\n    \"status\": \"Solved\",\n    \"priority\": \"Normal\",\n    \"product_area\": \"Talent Acquisition (TA)\",\n    \"case_type\": \"Support Request\",\n    \"created_date\": \"2025-04-29\",\n    \"resolution_time\": NaN\n  },\n  {\n    \"case_number\": \"00127625\",\n    \"subject\": \"Bulk Share Candidates\",\n    \"status\": \"Closed\",\n    \"priority\": \"Normal\",\n    \"product_area\": \"Talent Acquisition (TA)\",\n    \"case_type\": \"Support Request\",\n    \"created_date\": \"2025-04-29\",\n    \"resolution_time\": 17.0\n  },\n  {\n    \"case_number\": \"00127528\",\n    \"subject\": \"[nvidia][email issue] why the emails are going through vssend.com\",\n    \"status\": \"Closed\",\n    \"priority\": \"Normal\",\n    \"product_area\": \"Core Infrastructure (CI)\",\n    \"case_type\": null,\n    \"created_date\": \"2025-04-29\",\n    \"resolution_time\": 14.6\n  },\n  {\n    \"case_number\": \"00127526\",\n    \"subject\": \"Data Lake - Linked candidate profiles\",\n    \"status\": \"Pending\",\n    \"priority\": \"Normal\",\n    \"product_area\": \"Core Infrastructure (CI)\",\n    \"case_type\": \"Support Request\",\n    \"created_date\": \"2025-04-28\",\n    \"resolution_time\": NaN\n  }\n]"
+    }
+  ],
+  "temperature": 0.3
+}</pre>
+            </div>
+            
+            <div class="section">
+                <h2>Response</h2>
+                <pre>{
+  "content": "Based on the provided support ticket data, the tickets can be categorized into logical groupings based on the product area and the nature of the issue or request. Here are the identified categories, along with descriptions, counts, and common keywords:\n\n### Categories:\n\n#### 1. Talent Acquisition (TA) Issues\n- **Description**: This category includes tickets related to the Talent Acquisition product area, focusing on issues and enhancements in recruitment and candidate management workflows.\n- **Count/Percentage**: 5 tickets (55.55% of total tickets)\n- **Common Keywords**: \"workflow automation,\" \"Archived events,\" \"open communities,\" \"Bulk Share Candidates,\" \"Candidate Match Score Inconsistency.\"\n\n#### 2. Core Infrastructure (CI) Issues\n- **Description**: Tickets in this category are related to the core infrastructure, dealing with email handling, data management, and other foundational services.\n- **Count/Percentage**: 3 tickets (33.33% of total tickets)\n- **Common Keywords**: \"CC'ed Emails,\" \"emails going through vssend.com,\" \"Data Lake.\"\n\n#### 3. General Support Requests\n- **Description**: This category includes miscellaneous support requests that do not specifically mention a product area or are related to general product inquiries.\n- **Count/Percentage**: 1 ticket (11.11% of total tickets)\n- **Common Keywords**: \"Bulk Emails Question.\"\n\n### Suggestions for Improvements to Ticket Categorization:\n\n1. **Mandatory Product Area Tagging**: Ensure that every ticket includes a mandatory field for the product area. This will help in quickly identifying the relevant team or resource to address the issue.\n\n2. **Standardize Case Types**: Implement a standardized list of case types to choose from when creating a ticket (e.g., Bug Report, Feature Request, General Inquiry). This will help in sorting and prioritizing tickets more efficiently.\n\n3. **Use of Keywords and Tags**: Encourage the use of specific keywords and tags in the ticket subject and description. This can include specific features, error codes, or common terms that can help in categorizing and routing the tickets more accurately.\n\n4. **Automated Categorization Tools**: Utilize machine learning or rule-based systems to automatically categorize tickets based on their content. This can reduce manual sorting and improve response times.\n\n5. **Regular Review and Feedback**: Periodically review the categorization process and gather feedback from the support team on the challenges and areas for improvement. This will help in continuously refining the categorization process.\n\nBy implementing these suggestions, the support team can enhance the efficiency and accuracy of handling and resolving support tickets."
+}</pre>
+            </div>
+        </body>
+        </html>
+        

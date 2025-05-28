@@ -4,8 +4,7 @@ from typing import Dict, List, Any, Optional, Union
 import logging
 import time
 import traceback
-from openai import OpenAI
-from openai.types.error import APIError, RateLimitError
+from openai import OpenAI, APIError, RateLimitError
 from pathlib import Path
 import toml
 from .config import config
@@ -23,20 +22,26 @@ class OpenAIClient:
         self.logger = setup_openai_logger()
         
         try:
-            # Get the project root directory
-            project_root = Path(__file__).parent.parent.parent
-            secrets_path = project_root / '.streamlit' / 'secrets.toml'
+            # Try to get API key from environment variable first
+            import os
+            api_key = os.getenv('OPENAI_API_KEY')
             
-            if not secrets_path.exists():
-                raise FileNotFoundError(f"secrets.toml not found at {secrets_path}")
-                
-            # Read the secrets file
-            secrets = toml.load(secrets_path)
-            
-            # Get the API key
-            api_key = secrets.get('OPENAI_API_KEY')
+            # If not found in environment, try secrets.toml
             if not api_key:
-                raise ValueError("OPENAI_API_KEY not found in secrets.toml")
+                try:
+                    import streamlit as st
+                    api_key = st.secrets.get("OPENAI_API_KEY", None)
+                except:
+                    # Fallback to reading secrets.toml directly
+                    project_root = Path(__file__).parent.parent.parent
+                    secrets_path = project_root / '.streamlit' / 'secrets.toml'
+                    
+                    if secrets_path.exists():
+                        secrets = toml.load(secrets_path)
+                        api_key = secrets.get('OPENAI_API_KEY')
+            
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY not found in environment variables or secrets.toml")
             
             # Initialize the client
             self._client = OpenAI(api_key=api_key)
@@ -317,5 +322,12 @@ class OpenAIClient:
                 'risk_analysis': "Error generating risk analysis."
             }
 
-# Create global OpenAI client instance
-openai = OpenAIClient()
+# Global OpenAI client instance (lazy initialization)
+openai = None
+
+def get_openai_client():
+    """Get or create the global OpenAI client instance."""
+    global openai
+    if openai is None:
+        openai = OpenAIClient()
+    return openai

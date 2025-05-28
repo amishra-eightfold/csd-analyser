@@ -57,13 +57,13 @@ class TicketAnalyzer:
         """Analyze ticket trends."""
         try:
             # Calculate ticket volume trends
-            ticket_counts = self.df.resample('ME', on='Created Date').size()
+            ticket_counts = self.df.resample('M', on='Created Date').size()
             
             # Calculate resolution time trends
-            resolution_times = self.df.resample('ME', on='Created Date')['Resolution Time (Days)'].mean()
+            resolution_times = self.df.resample('M', on='Created Date')['Resolution Time (Days)'].mean()
             
             # Calculate CSAT trends
-            csat_scores = self.df.resample('ME', on='Created Date')['CSAT'].mean()
+            csat_scores = self.df.resample('M', on='Created Date')['CSAT'].mean()
             
             return {
                 'volume_trend': ticket_counts.to_dict(),

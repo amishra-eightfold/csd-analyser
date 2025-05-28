@@ -7,6 +7,9 @@ import os
 import time
 from typing import Dict, List, Any, Tuple, Optional
 
+# Import authentication module
+import auth
+
 # Import from new module structure
 from src.visualization.app_visualizations import (
     create_ticket_volume_chart,
@@ -69,6 +72,161 @@ st.set_page_config(
 # Apply custom CSS
 apply_custom_css()
 
+def display_user_header() -> None:
+    """Display user information and logout button in the header."""
+    user_info = auth.get_current_user()
+    if user_info:
+        col1, col2, col3 = st.columns([3, 2, 1])
+        
+        with col1:
+            st.markdown(f"**Welcome, {user_info.get('name', 'User')}** ({user_info.get('email', '')})")
+        
+        with col2:
+            st.markdown(f"*Logged in via Google OAuth*")
+        
+        with col3:
+            if st.button("🚪 Logout", key="logout_button"):
+                auth.logout()
+
+def display_data_filters() -> Dict[str, List[str]]:
+    """Display data filters in the main area and return selected values."""
+    # Check if data is loaded
+    data_loaded = st.session_state.get('data_loaded', False)
+    
+    if data_loaded and 'analysis_data' in st.session_state and st.session_state.analysis_data is not None:
+        st.markdown("### 🔍 Data Filters")
+        
+        df = st.session_state.analysis_data
+        
+        # Create three columns for the filters
+        col1, col2, col3 = st.columns(3)
+        
+        # Get reset counter for dynamic widget keys
+        reset_counter = st.session_state.get('filter_reset_counter', 0)
+        
+        with col1:
+            # Product Area filter - include null/empty values
+            product_areas = sorted(df['Product_Area__c'].fillna('(Not Specified)').unique().tolist())
+            selected_product_areas = st.multiselect(
+                "Product Area",
+                options=product_areas,
+                default=[],  # Always start empty
+                key=f"product_area_filter_{reset_counter}",
+                help="Select product areas to filter by (leave empty to show all)"
+            )
+        
+        with col2:
+            # Product Feature filter - include null/empty values
+            product_features = sorted(df['Product_Feature__c'].fillna('(Not Specified)').unique().tolist())
+            selected_product_features = st.multiselect(
+                "Product Feature", 
+                options=product_features,
+                default=[],  # Always start empty
+                key=f"product_feature_filter_{reset_counter}",
+                help="Select product features to filter by (leave empty to show all)"
+            )
+        
+        with col3:
+            # Case Status filter
+            case_statuses = sorted(df['Status'].unique().tolist())
+            selected_statuses = st.multiselect(
+                "Case Status",
+                options=case_statuses,
+                default=[],  # Always start empty
+                key=f"case_status_filter_{reset_counter}",
+                help="Select case statuses to filter by (leave empty to show all)"
+            )
+        
+        # Add Apply Filters and Clear Filters buttons
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            pass  # Empty column for spacing
+        with col2:
+            apply_filters = st.button("🔍 Apply Filters", type="primary", use_container_width=True)
+        with col3:
+            clear_filters = st.button("🧹 Clear Filters", use_container_width=True)
+        
+        # Handle button clicks
+        if apply_filters:
+            st.session_state.selected_product_areas = selected_product_areas
+            st.session_state.selected_product_features = selected_product_features  
+            st.session_state.selected_statuses = selected_statuses
+            st.success("✅ Filters applied successfully!")
+        
+        if clear_filters:
+            # Clear stored filters immediately
+            if hasattr(st.session_state, 'selected_product_areas'):
+                del st.session_state.selected_product_areas
+            if hasattr(st.session_state, 'selected_product_features'):
+                del st.session_state.selected_product_features
+            if hasattr(st.session_state, 'selected_statuses'):
+                del st.session_state.selected_statuses
+            
+            # Increment filter reset counter to force widget reset
+            if 'filter_reset_counter' not in st.session_state:
+                st.session_state.filter_reset_counter = 0
+            st.session_state.filter_reset_counter += 1
+            
+            st.success("🧹 Filters cleared! Showing all data.")
+            st.rerun()  # Refresh to show cleared filters
+        
+        # Show current filter status if filters have been applied
+        if hasattr(st.session_state, 'selected_product_areas'):
+            current_areas = st.session_state.get('selected_product_areas', [])
+            current_features = st.session_state.get('selected_product_features', [])
+            current_statuses = st.session_state.get('selected_statuses', [])
+            
+            total_cases = len(df)
+            
+            # Check if any filters are actually applied
+            any_filters_applied = bool(current_areas or current_features or current_statuses)
+            
+            if any_filters_applied:
+                # Apply filters step by step (same logic as in main display)
+                filtered_df = df.copy()
+                
+                if current_areas:
+                    df_temp = filtered_df.copy()
+                    df_temp['Product_Area__c'] = df_temp['Product_Area__c'].fillna('(Not Specified)')
+                    filtered_df = df_temp[df_temp['Product_Area__c'].isin(current_areas)]
+                
+                if current_features:
+                    df_temp = filtered_df.copy()
+                    df_temp['Product_Feature__c'] = df_temp['Product_Feature__c'].fillna('(Not Specified)')
+                    filtered_df = df_temp[df_temp['Product_Feature__c'].isin(current_features)]
+                    
+                if current_statuses:
+                    filtered_df = filtered_df[filtered_df['Status'].isin(current_statuses)]
+                
+                filtered_cases = len(filtered_df)
+                
+                # Build filter description
+                active_filters = []
+                if current_areas:
+                    active_filters.append(f"Product Area: {', '.join(current_areas[:2])}{'...' if len(current_areas) > 2 else ''}")
+                if current_features:
+                    active_filters.append(f"Product Feature: {', '.join(current_features[:2])}{'...' if len(current_features) > 2 else ''}")
+                if current_statuses:
+                    active_filters.append(f"Status: {', '.join(current_statuses[:2])}{'...' if len(current_statuses) > 2 else ''}")
+                
+                filter_description = " | ".join(active_filters)
+                st.info(f"📊 Filters applied: Showing {filtered_cases} of {total_cases} cases ({filter_description})")
+            else:
+                st.info("📊 No filters applied - showing all cases")
+        
+        return {
+            'product_areas': selected_product_areas,
+            'product_features': selected_product_features,
+            'statuses': selected_statuses
+        }
+    else:
+        # This should not be called when no data is loaded
+        return {
+            'product_areas': [],
+            'product_features': [],
+            'statuses': []
+        }
+
 def initialize_session_state() -> None:
     """Initialize all session state variables."""
     if 'customers' not in st.session_state:
@@ -98,6 +256,8 @@ def initialize_session_state() -> None:
         st.session_state.debug_logger = DebugLogger()
     if 'history_df' not in st.session_state:
         st.session_state.history_df = pd.DataFrame()
+    if 'analysis_data' not in st.session_state:
+        st.session_state.analysis_data = None
 
 def setup_salesforce_connection() -> bool:
     """
@@ -181,6 +341,14 @@ def fetch_customer_list() -> bool:
 
 def main() -> None:
     """Main application entry point."""
+    
+    # Handle authentication first
+    if not auth.handle_auth():
+        return  # Stop execution if not authenticated
+    
+    # Add user info and logout button to the top of the page
+    display_user_header()
+    
     st.title("Support Ticket Analytics")
     
     # Initialize session state
@@ -227,45 +395,175 @@ def main() -> None:
             
             # Process PII if enabled
             if st.session_state.enable_pii_processing:
-                cases_df = process_pii_in_dataframe(cases_df)
+                cases_df, _ = process_pii_in_dataframe(cases_df)
                 if comments_df is not None:
-                    comments_df = process_pii_in_dataframe(comments_df)
+                    comments_df, _ = process_pii_in_dataframe(comments_df)
             
             # Prepare data for analysis
             df = prepare_data_for_analysis(cases_df)
             
-            # Display data summary
-            st.subheader("Data Summary")
-            summary = get_data_summary(df)
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Tickets", summary.get('total_tickets', 0))
-            with col2:
-                resolution_time = summary.get('avg_resolution_time')
-                st.metric("Avg. Resolution Time", f"{resolution_time:.1f} days" if resolution_time is not None else "No data")
-            with col3:
-                csat_value = summary.get('avg_csat')
-                st.metric("CSAT", f"{csat_value:.1f}" if csat_value is not None else "No data")
-            with col4:
-                st.metric("Open Tickets", summary.get('open_tickets', 0))
+            # Store the processed data in session state (no filtering at this stage)
+            st.session_state.analysis_data = df
+            st.session_state.data_loaded = True
             
-            # Display data table with filter options
-            display_data_table(df, st.session_state.enable_pii_processing)
+            # Debug: Show actual status values in the data
+            if st.session_state.debug_mode:
+                st.write("🔍 **Debug: Data Analysis**")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.write("**Status Values:**")
+                    status_counts = df['Status'].value_counts()
+                    st.write(status_counts)
+                
+                with col2:
+                    st.write("**Product Area Values:**")
+                    area_counts = df['Product_Area__c'].fillna('(NULL)').value_counts()
+                    st.write(area_counts)
+                
+                with col3:
+                    st.write("**Product Feature Values:**")  
+                    feature_counts = df['Product_Feature__c'].fillna('(NULL)').value_counts()
+                    st.write(feature_counts)
+                
+                # Show null value analysis
+                st.write("**Null Value Analysis:**")
+                null_analysis = {
+                    'Product_Area__c': df['Product_Area__c'].isnull().sum(),
+                    'Product_Feature__c': df['Product_Feature__c'].isnull().sum(),
+                    'Status': df['Status'].isnull().sum()
+                }
+                st.write(f"Total cases: {len(df)}")
+                st.write(f"Cases with null Product Area: {null_analysis['Product_Area__c']}")
+                st.write(f"Cases with null Product Feature: {null_analysis['Product_Feature__c']}")
+                st.write(f"Cases with null Status: {null_analysis['Status']}")
             
-            # Display visualizations
-            display_visualization_dashboard(df)
-            
-            # Display detailed analysis if enabled
-            if st.session_state.enable_detailed_analysis:
-                display_detailed_analysis(
-                    df, 
-                    st.session_state.enable_ai_analysis,
-                    st.session_state.enable_pii_processing
-                )
+            st.success(f"✅ Data loaded successfully! {len(df)} cases available. Use the status filter to narrow down your view.")
         else:
             st.warning("No data found for the selected criteria.")
+            st.session_state.data_loaded = False
+    
+    # Handle current session export if requested
+    if settings.get('export_current_data', False) and st.session_state.get('data_loaded', False):
+        export_format = settings.get('export_format', 'CSV')
+        try:
+            from src.data.data_handler import export_data
+            df = st.session_state.analysis_data
+            success, filename, file_data = export_data(df, export_format)
+            
+            if success:
+                st.success(f"Data exported successfully!")
+                # Set appropriate MIME type
+                if export_format == "Excel":
+                    mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                elif export_format == "PowerPoint":
+                    mime_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                elif export_format == "JSON":
+                    mime_type = "application/json"
+                else:  # CSV
+                    mime_type = "text/csv"
+                
+                st.download_button(
+                    label=f"Download {export_format} File",
+                    data=file_data,
+                    file_name=filename,
+                    mime=mime_type
+                )
+            else:
+                st.error("Failed to export data. Please try again.")
+        except Exception as e:
+            st.error(f"Error exporting data: {str(e)}")
+            if st.session_state.debug_mode:
+                st.exception(e)
+    
+    # Display data filters and data if available (either freshly loaded or from session state)
+    if st.session_state.get('data_loaded', False) and 'analysis_data' in st.session_state:
+        # Show data filters section
+        display_data_filters()
+        # Get the full dataset
+        full_df = st.session_state.analysis_data
+        
+        # Apply filters from session state (only if they exist)
+        if hasattr(st.session_state, 'selected_product_areas'):
+            selected_product_areas = st.session_state.get('selected_product_areas', [])
+            selected_product_features = st.session_state.get('selected_product_features', [])
+            selected_statuses = st.session_state.get('selected_statuses', [])
+            
+            # Apply filters properly - only filter if values are selected
+            df = full_df.copy()
+            
+            if selected_product_areas:
+                # Handle null values by replacing them temporarily
+                df_temp = df.copy()
+                df_temp['Product_Area__c'] = df_temp['Product_Area__c'].fillna('(Not Specified)')
+                df = df_temp[df_temp['Product_Area__c'].isin(selected_product_areas)]
+            
+            if selected_product_features:
+                # Handle null values by replacing them temporarily
+                df_temp = df.copy()
+                df_temp['Product_Feature__c'] = df_temp['Product_Feature__c'].fillna('(Not Specified)')
+                df = df_temp[df_temp['Product_Feature__c'].isin(selected_product_features)]
+                
+            if selected_statuses:
+                df = df[df['Status'].isin(selected_statuses)]
+            
+            # Check if filtering actually reduced the dataset
+            is_filtered = len(df) < len(full_df)
+        else:
+            # No filters applied yet
+            df = full_df
+            is_filtered = False
+        
+        # Display data summary
+        st.subheader("Data Summary")
+        
+        summary = get_data_summary(df)
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            label = "Filtered Tickets" if is_filtered else "Total Tickets"
+            st.metric(label, summary.get('total_tickets', 0))
+        with col2:
+            resolution_time = summary.get('avg_resolution_time')
+            st.metric("Avg. Resolution Time", f"{resolution_time:.1f} days" if resolution_time is not None else "No data")
+        with col3:
+            csat_value = summary.get('avg_csat')
+            st.metric("CSAT", f"{csat_value:.1f}" if csat_value is not None else "No data")
+        with col4:
+            st.metric("Open Tickets", summary.get('open_tickets', 0))
+        
+        # Display data table with filter options
+        display_data_table(df, st.session_state.enable_pii_processing)
+        
+        # Display visualizations
+        display_visualization_dashboard(df)
+        
+        # Display detailed analysis if enabled
+        if st.session_state.enable_detailed_analysis:
+            display_detailed_analysis(
+                df, 
+                st.session_state.enable_ai_analysis,
+                st.session_state.enable_pii_processing
+            )
     else:
-        st.info("Select customers and date range, then click 'Load Data' to begin analysis.")
+        # Show disabled filters when no data is loaded
+        st.markdown("### 🔍 Data Filters")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.multiselect("Product Area", options=[], disabled=True, key="product_area_filter_disabled")
+        with col2:
+            st.multiselect("Product Feature", options=[], disabled=True, key="product_feature_filter_disabled") 
+        with col3:
+            st.multiselect("Case Status", options=[], disabled=True, key="case_status_filter_disabled")
+        
+        # Show disabled Apply button
+        col_button = st.columns([1, 1, 1])[1]
+        with col_button:
+            st.button("🔍 Apply Filters", disabled=True, use_container_width=True)
+        
+        st.info("🔄 Load data to enable filtering options")
+        st.info("Select customers and date range, then click 'Fetch Data' to begin analysis.")
 
 def display_data_table(df: pd.DataFrame, enable_pii_processing: bool = False) -> None:
     """
@@ -283,7 +581,8 @@ def display_data_table(df: pd.DataFrame, enable_pii_processing: bool = False) ->
             filter_status = st.multiselect(
                 "Status",
                 options=df['Status'].unique(),
-                default=df['Status'].unique()
+                default=df['Status'].unique(),
+                help="Additional status filtering (already filtered for active cases if enabled)"
             )
         with col2:
             filter_priority = st.multiselect(

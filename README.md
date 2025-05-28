@@ -14,6 +14,19 @@ A Streamlit application for analyzing customer support ticket data from Salesfor
 - Export capabilities (Excel, PowerPoint, CSV)
 - PII protection
 
+### Data Analysis
+- **Enhanced Status Filter**: Granular multiselect filter for active case statuses (Open, On-Hold, Pending, In Progress, New)
+  - Choose any combination of active statuses
+  - Real-time filtering feedback
+  - Helpful status descriptions and tips
+- Support ticket metrics and KPIs
+- Customer-specific analysis
+- Time-based filtering and trend analysis
+- Interactive data visualizations
+- CSAT score analysis
+- Resolution time tracking
+- Priority and status distribution analysis
+
 ## Installation
 
 1. Clone the repository:

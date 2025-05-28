@@ -96,7 +96,7 @@ def create_ticket_volume_chart(df: pd.DataFrame, time_unit: str = 'month') -> go
         date_format = '%Y-%m-%d'
         title_unit = "Weekly"
     else:  # Default to month
-        resample_rule = 'ME'  # Changed from 'M' to 'ME' to fix FutureWarning
+        resample_rule = 'M'  # Use 'M' for month-end frequency
         date_format = '%b %Y'
         title_unit = "Monthly"
     
